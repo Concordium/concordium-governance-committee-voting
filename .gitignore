@@ -2,6 +2,9 @@
 .vscode
 .idea
 
+#macOS
+.DS_Store
+
 # yarn
 .yarn/*
 !.yarn/patches

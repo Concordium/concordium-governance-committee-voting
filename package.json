@@ -35,6 +35,8 @@
         "*.{js,ts,css,scss,md,yml,json}": "prettier --write"
     },
     "scripts": {
-        "postinstall": "husky install"
+        "postinstall": "husky install",
+        "lint": "yarn workspaces foreach --all run lint",
+        "fmt": "yarn workspaces foreach --all run fmt"
     }
 }
