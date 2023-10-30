@@ -39,7 +39,7 @@ module.exports = {
         ecmaFeatures: { jsx: true },
         sourceType: 'module',
         tsconfigRootDir: __dirname,
-        project: ['./tsconfig.json', './apps/**/tsconfig.json', './apps/**/tsconfig.node.json'],
+        project: ['./tsconfig.json', './apps/*/tsconfig.json', './apps/*/tsconfig.node.json'],
     },
     settings: {
         react: {
