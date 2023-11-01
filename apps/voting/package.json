@@ -11,7 +11,7 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@concordium/react-components": "^0.4.0-rc.5",
+        "@concordium/wallet-connectors": "^0.4.0-rc.4",
         "@concordium/web-sdk": "^7.0.0",
         "@walletconnect/types": "^2.10.4",
         "bootstrap": "^5.3.2",

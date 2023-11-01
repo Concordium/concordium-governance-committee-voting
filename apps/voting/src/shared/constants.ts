@@ -1,3 +1,3 @@
-import { TESTNET } from '@concordium/react-components';
+import { TESTNET } from '@concordium/wallet-connectors';
 
 export const NETWORK = TESTNET; // Pull this from env.

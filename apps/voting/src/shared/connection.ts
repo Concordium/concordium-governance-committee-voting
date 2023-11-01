@@ -1,20 +1,13 @@
 import {
-    WalletConnectionProps,
-    useConnect,
-    useConnection,
     BrowserWalletConnector,
     CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
     WalletConnectConnector,
-    ephemeralConnectorType,
-    useWalletConnectorSelector,
-    Connect,
-    Connection,
-    WalletConnectorSelector,
-} from '@concordium/react-components';
-import { createContext, useContext, useEffect, useMemo } from 'react';
+    WalletConnection,
+} from '@concordium/wallet-connectors';
 import { SignClientTypes } from '@walletconnect/types';
+import { createContext } from 'react';
 
-const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
+export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     projectId: CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
     metadata: {
         name: 'Concordium governance committee voting',
@@ -24,93 +17,18 @@ const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     },
 };
 
-const BROWSER_WALLET = ephemeralConnectorType(BrowserWalletConnector.create);
-const WALLET_CONNECT = ephemeralConnectorType(WalletConnectConnector.create.bind(this, WALLET_CONNECT_OPTS));
-
-/**
- * The react context supplying the {@linkcode WalletConnectionProps}.
- * Provided from `Root` component, accessible from `App` component and the component tree below.
- */
-export const connectionContext = createContext<WalletConnectionProps>({} as WalletConnectionProps);
-
-/**
- * Used to select wallet connect as wallet provider.
- */
-function useWalletConnectSelector() {
-    const connectionProps = useContext(connectionContext);
-    const { connection } = useConnection(connectionProps.connectedAccounts, connectionProps.genesisHashes);
-    return useWalletConnectorSelector(WALLET_CONNECT, connection, connectionProps);
+interface WalletState {
+    account: string | undefined;
+    chain: string | undefined;
+    connection: WalletConnection;
 }
 
-/**
- * Used to select the browser wallet as wallet provider.
- */
-function useBrowserWalletSelector() {
-    const connectionProps = useContext(connectionContext);
-    const { connection } = useConnection(connectionProps.connectedAccounts, connectionProps.genesisHashes);
-    return useWalletConnectorSelector(BROWSER_WALLET, connection, connectionProps);
-}
+export type ConnectionContext = Partial<WalletState>;
 
-export type UseWallet = Connect & Pick<WalletConnectorSelector, 'isConnected'>;
-type Selector = () => WalletConnectorSelector;
+export const connectionContext = createContext<ConnectionContext>({});
 
-const getUseWallet = (selector: Selector) => (): UseWallet => {
-    const { select, isSelected, isConnected } = selector();
-    const { connectedAccounts, genesisHashes, activeConnector } = useContext(connectionContext);
-    const { setConnection, connection } = useConnection(connectedAccounts, genesisHashes);
-    const { connect: _connect, isConnecting, connectError } = useConnect(activeConnector, setConnection);
-    const isActive = useMemo(
-        () => isSelected && activeConnector instanceof BrowserWalletConnector,
-        [isSelected, activeConnector],
-    );
-
-    useEffect(() => {
-        if (isActive) {
-            _connect();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isActive]);
-
-    function connect() {
-        if (!isSelected) {
-            select();
-        } else if (activeConnector instanceof BrowserWalletConnector) {
-            _connect();
-        }
-    }
-
-    console.log('conn2', connection);
-
-    return {
-        connect,
-        isConnecting,
-        connectError,
-        isConnected,
-    };
-};
-
-/**
- * Hook exposing functionality for managing connection to browser wallet.
- */
-export const useWalletConnect = getUseWallet(useWalletConnectSelector);
-
-/**
- * Hook exposing functionality for managing connection to wallet connect.
- */
-export const useBrowserWallet = getUseWallet(useBrowserWalletSelector);
-
-/**
- * Holds details of a wallet connection. Returned by {@linkcode useActiveConnection}.
- */
-export type ActiveConnection = Pick<Connection, 'genesisHash' | 'account' | 'connection'>;
-
-/**
- * Hook for accessing the active connection (if any).
- */
-export function useActiveConnection() {
-    const { connectedAccounts, genesisHashes } = useContext(connectionContext);
-    console.log(connectedAccounts);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { account, connection, genesisHash } = useConnection(connectedAccounts, genesisHashes);
-    return { account, connection, genesisHash };
-}
+// Cast as any, as it will be provided in Root component, which only renders subtree if connectors are defined.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+export const browserWalletContext = createContext<BrowserWalletConnector>(undefined as any);
+// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+export const walletConnectContext = createContext<WalletConnectConnector>(undefined as any);

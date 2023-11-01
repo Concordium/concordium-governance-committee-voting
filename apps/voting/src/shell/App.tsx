@@ -1,18 +1,18 @@
-import { useEffect } from 'react';
-import { useActiveConnection, useBrowserWallet } from '../shared/connection';
+import { useContext, useEffect } from 'react';
+import { browserWalletContext, connectionContext } from '../shared/connection';
 
 function App() {
-    const { connect, isConnected } = useBrowserWallet();
-    const { account, connection } = useActiveConnection();
+    const bw = useContext(browserWalletContext);
+    const { connection, account } = useContext(connectionContext);
 
     console.log('account', account, connection);
 
     useEffect(() => {
-        if (!isConnected) {
-            connect();
+        if (!bw.isConnected) {
+            void bw.connect();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isConnected]);
+    }, [bw.isConnected]);
 
     return <>Voting app</>;
 }

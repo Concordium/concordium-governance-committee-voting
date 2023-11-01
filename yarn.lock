@@ -32,18 +32,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@concordium/react-components@npm:^0.4.0-rc.5":
-  version: 0.4.0-rc.5
-  resolution: "@concordium/react-components@npm:0.4.0-rc.5"
-  dependencies:
-    "@concordium/wallet-connectors": "npm:^0.4.0-rc.4"
-  peerDependencies:
-    "@concordium/web-sdk": 7.0.0-rc.4
-    react: ^18
-  checksum: bdc9aec05fead60cf2d319744118fcc7c72a4cbb805b20cc65ddc2cadf85f1479e52cef89cec090c2b428b0c538f26d15cfcbbf7922f42f27351698dba36682c
-  languageName: node
-  linkType: hard
-
 "@concordium/rust-bindings@npm:2.0.0":
   version: 2.0.0
   resolution: "@concordium/rust-bindings@npm:2.0.0"
@@ -5721,7 +5709,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "voting@workspace:apps/voting"
   dependencies:
-    "@concordium/react-components": "npm:^0.4.0-rc.5"
+    "@concordium/wallet-connectors": "npm:^0.4.0-rc.4"
     "@concordium/web-sdk": "npm:^7.0.0"
     "@types/bootstrap": "npm:^5"
     "@types/eslint": "npm:^8"
