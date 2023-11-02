@@ -34,14 +34,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
+          cache-dependency-path: '**/yarn.lock'
 
       - name: Cache dependencies
         id: yarn-cache
         uses: actions/cache@v3
         with:
           path: |
-            ./node_modules
-            ./voting/node_modules
+            ./apps/node_modules
+            ./apps/voting/node_modules
           key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}-${{ env.DUMMY }}
           restore-keys: |
             ${{ runner.os }}-yarn
@@ -54,7 +55,7 @@ jobs:
     needs: deps
     defaults:
       run:
-        working-directory: ./apps
+        working-directory: apps
     steps:
       - uses: actions/checkout@v3
 
@@ -62,13 +63,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
+          cache-dependency-path: '**/yarn.lock'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v3
         with:
           path: |
-            ./node_modules
-            ./docs/node_modules
+            ./apps/node_modules
+            ./apps/voting/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Lint
@@ -79,7 +81,7 @@ jobs:
     needs: deps
     defaults:
       run:
-        working-directory: ./apps
+        working-directory: apps
     steps:
       - uses: actions/checkout@v3
 
@@ -87,13 +89,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
+          cache-dependency-path: '**/yarn.lock'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v3
         with:
           path: |
-            ./node_modules
-            ./docs/node_modules
+            ./apps/node_modules
+            ./apps/voting/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Lint
