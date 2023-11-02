@@ -2,5 +2,7 @@
 .vscode
 .idea
 
+*.local
+
 #macOS
 .DS_Store
