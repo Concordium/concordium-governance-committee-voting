@@ -11,7 +11,6 @@ module.exports = {
         'plugin:react/recommended',
         'plugin:react/jsx-runtime',
         'plugin:jsx-a11y/recommended',
-        'eslint-config-prettier',
     ],
     ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn'],
     parser: '@typescript-eslint/parser',

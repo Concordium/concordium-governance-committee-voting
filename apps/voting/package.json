@@ -6,9 +6,11 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "preview": "vite preview",
         "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "lint-fix": "yarn lint --fix",
         "fmt": "prettier . --write",
-        "preview": "vite preview"
+        "fmt-check": "prettier . --check"
     },
     "dependencies": {
         "bootstrap": "^5.3.2",

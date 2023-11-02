@@ -18,7 +18,6 @@
         "@typescript-eslint/eslint-plugin": "^6.9.0",
         "@typescript-eslint/parser": "^6.9.0",
         "eslint": "^8.52.0",
-        "eslint-config-prettier": "^9.0.0",
         "eslint-import-resolver-typescript": "^3.6.1",
         "eslint-plugin-import": "^2.29.0",
         "eslint-plugin-jsx-a11y": "^6.7.1",
@@ -30,7 +29,10 @@
     },
     "packageManager": "yarn@4.0.1",
     "scripts": {
+        "build:all": "yarn workspaces foreach --all -pt run build",
         "lint": "yarn workspaces foreach --all run lint",
-        "fmt": "yarn workspaces foreach --all run fmt"
+        "lint-fix": "yarn workspaces foreach --all run lint-fix",
+        "fmt": "yarn workspaces foreach --all run fmt",
+        "fmt-check": "yarn workspaces foreach --all run fmt-check"
     }
 }
