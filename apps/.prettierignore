@@ -1,0 +1,7 @@
+.yarn/
+dist/
+
+*.md
+*.yml
+*.yaml
+*.json
