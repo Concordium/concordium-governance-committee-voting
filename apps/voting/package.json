@@ -6,9 +6,12 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "preview": "vite preview",
         "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-        "fmt": "prettier . --write",
-        "preview": "vite preview"
+        "lint-fix": "yarn lint --fix",
+        "prettier": "prettier . --ignore-path ../.gitignore --ignore-path ../.prettierignore",
+        "fmt": "yarn prettier --write",
+        "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
         "@concordium/wallet-connectors": "^0.4.0-rc.4",
