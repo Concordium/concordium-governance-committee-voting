@@ -1,3 +1,4 @@
+# Checks the frontend apps for build, lint, and formatting errors
 name: Check
 
 on:
@@ -28,13 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
-          cache-dependency-path: '**/yarn.lock'
+          cache-dependency-path: "**/yarn.lock"
 
       - name: Cache dependencies
         id: yarn-cache
@@ -63,7 +64,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
-          cache-dependency-path: '**/yarn.lock'
+          cache-dependency-path: "**/yarn.lock"
 
       - name: Restore dependencies
         uses: actions/cache/restore@v3
@@ -89,7 +90,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
-          cache-dependency-path: '**/yarn.lock'
+          cache-dependency-path: "**/yarn.lock"
 
       - name: Restore dependencies
         uses: actions/cache/restore@v3
