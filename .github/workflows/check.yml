@@ -1,0 +1,104 @@
+# Checks the frontend apps for build, lint, and formatting errors
+name: Check
+
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main, release**, feature** ]
+  pull_request:
+    branches: [ main, release**, feature** ]
+    # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
+    types: [ opened, synchronize, reopened, ready_for_review ]
+  # Allows us to run the workflow manually from the Actions tab
+  workflow_dispatch:
+
+
+env:
+  DUMMY: 0 # For cache busting.
+  NODE_VERSION: 18.16.0
+  RUST_VERSION: 1.65
+  RUST_FMT: nightly-2023-04-01-x86_64-unknown-linux-gnu
+
+jobs:
+  deps:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ./apps
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          cache-dependency-path: "**/yarn.lock"
+
+      - name: Cache dependencies
+        id: yarn-cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./apps/node_modules
+            ./apps/voting/node_modules
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}-${{ env.DUMMY }}
+          restore-keys: |
+            ${{ runner.os }}-yarn
+
+      - name: Get dependencies
+        run: yarn install --immutable
+  lint:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+    needs: deps
+    defaults:
+      run:
+        working-directory: apps
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          cache-dependency-path: "**/yarn.lock"
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ./apps/node_modules
+            ./apps/voting/node_modules
+          key: ${{ runner.os }}-yarn
+
+      - name: Lint
+        run: yarn lint && yarn fmt-check
+  build:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+    needs: deps
+    defaults:
+      run:
+        working-directory: apps
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          cache-dependency-path: "**/yarn.lock"
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ./apps/node_modules
+            ./apps/voting/node_modules
+          key: ${{ runner.os }}-yarn
+
+      - name: Lint
+        run: yarn build:all
