@@ -1,20 +1,30 @@
-import { useContext, useEffect } from 'react';
-import { browserWalletContext, connectionContext } from '../shared/connection';
+import { useCallback } from 'react';
+import { useActiveWallet, useBrowserWallet } from '../shared/connection';
+import { Button } from 'react-bootstrap';
 
 function App() {
-    const bw = useContext(browserWalletContext);
-    const { connection, account } = useContext(connectionContext);
+    const { account, connection } = useActiveWallet();
+    const { isActive, isConnecting, connect } = useBrowserWallet();
 
-    console.log('account', account, connection);
-
-    useEffect(() => {
-        if (!bw.isConnected) {
-            void bw.connect();
+    const openWalletOptions = useCallback(() => {
+        if (isActive || isConnecting) {
+            return;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bw.isConnected]);
 
-    return <>Voting app</>;
+        void connect();
+    }, [connect, isActive, isConnecting]);
+
+    return (
+        <>
+            {connection ? (
+                account
+            ) : (
+                <Button variant="primary" onClick={openWalletOptions}>
+                    Connect
+                </Button>
+            )}
+        </>
+    );
 }
 
 export default App;

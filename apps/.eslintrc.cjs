@@ -14,9 +14,8 @@ module.exports = {
     ],
     ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn'],
     parser: '@typescript-eslint/parser',
-    plugins: ['react', 'react-refresh'],
+    plugins: ['react'],
     rules: {
-        'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
         '@typescript-eslint/unbound-method': 0,
         '@typescript-eslint/no-misused-promises': [
             'error',

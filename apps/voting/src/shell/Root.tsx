@@ -7,13 +7,7 @@ import {
     WalletConnection,
     WalletConnectionDelegate,
 } from '@concordium/wallet-connectors';
-import {
-    ConnectionContext,
-    WALLET_CONNECT_OPTS,
-    browserWalletContext,
-    connectionContext,
-    walletConnectContext,
-} from '../shared/connection';
+import { ActiveWallet, WALLET_CONNECT_OPTS, WalletsProvider } from '../shared/connection';
 
 function updateMapEntry<K, V>(map: Map<K, V>, key: K | undefined, value: V | undefined) {
     const res = new Map(map);
@@ -73,7 +67,7 @@ class Root extends Component<Props, State> implements WalletConnectionDelegate {
     }
     onDisconnected(connection: WalletConnection): void {
         this.setState((state) => {
-            const connections = state.connections.filter((c) => c === connection);
+            const connections = state.connections.filter((c) => c !== connection);
             return {
                 ...state,
                 connections,
@@ -92,8 +86,13 @@ class Root extends Component<Props, State> implements WalletConnectionDelegate {
     }
 
     render() {
+        const { browserWalletConnector, walletConnectConnector } = this.state;
+        if (browserWalletConnector === undefined || walletConnectConnector === undefined) {
+            return null;
+        }
+
         const connection = this.state.connections[0];
-        const contextValue: ConnectionContext =
+        const activeWallet: ActiveWallet =
             connection === undefined
                 ? {}
                 : {
@@ -102,18 +101,14 @@ class Root extends Component<Props, State> implements WalletConnectionDelegate {
                     connection,
                 };
 
-        if (this.state.browserWalletConnector === undefined || this.state.walletConnectConnector === undefined) {
-            return null;
-        }
-
         return (
-            <connectionContext.Provider value={contextValue}>
-                <browserWalletContext.Provider value={this.state.browserWalletConnector}>
-                    <walletConnectContext.Provider value={this.state.walletConnectConnector}>
-                        <App />
-                    </walletConnectContext.Provider>
-                </browserWalletContext.Provider>
-            </connectionContext.Provider>
+            <WalletsProvider
+                browser={browserWalletConnector}
+                walletConnect={walletConnectConnector}
+                activeWallet={activeWallet}
+            >
+                <App />
+            </WalletsProvider>
         );
     }
 }
