@@ -37,7 +37,7 @@ module.exports = {
         ecmaFeatures: { jsx: true },
         sourceType: 'module',
         tsconfigRootDir: __dirname,
-        project: ['./tsconfig.json', './apps/*/tsconfig.json', './apps/*/tsconfig.node.json'],
+        project: ['./voting/tsconfig.json', './voting/tsconfig.node.json'],
     },
     settings: {
         react: {
@@ -45,10 +45,10 @@ module.exports = {
         },
         'import/resolver': {
             typescript: {
-                project: ['packages/*/tsconfig.json'],
+                project: ['./voting/tsconfig.json'],
             },
             node: {
-                project: ['packages/*/tsconfig.json'],
+                project: ['./voting/tsconfig.json'],
             },
         },
     },

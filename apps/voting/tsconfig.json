@@ -1,9 +1,11 @@
 {
     "extends": "../tsconfig.json",
-    "include": ["src"],
-    "references": [
-        {
-            "path": "./tsconfig.node.json"
+    "compilerOptions": {
+        "baseUrl": "./src",
+        "paths": {
+            "@shell/*": ["./shell/*"],
+            "@shared/*": ["./shared/*"]
         }
-    ]
+    },
+    "include": ["src"]
 }

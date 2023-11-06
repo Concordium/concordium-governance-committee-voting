@@ -12,7 +12,7 @@
         "url": "https://concordium.com"
     },
     "workspaces": [
-        "./*"
+        "./voting"
     ],
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^6.9.0",
