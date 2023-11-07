@@ -28,10 +28,17 @@ export type ActiveWallet = Partial<Wallet>;
 
 const activeWalletContext = createContext<ActiveWallet>({});
 
+/**
+ * Provides access to properties of the active wallet of type {@linkcode ActiveWallet}.
+ */
 export function useActiveWallet() {
     return useContext(activeWalletContext);
 }
 
+/**
+ * Describes the properties provided by any wallet context, i.e. {@linkcode browserWalletContext} or
+ * {@linkcode walletConnectContext}.
+ */
 export type ConnectorContext = WalletConnector & {
     isConnecting: boolean;
     isActive: boolean;
@@ -54,10 +61,17 @@ const initialConnectorContext: ConnectorContext = {
 const browserWalletContext = createContext<ConnectorContext>(initialConnectorContext);
 const walletConnectContext = createContext<ConnectorContext>(initialConnectorContext);
 
+/**
+ * Provides access to managing connection(s) to the Concordium browser wallet
+ */
 export function useBrowserWallet() {
     return useContext(browserWalletContext);
 }
 
+/**
+ * Provides access to managing connection(s) wallet connect compatible Concordium wallets, e.g. Concordium mobile
+ * wallets.
+ */
 export function useWalletConnect() {
     return useContext(walletConnectContext);
 }
@@ -114,12 +128,19 @@ function WalletProvider({ connector, children }: WalletProviderProps) {
     return <Provider value={contextValue}>{children}</Provider>;
 }
 
-type WalletsProviderProps = PropsWithChildren<{
+export type WalletsProviderProps = PropsWithChildren<{
+    /** Connector instance to the Concordium browser wallet */
     browser: BrowserWalletConnector;
+    /** Connector instance to wallet connect compatible Concordium wallet */
     walletConnect: WalletConnectConnector;
+    /** The currently active wallet */
     activeWallet: ActiveWallet;
 }>;
 
+/**
+ * Component whose sole purpose is to provide connection management functionality to the component tree below the
+ * component acting as wallet connector delegate.
+ */
 export function WalletsProvider({ browser, walletConnect, activeWallet, children }: WalletsProviderProps) {
     return (
         <activeWalletContext.Provider value={activeWallet}>

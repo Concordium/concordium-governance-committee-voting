@@ -1,6 +1,6 @@
 import { NETWORK } from '../shared/constants';
 import App from './App';
-import { Component } from 'react';
+import { Component, PropsWithChildren } from 'react';
 import {
     BrowserWalletConnector,
     WalletConnectConnector,
@@ -21,8 +21,8 @@ function updateMapEntry<K, V>(map: Map<K, V>, key: K | undefined, value: V | und
     return res;
 }
 
-type Props = Record<string, never>;
-interface State {
+type WalletConnectionManagerProps = PropsWithChildren;
+interface WalletConnectionManagerState {
     browserWalletConnector: BrowserWalletConnector | undefined;
     walletConnectConnector: WalletConnectConnector | undefined;
     connections: WalletConnection[];
@@ -30,8 +30,10 @@ interface State {
     chains: Map<WalletConnection, string | undefined>;
 }
 
-class Root extends Component<Props, State> implements WalletConnectionDelegate {
-    constructor(props: Props) {
+class WalletConnectionManager
+    extends Component<WalletConnectionManagerProps, WalletConnectionManagerState>
+    implements WalletConnectionDelegate {
+    constructor(props: WalletConnectionManagerProps) {
         super(props);
 
         this.state = {
@@ -107,10 +109,22 @@ class Root extends Component<Props, State> implements WalletConnectionDelegate {
                 walletConnect={walletConnectConnector}
                 activeWallet={activeWallet}
             >
-                <App />
+                {this.props.children}
             </WalletsProvider>
         );
     }
+}
+
+/**
+ * The application root. This is in charge of setting up global contexts to be available from {@linkcode App} and
+ * below (in the component tree).
+ */
+function Root() {
+    return (
+        <WalletConnectionManager>
+            <App />
+        </WalletConnectionManager>
+    );
 }
 
 export default Root;
