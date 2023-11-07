@@ -1,8 +1,9 @@
 @import 'bootstrap/scss/buttons';
 
-button.clear {
+.clear:where(button) {
     background-color: transparent;
     border: none;
+    padding: 0;
 }
 
 .btn-primary {

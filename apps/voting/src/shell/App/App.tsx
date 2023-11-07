@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react';
-import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
 import { Button, Modal } from 'react-bootstrap';
+
+import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
+import WalletConnectIcon from '@assets/walletconnect.svg';
+import ChromeIcon from '@assets/chrome.svg';
 
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
@@ -15,7 +18,7 @@ function ConnectWalletConnect() {
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
-            <div className="connect-wallet__button-icon">icon</div>
+            <img className="connect-wallet__button-icon" src={WalletConnectIcon} alt="wallet connect icon" />
             Wallet Connect
         </button>
     );
@@ -34,7 +37,11 @@ function ConnectBrowser() {
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
-            <div className="connect-wallet__button-icon">icon</div>
+            <img
+                className="connect-wallet__button-icon connect-wallet__button-icon--chrome"
+                src={ChromeIcon}
+                alt="wallet connect icon"
+            />
             Concordium Browser Wallet
         </button>
     );
