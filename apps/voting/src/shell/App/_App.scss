@@ -14,6 +14,7 @@
         flex-direction: column;
         width: 100px;
         padding: 0 10px;
+        font-weight: $font-weight-bold;
     }
 
     &__button-icon {
@@ -22,6 +23,18 @@
 
         &--chrome {
             padding: 7px;
+        }
+    }
+}
+
+.active-connection {
+    &__disconnect {
+        display: inline-flex;
+        align-items: center;
+
+        img {
+            height: 25px;
+            margin-left: 5px;
         }
     }
 }

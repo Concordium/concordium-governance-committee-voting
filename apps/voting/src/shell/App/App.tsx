@@ -4,6 +4,7 @@ import { Button, Modal } from 'react-bootstrap';
 import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ChromeIcon from '@assets/chrome.svg';
+import DisconnectIcon from '@assets/close.svg';
 
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
@@ -19,7 +20,7 @@ function ConnectWalletConnect() {
     return (
         <button onClick={connect} className="clear connect-wallet__button">
             <img className="connect-wallet__button-icon" src={WalletConnectIcon} alt="wallet connect icon" />
-            Wallet Connect
+            Concordium Mobile Wallet
         </button>
     );
 }
@@ -66,14 +67,39 @@ function SelectConnection() {
     );
 }
 
-function WalletConnection() {
+function ActiveConnection() {
     const { account, connection } = useActiveWallet();
 
-    return <>{connection ? account : <SelectConnection />}</>;
+    if (!connection) {
+        throw new Error('Connection must be available');
+    }
+
+    const accountShow = `${account?.substring(0, 4)}...${account?.substring(account.length - 5)}`;
+
+    return (
+        <Button className="active-connection__disconnect" variant="danger" onClick={() => connection.disconnect()}>
+            {accountShow}
+            <img src={DisconnectIcon} alt="disconnect icon" />
+        </Button>
+    );
+}
+
+function WalletConnection() {
+    const { connection } = useActiveWallet();
+
+    if (connection) {
+        return <ActiveConnection />;
+    }
+
+    return <SelectConnection />;
 }
 
 function App() {
-    return <WalletConnection />;
+    return (
+        <div className="float-end">
+            <WalletConnection />
+        </div>
+    );
 }
 
 export default App;
