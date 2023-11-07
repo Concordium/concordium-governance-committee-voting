@@ -3,18 +3,10 @@
     "compilerOptions": {
         "baseUrl": "./src",
         "paths": {
-            "@assets/*": [
-                "./assets/*"
-            ],
-            "@shell/*": [
-                "./shell/*"
-            ],
-            "@shared/*": [
-                "./shared/*"
-            ]
+            "@assets/*": ["./assets/*"],
+            "@shell/*": ["./shell/*"],
+            "@shared/*": ["./shared/*"]
         }
     },
-    "include": [
-        "src"
-    ]
+    "include": ["src"]
 }
