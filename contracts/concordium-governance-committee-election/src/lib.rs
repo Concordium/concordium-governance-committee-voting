@@ -2,6 +2,8 @@
 
 //! # A Concordium V1 smart contract
 
+use core::ops::Deref;
+
 use concordium_std::*;
 
 /// The concrete hash type used to represent the list of eligible voters and their respective
@@ -53,7 +55,7 @@ pub struct Config {
     /// The end time of the election, marking the time at which votes can no longer be registered.
     election_end: Timestamp,
     /// The election result, which will be registered after `election_end` has passed.
-    election_result: Option<Vec<CandidateWeightedVotes>>,
+    election_result: Option<ElectionResult>,
 }
 
 #[derive(Serial, DeserialWithState)]
@@ -70,7 +72,8 @@ pub enum Error {
     ParseParams,
     /// Duplicate candidate found when constructing unique list of candidates.
     DuplicateCandidate,
-    YourError, // TODO: remove
+    /// Tried to invoke contract from an unauthorized address.
+    Unauthorized,
 }
 
 /// Parameter supplied to `init`.
@@ -135,35 +138,38 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     Ok(initial_state)
 }
 
-pub type MyInputType = bool;
+pub type PostResultParameter = ElectionResult;
 
-/// Receive function. The input parameter is the boolean variable `throw_error`.
-///  If `throw_error == true`, the receive function will throw a custom error.
-///  If `throw_error == false`, the receive function executes successfully.
+/// Receive the election result and update the contract state with the supplied result from the
+/// parameter
 #[receive(
     contract = "concordium_governance_committee_election",
-    name = "receive",
-    parameter = "MyInputType",
+    name = "postResult",
+    parameter = "PostResultParameter",
     error = "Error",
     mutable
 )]
-fn receive(ctx: &ReceiveContext, _host: &mut Host<State>) -> Result<(), Error> {
-    // Your code
+fn post_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
 
-    let throw_error = ctx.parameter_cursor().get()?; // Returns Error::ParseError on failure
-    if throw_error {
-        Err(Error::YourError)
-    } else {
-        Ok(())
-    }
+    let Address::Account(sender) = ctx.sender() else {
+        return Err(Error::Unauthorized);
+    };
+    ensure!(
+        sender == host.state.config.admin_account,
+        Error::Unauthorized
+    );
+
+    host.state.config.election_result = Some(parameter);
+    Ok(())
 }
 
 /// View function that returns the content of the state.
 #[receive(
     contract = "concordium_governance_committee_election",
     name = "view",
-    return_value = "ViewQueryResponse"
+    return_value = "Config"
 )]
-fn view<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b State> {
-    Ok(host.state())
+fn view<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b Config> {
+    Ok(host.state().config.deref())
 }
