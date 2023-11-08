@@ -74,6 +74,10 @@ pub enum Error {
     DuplicateCandidate,
     /// Tried to invoke contract from an unauthorized address.
     Unauthorized,
+    /// Election result does not consist of the expected elements
+    MalformedElectionResult,
+    /// Election is not over
+    Inconclusive,
 }
 
 /// Parameter supplied to `init`.
@@ -160,16 +164,56 @@ fn post_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error
         Error::Unauthorized
     );
 
+    let candidates = &host.state.config.candidates;
+    ensure!(
+        parameter.len() == candidates.len(),
+        Error::MalformedElectionResult
+    );
+
     host.state.config.election_result = Some(parameter);
     Ok(())
 }
 
+pub type ConfigQuery = Config;
+
+/// View function that returns the contract configuration
+#[receive(
+    contract = "concordium_governance_committee_election",
+    name = "config",
+    return_value = "ConfigQuery"
+)]
+fn config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b Config> {
+    Ok(host.state().config.deref())
+}
+
+#[derive(Serial, SchemaType)]
+pub struct CandidateResult {
+    candidate: Candidate,
+    cummulative_votes: CandidateWeightedVotes,
+}
+
+pub type ResultQuery = Vec<CandidateResult>;
+
 /// View function that returns the content of the state.
 #[receive(
     contract = "concordium_governance_committee_election",
-    name = "view",
-    return_value = "Config"
+    name = "result",
+    return_value = "ResultQuery",
+    error = "Error"
 )]
-fn view<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b Config> {
-    Ok(host.state().config.deref())
+fn result<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> Result<ResultQuery, Error> {
+    let Some(result) = &host.state.config.election_result else {
+        return Err(Error::Inconclusive);
+    };
+    let candidates = &host.state.config.candidates;
+
+    let response: Vec<_> = candidates
+        .iter()
+        .zip(result)
+        .map(|(candidate, &cummulative_votes)| CandidateResult {
+            candidate: candidate.clone(),
+            cummulative_votes,
+        })
+        .collect();
+    Ok(response)
 }
