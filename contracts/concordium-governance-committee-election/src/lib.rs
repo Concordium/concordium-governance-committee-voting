@@ -4,34 +4,18 @@
 
 use concordium_std::*;
 
-/// Your smart contract state.
-#[derive(Serial, DeserialWithState)]
-#[concordium(state_parameter = "S")]
-pub struct State<S = StateApi> {
-    /// The account used to perform administrative functions, such as publishing the final result
-    /// of the election.
-    admin_account: AccountAddress,
-    /// A list of candidates that voters can vote for in the election
-    candidates: StateSet<Candidate, S>,
-    /// The merkle root of the list of eligible voters and their respective voting weights.
-    eligible_voter_weights: EligibleVotersHash,
-    /// A description of the election, e.g. "Concordium GC election, June 2024"
-    election_description: String,
-    /// The start time of the election, marking the time from which votes can be registered.
-    election_start: Timestamp,
-    /// The end time of the election, marking the time at which votes can no longer be registered.
-    election_end: Timestamp,
-}
+/// The concrete hash type used to represent the list of eligible voters and their respective
+/// weights.
+pub type EligibleVotersHash = HashSha3256; // TODO: Is this the correct hashing algorithm?
 
-/// Your smart contract errors.
-#[derive(Debug, PartialEq, Eq, Reject, Serialize, SchemaType)]
-pub enum Error {
-    /// Failed parsing the parameter.
-    #[from(ParseError)]
-    ParseParams,
-    /// Failed to construct contract state
-    ConstructState(String),
-    YourError, // TODO: remove
+/// Represents the list of eligible voters and their corresponding voting weights by a url,
+/// and a corresonding hash of the list.
+#[derive(Serialize, SchemaType, Clone)]
+pub struct EligibleVoters {
+    /// The url where the list of voters can be found.
+    url: String,
+    /// The hash of the list of voters accessible at `url`.
+    hash: EligibleVotersHash,
 }
 
 /// Representation of a candidate that voters can vote for.
@@ -44,9 +28,50 @@ pub struct Candidate {
     name: String,
 }
 
-/// The concrete hash type used to represent the list of eligible voters and their respective
-/// weights. This will be calculated by representing the list of voters as a merkle tree.
-pub type EligibleVotersHash = HashSha3256; // TODO: Is this the correct hashing algorithm?
+pub type CandidateWeightedVotes = u64;
+/// A list of weighted votes, where the position in the list identifies the corresponding
+/// [`Candidate`] in the list of candidates
+pub type ElectionResult = Vec<CandidateWeightedVotes>;
+
+/// Your smart contract state.
+#[derive(Serialize, SchemaType)]
+pub struct Config {
+    /// The account used to perform administrative functions, such as publishing the final result
+    /// of the election.
+    admin_account: AccountAddress,
+    /// A list of candidates - identified by their position in the list - that voters can vote for in the election.
+    // TODO: I kind of wanted to do a StateSet here, but I don't know what to identify the each candidate by?
+    candidates: Vec<Candidate>,
+    /// A unique list of guardian accounts used for the election.
+    guardians: HashSet<AccountAddress>,
+    /// The list of eligible voters, represented by a url and a hash of the list.
+    eligible_voters: EligibleVoters,
+    /// A description of the election, e.g. "Concordium GC election, June 2024".
+    election_description: String,
+    /// The start time of the election, marking the time from which votes can be registered.
+    election_start: Timestamp,
+    /// The end time of the election, marking the time at which votes can no longer be registered.
+    election_end: Timestamp,
+    /// The election result, which will be registered after `election_end` has passed.
+    election_result: Option<Vec<CandidateWeightedVotes>>,
+}
+
+#[derive(Serial, DeserialWithState)]
+#[concordium(state_parameter = "S")]
+pub struct State<S: HasStateApi = StateApi> {
+    config: StateBox<Config, S>,
+}
+
+/// Your smart contract errors.
+#[derive(Debug, PartialEq, Eq, Reject, Serialize, SchemaType)]
+pub enum Error {
+    /// Failed parsing the parameter.
+    #[from(ParseError)]
+    ParseParams,
+    /// Duplicate candidate found when constructing unique list of candidates.
+    DuplicateCandidate,
+    YourError, // TODO: remove
+}
 
 /// Parameter supplied to `init`.
 #[derive(Serialize, SchemaType)]
@@ -55,11 +80,13 @@ pub struct InitParameter {
     /// of the election. If this is `None`, the account used to instantiate the contract will be
     /// used.
     admin_account: Option<AccountAddress>,
-    /// A list of candidates that voters can vote for in the election
+    /// A list of candidates that voters can vote for in the election.
     candidates: Vec<Candidate>,
+    /// The list of guardians for the election.
+    guardians: Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective voting weights.
-    eligible_voter_weights: EligibleVotersHash,
-    /// A description of the election, e.g. "Concordium GC election, June 2024"
+    eligible_voters: EligibleVoters,
+    /// A description of the election, e.g. "Concordium GC election, June 2024".
     election_description: String,
     /// The start time of the election, marking the time from which votes can be registered.
     election_start: Timestamp,
@@ -79,24 +106,19 @@ impl InitParameter {
         F: FnOnce() -> AccountAddress,
     {
         let admin_account = self.admin_account.unwrap_or_else(get_fallback_admin);
-        let mut candidates = state_builder.new_set();
-        for c in self.candidates {
-            if !candidates.insert(c) {
-                return Err(Error::ConstructState(
-                    "Duplicate candidate found in candidate list".to_string(),
-                ));
-            }
-        }
-
-        let state = State {
+        let config = Config {
             admin_account,
-            candidates,
+            candidates: self.candidates,
+            guardians: HashSet::from_iter(self.guardians.into_iter()),
             election_description: self.election_description,
-            eligible_voter_weights: self.eligible_voter_weights,
+            eligible_voters: self.eligible_voters,
             election_start: self.election_start,
             election_end: self.election_end,
+            election_result: None,
         };
-
+        let state = State {
+            config: state_builder.new_box(config),
+        };
         Ok(state)
     }
 }
@@ -136,43 +158,12 @@ fn receive(ctx: &ReceiveContext, _host: &mut Host<State>) -> Result<(), Error> {
     }
 }
 
-#[derive(Serialize, SchemaType)]
-pub struct ViewQueryResponse {
-    /// The account used to perform administrative functions, such as publishing the final result
-    /// of the election.
-    admin_account: AccountAddress,
-    /// A list of candidates that voters can vote for in the election
-    candidates: Vec<Candidate>,
-    /// The merkle root of the list of eligible voters and their respective voting weights.
-    eligible_voter_weights: EligibleVotersHash,
-    /// A description of the election, e.g. "Concordium GC election, June 2024"
-    election_description: String,
-    /// The start time of the election, marking the time from which votes can be registered.
-    election_start: Timestamp,
-    /// The end time of the election, marking the time at which votes can no longer be registered.
-    election_end: Timestamp,
-}
-
-impl ViewQueryResponse {
-    fn from_state_ref(value: &State) -> Self {
-        let candidates = value.candidates.iter().map(|c| c.clone()).collect();
-        Self {
-            admin_account: value.admin_account,
-            candidates,
-            election_description: value.election_description.to_string(),
-            eligible_voter_weights: value.eligible_voter_weights,
-            election_start: value.election_start,
-            election_end: value.election_end,
-        }
-    }
-}
-
 /// View function that returns the content of the state.
 #[receive(
     contract = "concordium_governance_committee_election",
     name = "view",
     return_value = "ViewQueryResponse"
 )]
-fn view<'b>(_ctx: &ReceiveContext, host: &Host<State>) -> ReceiveResult<ViewQueryResponse> {
-    Ok(ViewQueryResponse::from_state_ref(&host.state))
+fn view<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b State> {
+    Ok(host.state())
 }
