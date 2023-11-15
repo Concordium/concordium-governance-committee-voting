@@ -14,6 +14,9 @@
         "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
+        "@concordium/wallet-connectors": "^0.4.0-rc.4",
+        "@concordium/web-sdk": "^7.0.0",
+        "@walletconnect/types": "^2.10.4",
         "bootstrap": "^5.3.2",
         "react": "^18.2.0",
         "react-bootstrap": "^2.9.1",
@@ -29,6 +32,7 @@
         "prettier": "^3.0.3",
         "sass": "^1.69.5",
         "typescript": "^5.0.2",
-        "vite": "^4.4.5"
+        "vite": "^4.4.5",
+        "vite-tsconfig-paths": "^4.2.1"
     }
 }

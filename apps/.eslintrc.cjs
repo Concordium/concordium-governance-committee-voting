@@ -11,12 +11,12 @@ module.exports = {
         'plugin:react/recommended',
         'plugin:react/jsx-runtime',
         'plugin:jsx-a11y/recommended',
+        'prettier',
     ],
     ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn'],
     parser: '@typescript-eslint/parser',
-    plugins: ['react', 'react-refresh'],
+    plugins: ['react'],
     rules: {
-        'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
         '@typescript-eslint/unbound-method': 0,
         '@typescript-eslint/no-misused-promises': [
             'error',
@@ -38,7 +38,7 @@ module.exports = {
         ecmaFeatures: { jsx: true },
         sourceType: 'module',
         tsconfigRootDir: __dirname,
-        project: ['./tsconfig.json', './apps/*/tsconfig.json', './apps/*/tsconfig.node.json'],
+        project: ['./voting/tsconfig.json', './voting/tsconfig.node.json'],
     },
     settings: {
         react: {
@@ -46,10 +46,10 @@ module.exports = {
         },
         'import/resolver': {
             typescript: {
-                project: ['packages/*/tsconfig.json'],
+                project: ['./voting/tsconfig.json'],
             },
             node: {
-                project: ['packages/*/tsconfig.json'],
+                project: ['./voting/tsconfig.json'],
             },
         },
     },

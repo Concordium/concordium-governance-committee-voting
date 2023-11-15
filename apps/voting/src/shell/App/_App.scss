@@ -1,0 +1,40 @@
+.select-connection {
+    &__wallets {
+        display: flex;
+        justify-content: center;
+    }
+}
+
+.connect-wallet {
+    &__button {
+        font-size: 10px;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        flex-direction: column;
+        width: 100px;
+        padding: 0 10px;
+        font-weight: $font-weight-bold;
+    }
+
+    &__button-icon {
+        width: 50px;
+        height: 50px;
+
+        &--chrome {
+            padding: 7px;
+        }
+    }
+}
+
+.active-connection {
+    &__disconnect {
+        display: inline-flex;
+        align-items: center;
+
+        img {
+            height: 25px;
+            margin-left: 5px;
+        }
+    }
+}

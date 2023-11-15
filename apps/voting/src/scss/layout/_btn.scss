@@ -1,5 +1,11 @@
 @import 'bootstrap/scss/buttons';
 
+.clear:where(button) {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
 .btn-primary {
     background-image: $button-gradient;
     min-width: rfs-value(150px);
