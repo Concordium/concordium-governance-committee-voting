@@ -30,9 +30,9 @@
     "packageManager": "yarn@4.0.1",
     "scripts": {
         "build:all": "yarn workspaces foreach --all -pt run build",
-        "lint": "yarn workspaces foreach --all run lint",
-        "lint-fix": "yarn workspaces foreach --all run lint-fix",
-        "fmt": "yarn workspaces foreach --all run fmt",
-        "fmt-check": "yarn workspaces foreach --all run fmt-check"
+        "lint:all": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "lint-fix:all": "yarn lint --fix",
+        "fmt:all": "prettier . --write",
+        "fmt-check:all": "prettier . --check"
     }
 }

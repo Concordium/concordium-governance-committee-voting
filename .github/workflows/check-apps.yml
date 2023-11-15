@@ -76,7 +76,7 @@ jobs:
           key: ${{ runner.os }}-yarn
 
       - name: Lint
-        run: yarn lint && yarn fmt-check
+        run: yarn lint:all && yarn fmt-check:all
   build:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
@@ -101,5 +101,5 @@ jobs:
             ./apps/voting/node_modules
           key: ${{ runner.os }}-yarn
 
-      - name: Lint
+      - name: Build
         run: yarn build:all
