@@ -3,7 +3,7 @@ import { Button, Modal } from 'react-bootstrap';
 
 import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
-import ChromeIcon from '@assets/chrome.svg';
+import ConcordiumIcon from '@assets/ccd.svg';
 import DisconnectIcon from '@assets/close.svg';
 
 function ConnectWalletConnect() {
@@ -40,10 +40,10 @@ function ConnectBrowser() {
         <button onClick={connect} className="clear connect-wallet__button">
             <img
                 className="connect-wallet__button-icon connect-wallet__button-icon--chrome"
-                src={ChromeIcon}
+                src={ConcordiumIcon}
                 alt="wallet connect icon"
             />
-            Concordium Browser Wallet
+            Concordium Wallet for Web
         </button>
     );
 }
