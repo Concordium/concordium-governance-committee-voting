@@ -10,7 +10,7 @@ pub type EligibleVotersHash = HashSha3256; // TODO: Is this the correct hashing 
 
 /// Represents the list of eligible voters and their corresponding voting weights by a url,
 /// and a corresonding hash of the list.
-#[derive(Serialize, SchemaType, Clone)]
+#[derive(Serialize, SchemaType, Clone, Debug)]
 pub struct EligibleVoters {
     /// The url where the list of voters can be found.
     pub url: String,
@@ -22,7 +22,7 @@ pub struct EligibleVoters {
 // TODO: what do we need to represent a candidate? Is it even feasible to store any data, or do we
 // also want to represent this in a derived and verifiable manner and store the actual list on the
 // corresponding election server?
-#[derive(Serialize, SchemaType, Clone)]
+#[derive(Serialize, SchemaType, Clone, Debug)]
 pub struct Candidate {
     /// The name of the candidate.
     pub name: String,
@@ -32,6 +32,24 @@ pub type CandidateWeightedVotes = u64;
 /// A list of weighted votes, where the position in the list identifies the corresponding
 /// [`Candidate`] in the list of candidates
 pub type ElectionResult = Vec<CandidateWeightedVotes>;
+
+/// Describes errors that can happen during the execution of the contract.
+#[derive(Debug, PartialEq, Eq, Reject, Serialize, SchemaType)]
+pub enum Error {
+    /// Failed parsing the parameter.
+    #[from(ParseError)]
+    ParseParams,
+    /// Duplicate candidate found when constructing unique list of candidates.
+    DuplicateCandidate,
+    /// Tried to invoke contract from an unauthorized address.
+    Unauthorized,
+    /// Could not create [`Config`] struct.
+    MalformedConfig,
+    /// Election result does not consist of the expected elements
+    MalformedElectionResult,
+    /// Election is not over
+    Inconclusive,
+}
 
 /// The configuration of the contract
 #[derive(Serialize, SchemaType)]
@@ -53,6 +71,40 @@ pub struct Config {
     pub election_end: Timestamp,
 }
 
+impl Config {
+    /// Creates new [`Config`] from passed arguments while also checking that the configuration is
+    /// sensible.
+    fn new_checked(
+        ctx: &InitContext,
+        admin_account: AccountAddress,
+        candidates: Vec<Candidate>,
+        guardians: HashSet<AccountAddress>,
+        eligible_voters: EligibleVoters,
+        election_description: String,
+        election_start: Timestamp,
+        election_end: Timestamp,
+    ) -> Result<Self, Error> {
+        let now = ctx.metadata().block_time();
+        ensure!(election_start > now, Error::MalformedConfig);
+        ensure!(election_start < election_end, Error::MalformedConfig);
+        ensure!(!election_description.is_empty(), Error::MalformedConfig);
+        ensure!(!candidates.is_empty(), Error::MalformedConfig);
+        ensure!(!guardians.is_empty(), Error::MalformedConfig);
+        ensure!(!eligible_voters.url.is_empty(), Error::MalformedConfig);
+
+        let config = Self {
+            admin_account,
+            candidates,
+            guardians,
+            eligible_voters,
+            election_description,
+            election_start,
+            election_end,
+        };
+        Ok(config)
+    }
+}
+
 /// The internal state of the contract
 #[derive(Serial, DeserialWithState)]
 #[concordium(state_parameter = "S")]
@@ -62,24 +114,8 @@ pub struct State<S: HasStateApi = StateApi> {
     pub election_result: StateBox<Option<ElectionResult>, S>,
 }
 
-/// Describes errors that can happen during the execution of the contract.
-#[derive(Debug, PartialEq, Eq, Reject, Serialize, SchemaType)]
-pub enum Error {
-    /// Failed parsing the parameter.
-    #[from(ParseError)]
-    ParseParams,
-    /// Duplicate candidate found when constructing unique list of candidates.
-    DuplicateCandidate,
-    /// Tried to invoke contract from an unauthorized address.
-    Unauthorized,
-    /// Election result does not consist of the expected elements
-    MalformedElectionResult,
-    /// Election is not over
-    Inconclusive,
-}
-
 /// Parameter supplied to [`init`].
-#[derive(Serialize, SchemaType)]
+#[derive(Serialize, SchemaType, Debug)]
 pub struct InitParameter {
     /// The account used to perform administrative functions, such as publishing the final result
     /// of the election. If this is `None`, the account used to instantiate the contract will be
@@ -102,24 +138,24 @@ pub struct InitParameter {
 impl InitParameter {
     /// Converts the init parameter to [`State`] with a supplied function for getting a fallback
     /// admin account if none is specified. The function consumes the parameter in the process.
-    fn into_state<F>(
+    fn into_state(
         self,
+        ctx: &InitContext,
         state_builder: &mut StateBuilder,
-        get_fallback_admin: F,
     ) -> Result<State, Error>
-    where
-        F: FnOnce() -> AccountAddress,
     {
-        let admin_account = self.admin_account.unwrap_or_else(get_fallback_admin);
-        let config = Config {
+        let admin_account = self.admin_account.unwrap_or_else(|| ctx.init_origin());
+
+        let config = Config::new_checked(
+            ctx,
             admin_account,
-            candidates: self.candidates,
-            guardians: HashSet::from_iter(self.guardians.into_iter()),
-            election_description: self.election_description,
-            eligible_voters: self.eligible_voters,
-            election_start: self.election_start,
-            election_end: self.election_end,
-        };
+            self.candidates,
+            HashSet::from_iter(self.guardians.into_iter()),
+            self.eligible_voters,
+            self.election_description,
+            self.election_start,
+            self.election_end,
+        )?;
         let state = State {
             config: state_builder.new_box(config),
             election_result: state_builder.new_box(None),
@@ -136,7 +172,7 @@ impl InitParameter {
 )]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
     let parameter: InitParameter = ctx.parameter_cursor().get()?;
-    let initial_state = parameter.into_state(state_builder, || ctx.init_origin())?;
+    let initial_state = parameter.into_state(ctx, state_builder)?;
     Ok(initial_state)
 }
 
@@ -155,12 +191,12 @@ pub type RegisterVoteParameter = Ballot;
 
 /// Receive votes registration from voter. If a contract submits the vote, an error is returned.
 /// This function does not actually store anything. Instead the encrypted votes should be read by
-/// traversing the transactions sent to the contract. 
+/// traversing the transactions sent to the contract.
 #[receive(
     contract = "concordium_governance_committee_election",
     name = "registerVotes",
     parameter = "RegisterVoteParameter",
-    error = "Error",
+    error = "Error"
 )]
 fn register_votes(ctx: &ReceiveContext, _host: &Host<State>) -> Result<(), Error> {
     if ctx.sender().is_contract() {
@@ -211,7 +247,10 @@ pub type ConfigQueryResponse = Config;
     name = "config",
     return_value = "ConfigQueryResponse"
 )]
-fn config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b ConfigQueryResponse> {
+fn config<'b>(
+    _ctx: &ReceiveContext,
+    host: &'b Host<State>,
+) -> ReceiveResult<&'b ConfigQueryResponse> {
     Ok(host.state().config.get())
 }
 
