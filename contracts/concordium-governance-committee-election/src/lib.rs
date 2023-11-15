@@ -2,8 +2,6 @@
 
 //! # A Concordium V1 smart contract
 
-use core::ops::Deref;
-
 use concordium_std::*;
 
 /// The concrete hash type used to represent the list of eligible voters and their respective
@@ -35,14 +33,13 @@ pub type CandidateWeightedVotes = u64;
 /// [`Candidate`] in the list of candidates
 pub type ElectionResult = Vec<CandidateWeightedVotes>;
 
-/// Your smart contract state.
+/// The configuration of the contract
 #[derive(Serialize, SchemaType)]
 pub struct Config {
     /// The account used to perform administrative functions, such as publishing the final result
     /// of the election.
     admin_account: AccountAddress,
     /// A list of candidates - identified by their position in the list - that voters can vote for in the election.
-    // TODO: I kind of wanted to do a StateSet here, but I don't know what to identify the each candidate by?
     candidates: Vec<Candidate>,
     /// A unique list of guardian accounts used for the election.
     guardians: HashSet<AccountAddress>,
@@ -54,17 +51,18 @@ pub struct Config {
     election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no longer be registered.
     election_end: Timestamp,
-    /// The election result, which will be registered after `election_end` has passed.
-    election_result: Option<ElectionResult>,
 }
 
+/// The internal state of the contract
 #[derive(Serial, DeserialWithState)]
 #[concordium(state_parameter = "S")]
 pub struct State<S: HasStateApi = StateApi> {
     config: StateBox<Config, S>,
+    /// The election result, which will be registered after `election_end` has passed.
+    election_result: StateBox<Option<ElectionResult>, S>,
 }
 
-/// Your smart contract errors.
+/// Describes errors that can happen during the execution of the contract.
 #[derive(Debug, PartialEq, Eq, Reject, Serialize, SchemaType)]
 pub enum Error {
     /// Failed parsing the parameter.
@@ -80,7 +78,7 @@ pub enum Error {
     Inconclusive,
 }
 
-/// Parameter supplied to `init`.
+/// Parameter supplied to [`init`].
 #[derive(Serialize, SchemaType)]
 pub struct InitParameter {
     /// The account used to perform administrative functions, such as publishing the final result
@@ -121,10 +119,10 @@ impl InitParameter {
             eligible_voters: self.eligible_voters,
             election_start: self.election_start,
             election_end: self.election_end,
-            election_result: None,
         };
         let state = State {
             config: state_builder.new_box(config),
+            election_result: state_builder.new_box(None),
         };
         Ok(state)
     }
@@ -142,6 +140,36 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     Ok(initial_state)
 }
 
+/// Temporary until election guard has an encrypted ballot.
+#[derive(Serialize, SchemaType)]
+pub struct Vote {
+    candidate_index: u8,
+    has_vote: bool,
+}
+
+/// Temporary until election guard implements an encrypted version of this.
+pub type Ballot = Vec<Vote>;
+
+/// The parameter supplied to the [`register_votes`] entrypoint.
+pub type RegisterVoteParameter = Ballot;
+
+/// Receive votes registration from voter. If a contract submits the vote, an error is returned.
+/// This function does not actually store anything. Instead the encrypted votes should be read by
+/// traversing the transactions sent to the contract. 
+#[receive(
+    contract = "concordium_governance_committee_election",
+    name = "registerVotes",
+    parameter = "RegisterVoteParameter",
+    error = "Error",
+)]
+fn register_votes(ctx: &ReceiveContext, _host: &Host<State>) -> Result<(), Error> {
+    if ctx.sender().is_contract() {
+        return Err(Error::Unauthorized);
+    };
+    Ok(())
+}
+
+/// The parameter supplied to the [`post_result`] entrypoint.
 pub type PostResultParameter = ElectionResult;
 
 /// Receive the election result and update the contract state with the supplied result from the
@@ -170,10 +198,11 @@ fn post_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error
         Error::MalformedElectionResult
     );
 
-    host.state.config.election_result = Some(parameter);
+    host.state.election_result.update(|_| Some(parameter));
     Ok(())
 }
 
+/// The type returned by the [`config`] entrypoint.
 pub type ConfigQuery = Config;
 
 /// View function that returns the contract configuration
@@ -182,16 +211,18 @@ pub type ConfigQuery = Config;
     name = "config",
     return_value = "ConfigQuery"
 )]
-fn config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b Config> {
-    Ok(host.state().config.deref())
+fn config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<&'b ConfigQuery> {
+    Ok(host.state().config.get())
 }
 
+/// Describes the election result for a single candidate.
 #[derive(Serial, SchemaType)]
 pub struct CandidateResult {
     candidate: Candidate,
     cummulative_votes: CandidateWeightedVotes,
 }
 
+/// The type returned by the [`result`] entrypoint.
 pub type ResultQuery = Vec<CandidateResult>;
 
 /// View function that returns the content of the state.
@@ -202,7 +233,7 @@ pub type ResultQuery = Vec<CandidateResult>;
     error = "Error"
 )]
 fn result<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> Result<ResultQuery, Error> {
-    let Some(result) = &host.state.config.election_result else {
+    let Some(result) = &host.state.election_result.get() else {
         return Err(Error::Inconclusive);
     };
     let candidates = &host.state.config.candidates;
