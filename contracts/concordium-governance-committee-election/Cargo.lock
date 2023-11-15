@@ -604,6 +604,7 @@ dependencies = [
 name = "concordium_governance_committee_election"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "concordium-smart-contract-testing",
  "concordium-std",
 ]
