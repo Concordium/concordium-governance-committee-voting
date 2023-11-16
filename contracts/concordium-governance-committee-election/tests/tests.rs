@@ -56,35 +56,6 @@ const SIGNER: Signer = Signer::with_one_key();
 // }
 
 #[test]
-fn test_receive_vote() {
-    let (mut chain, contract_address) = new_chain_and_contract();
-
-    let param = vec![
-        Vote {
-            candidate_index: 0,
-            has_vote: false,
-        },
-        Vote {
-            candidate_index: 1,
-            has_vote: true,
-        },
-    ];
-    register_vote_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect("Can register ballot of expected format");
-
-    register_vote_update(
-        &mut chain,
-        &contract_address,
-        &Address::Contract(ContractAddress {
-            index: 0,
-            subindex: 0,
-        }),
-        &param,
-    )
-    .expect_err("Fails to register vote with contract sender");
-}
-
-#[test]
 fn test_init_errors() {
     let (mut chain, module_ref) = new_chain_and_module();
 
@@ -189,8 +160,8 @@ fn test_init_config() {
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
-        config_view(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
-    let config: ConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
+        view_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
+    let config: ViewConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
     assert_eq!(config.admin_account, ALICE);
 
     // Explicit admin account
@@ -198,14 +169,133 @@ fn test_init_config() {
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
 
     let invocation =
-        config_view(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
-    let config: ConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
+        view_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
+    let config: ViewConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
 
     assert_eq!(config.admin_account, BOB);
 }
 
-/// Performs contract update at `register_vote` entrypoint.
-fn register_vote_update(
+#[test]
+fn test_receive_ballot() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+
+    let param = vec![
+        Vote {
+            candidate_index: 0,
+            has_vote: false,
+        },
+        Vote {
+            candidate_index: 1,
+            has_vote: true,
+        },
+    ];
+    register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect("Can register ballot of expected format");
+
+    register_votes_update(
+        &mut chain,
+        &contract_address,
+        &Address::Contract(ContractAddress {
+            index: 0,
+            subindex: 0,
+        }),
+        &param,
+    )
+    .expect_err("Fails to register vote with contract sender");
+}
+
+#[test]
+fn test_receive_election_result() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+    let config: ViewConfigQueryResponse = view_config(&mut chain, &contract_address)
+        .expect("Can invoke entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+
+    let param = vec![10_000, 50_000];
+    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect("Can register ballot of expected format");
+    let election_result: ViewElectionResultQueryResponse =
+        view_election_result(&mut chain, &contract_address)
+            .expect("Can invoke entrypoint")
+            .parse_return_value()
+            .expect("Can parse value");
+    let expected_result: Vec<CandidateResult> = config
+        .candidates
+        .iter()
+        .zip(param)
+        .map(|(candidate, cummulative_votes)| CandidateResult {
+            candidate: candidate.clone(),
+            cummulative_votes,
+        })
+        .collect();
+    assert_eq!(election_result, Some(expected_result));
+
+    let param = vec![10; config.candidates.len() + 1];
+    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Cannot submit election result with too many vote counts");
+
+    let param = vec![10; config.candidates.len() - 1];
+    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Cannot submit election result with insufficient vote counts");
+
+    let param = vec![10_000, 50_000];
+    let contract_sender = Address::Contract(ContractAddress {
+        index: 0,
+        subindex: 0,
+    });
+    post_result_update(&mut chain, &contract_address, &contract_sender, &param)
+        .expect_err("Cannot submit election result from a contract address");
+
+    let param = vec![10_000, 50_000];
+    let non_admin_account_sender = Address::Account(BOB);
+    post_result_update(
+        &mut chain,
+        &contract_address,
+        &non_admin_account_sender,
+        &param,
+    )
+    .expect_err("Cannot submit election result from a non-admin account");
+}
+
+/// Performs contract update at `post_result` entrypoint.
+fn post_result_update(
+    chain: &mut Chain,
+    address: &ContractAddress,
+    sender: &Address,
+    param: &PostResultParameter,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount: Amount::zero(),
+        address: *address,
+        receive_name: OwnedReceiveName::new_unchecked(
+            "concordium_governance_committee_election.postResult".to_string(),
+        ),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+    };
+
+    chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
+/// Invokes `config` entrypoint
+fn view_election_result(
+    chain: &mut Chain,
+    address: &ContractAddress,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount: Amount::zero(),
+        address: *address,
+        receive_name: OwnedReceiveName::new_unchecked(
+            "concordium_governance_committee_election.viewElectionResult".to_string(),
+        ),
+        message: OwnedParameter::empty(),
+    };
+
+    chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
+}
+
+/// Performs contract update at `register_votes` entrypoint.
+fn register_votes_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
@@ -224,7 +314,7 @@ fn register_vote_update(
 }
 
 /// Invokes `config` entrypoint
-fn config_view(
+fn view_config(
     chain: &mut Chain,
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
@@ -232,7 +322,7 @@ fn config_view(
         amount: Amount::zero(),
         address: *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.config".to_string(),
+            "concordium_governance_committee_election.viewConfig".to_string(),
         ),
         message: OwnedParameter::empty(),
     };

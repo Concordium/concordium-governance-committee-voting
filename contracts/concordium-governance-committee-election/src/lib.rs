@@ -22,7 +22,7 @@ pub struct EligibleVoters {
 // TODO: what do we need to represent a candidate? Is it even feasible to store any data, or do we
 // also want to represent this in a derived and verifiable manner and store the actual list on the
 // corresponding election server?
-#[derive(Serialize, SchemaType, Clone, Debug)]
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct Candidate {
     /// The name of the candidate.
     pub name: String,
@@ -232,49 +232,49 @@ fn post_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error
         Error::MalformedElectionResult
     );
 
-    host.state.election_result.update(|_| Some(parameter));
+    *host.state.election_result.get_mut() = Some(parameter);
     Ok(())
 }
 
 /// The type returned by the [`config`] entrypoint.
-pub type ConfigQueryResponse = Config;
+pub type ViewConfigQueryResponse = Config;
 
 /// View function that returns the contract configuration
 #[receive(
     contract = "concordium_governance_committee_election",
-    name = "config",
-    return_value = "ConfigQueryResponse"
+    name = "viewConfig",
+    return_value = "ViewConfigQueryResponse"
 )]
-fn config<'b>(
+fn view_config<'b>(
     _ctx: &ReceiveContext,
     host: &'b Host<State>,
-) -> ReceiveResult<&'b ConfigQueryResponse> {
+) -> ReceiveResult<&'b ViewConfigQueryResponse> {
     Ok(host.state().config.get())
 }
 
 /// Describes the election result for a single candidate.
-#[derive(Serial, SchemaType)]
+#[derive(Serialize, SchemaType, Debug, PartialEq)]
 pub struct CandidateResult {
     pub candidate: Candidate,
     pub cummulative_votes: CandidateWeightedVotes,
 }
 
 /// The type returned by the [`result`] entrypoint.
-pub type ResultQueryResponse = Vec<CandidateResult>;
+pub type ViewElectionResultQueryResponse = Option<Vec<CandidateResult>>;
 
 /// View function that returns the content of the state.
 #[receive(
     contract = "concordium_governance_committee_election",
-    name = "result",
-    return_value = "ResultQueryResponse",
+    name = "viewElectionResult",
+    return_value = "ViewElectionResultQueryResponse",
     error = "Error"
 )]
-fn result<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> Result<ResultQueryResponse, Error> {
+fn view_election_result<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<ViewElectionResultQueryResponse> {
     let Some(result) = &host.state.election_result.get() else {
-        return Err(Error::Inconclusive);
+        return Ok(None);
     };
-    let candidates = &host.state.config.candidates;
 
+    let candidates = &host.state.config.candidates;
     let response: Vec<_> = candidates
         .iter()
         .zip(result)
@@ -283,5 +283,6 @@ fn result<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> Result<ResultQuer
             cummulative_votes,
         })
         .collect();
-    Ok(response)
+
+    Ok(Some(response))
 }
