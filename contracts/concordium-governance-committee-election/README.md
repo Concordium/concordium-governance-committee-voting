@@ -20,6 +20,8 @@ When building for deployment, the `--verifiable` option for `cargo concordium bu
 cargo concordium build --schema-embed --out concordium-out/module.wasm.v1 --verifiable docker.io/concordium/verifiable-sc:1.70.0
 ```
 
+Documentation on using verifiable builds is available [here](https://docs.rs/crate/cargo-concordium/latest).
+
 ## Test
 
 Run the following command to run the unit and integration tests:
