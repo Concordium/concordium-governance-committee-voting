@@ -27,7 +27,8 @@ const SIGNER: Signer = Signer::with_one_key();
 //         .contract_update(SIGNER, ALICE, ALICE_ADDR, Energy::from(10_000), UpdateContractPayload {
 //             address:      init.contract_address,
 //             amount:       Amount::zero(),
-//             receive_name: OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
+//             receive_name:
+// OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
 //             message:      OwnedParameter::from_serial(&false)
 //                 .expect("Parameter within size bounds"),
 //         })
@@ -45,9 +46,10 @@ const SIGNER: Signer = Signer::with_one_key();
 //         .contract_update(SIGNER, ALICE, ALICE_ADDR, Energy::from(10_000), UpdateContractPayload {
 //             address:      init.contract_address,
 //             amount:       Amount::zero(),
-//             receive_name: OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
-//             message:      OwnedParameter::from_serial(&true).expect("Parameter within size bounds"),
-//         })
+//             receive_name:
+// OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
+//             message:      OwnedParameter::from_serial(&true).expect("Parameter within size
+// bounds"),         })
 //         .expect_err("Update fails with `true` as input.");
 //
 //     // Check that the contract returned `YourError`.
@@ -73,7 +75,7 @@ fn test_init_errors() {
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = EligibleVoters {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha3256([0u8; 32]),
     };
     let election_description = "Test election".to_string();
@@ -144,7 +146,7 @@ fn test_init_config() {
     let election_start = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
     let election_end = election_start.checked_add_days(Days::new(1)).unwrap();
     let eligible_voters = EligibleVoters {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha3256([0u8; 32]),
     };
 
@@ -182,11 +184,11 @@ fn test_receive_ballot() {
     let param = vec![
         Vote {
             candidate_index: 0,
-            has_vote: false,
+            has_vote:        false,
         },
         Vote {
             candidate_index: 1,
-            has_vote: true,
+            has_vote:        true,
         },
     ];
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
@@ -196,7 +198,7 @@ fn test_receive_ballot() {
         &mut chain,
         &contract_address,
         &Address::Contract(ContractAddress {
-            index: 0,
+            index:    0,
             subindex: 0,
         }),
         &param,
@@ -212,7 +214,31 @@ fn test_receive_election_result() {
         .parse_return_value()
         .expect("Can parse value");
 
-    let param = vec![10_000, 50_000];
+    let param = vec![10; config.candidates.len() + 1];
+    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Cannot submit election result with too many vote counts");
+
+    let param = vec![10; config.candidates.len() - 1];
+    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Cannot submit election result with insufficient vote counts");
+
+    let param = vec![10; config.candidates.len()];
+    let contract_sender = Address::Contract(ContractAddress {
+        index:    0,
+        subindex: 0,
+    });
+    post_result_update(&mut chain, &contract_address, &contract_sender, &param)
+        .expect_err("Cannot submit election result from a contract address");
+
+    let non_admin_account_sender = Address::Account(BOB);
+    post_result_update(
+        &mut chain,
+        &contract_address,
+        &non_admin_account_sender,
+        &param,
+    )
+    .expect_err("Cannot submit election result from a non-admin account");
+
     post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect("Can register ballot of expected format");
     let election_result: ViewElectionResultQueryResponse =
@@ -230,32 +256,6 @@ fn test_receive_election_result() {
         })
         .collect();
     assert_eq!(election_result, Some(expected_result));
-
-    let param = vec![10; config.candidates.len() + 1];
-    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect_err("Cannot submit election result with too many vote counts");
-
-    let param = vec![10; config.candidates.len() - 1];
-    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect_err("Cannot submit election result with insufficient vote counts");
-
-    let param = vec![10_000, 50_000];
-    let contract_sender = Address::Contract(ContractAddress {
-        index: 0,
-        subindex: 0,
-    });
-    post_result_update(&mut chain, &contract_address, &contract_sender, &param)
-        .expect_err("Cannot submit election result from a contract address");
-
-    let param = vec![10_000, 50_000];
-    let non_admin_account_sender = Address::Account(BOB);
-    post_result_update(
-        &mut chain,
-        &contract_address,
-        &non_admin_account_sender,
-        &param,
-    )
-    .expect_err("Cannot submit election result from a non-admin account");
 }
 
 /// Performs contract update at `post_result` entrypoint.
@@ -266,12 +266,12 @@ fn post_result_update(
     param: &PostResultParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "concordium_governance_committee_election.postResult".to_string(),
         ),
-        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -283,12 +283,12 @@ fn view_election_result(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "concordium_governance_committee_election.viewElectionResult".to_string(),
         ),
-        message: OwnedParameter::empty(),
+        message:      OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -302,12 +302,12 @@ fn register_votes_update(
     param: &RegisterVoteParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "concordium_governance_committee_election.registerVotes".to_string(),
         ),
-        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -319,12 +319,12 @@ fn view_config(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "concordium_governance_committee_election.viewConfig".to_string(),
         ),
-        message: OwnedParameter::empty(),
+        message:      OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -345,7 +345,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
     let election_start = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
     let election_end = election_start.checked_add_days(Days::new(1)).unwrap();
     let eligible_voters = EligibleVoters {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha3256([0u8; 32]),
     };
 
@@ -390,12 +390,12 @@ fn initialize(
     chain: &mut Chain,
 ) -> Result<ContractInitSuccess, ContractInitError> {
     let payload = InitContractPayload {
-        amount: Amount::zero(),
-        mod_ref: *module_ref,
+        amount:    Amount::zero(),
+        mod_ref:   *module_ref,
         init_name: OwnedContractName::new_unchecked(
             "init_concordium_governance_committee_election".to_string(),
         ),
-        param: OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
+        param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.
     chain.contract_init(SIGNER, ALICE, Energy::from(10_000), payload)
