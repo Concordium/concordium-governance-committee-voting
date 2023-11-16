@@ -1,4 +1,3 @@
-use chrono::{Days, Duration, Utc};
 use concordium_governance_committee_election::*;
 use concordium_smart_contract_testing::*;
 use concordium_std::HashSha3256;
@@ -16,47 +15,6 @@ const ACC_INITIAL_BALANCE: Amount = Amount::from_ccd(10_000);
 /// A [`Signer`] with one set of keys, used for signing transactions.
 const SIGNER: Signer = Signer::with_one_key();
 
-/// Test that invoking the `receive` endpoint with the `false` parameter
-/// succeeds in updating the contract.
-// #[test]
-// fn test_throw_no_error() {
-//     let (mut chain, init) = initialize();
-//
-//     // Update the contract via the `receive` entrypoint with the parameter `false`.
-//     chain
-//         .contract_update(SIGNER, ALICE, ALICE_ADDR, Energy::from(10_000), UpdateContractPayload {
-//             address:      init.contract_address,
-//             amount:       Amount::zero(),
-//             receive_name:
-// OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
-//             message:      OwnedParameter::from_serial(&false)
-//                 .expect("Parameter within size bounds"),
-//         })
-//         .expect("Update succeeds with `false` as input.");
-// }
-
-/// Test that invoking the `receive` endpoint with the `true` parameter
-/// results in the `YourError` being thrown.
-// #[test]
-// fn test_throw_error() {
-//     let (mut chain, init) = initialize();
-//
-//     // Update the contract via the `receive` entrypoint with the parameter `true`.
-//     let update = chain
-//         .contract_update(SIGNER, ALICE, ALICE_ADDR, Energy::from(10_000), UpdateContractPayload {
-//             address:      init.contract_address,
-//             amount:       Amount::zero(),
-//             receive_name:
-// OwnedReceiveName::new_unchecked("concordium_governance_committee_election.receive".to_string()),
-//             message:      OwnedParameter::from_serial(&true).expect("Parameter within size
-// bounds"),         })
-//         .expect_err("Update fails with `true` as input.");
-//
-//     // Check that the contract returned `YourError`.
-//     let error: Error = update.parse_return_value().expect("Deserialize `Error`");
-//     assert_eq!(error, Error::YourError);
-// }
-
 #[test]
 fn test_init_errors() {
     let (mut chain, module_ref) = new_chain_and_module();
@@ -70,8 +28,10 @@ fn test_init_errors() {
         },
     ];
     let guardians = vec![BOB, CAROLINE];
-    let now = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
-    let future_1d = now.clone().checked_add_days(Days::new(1)).unwrap();
+    let now = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::seconds(5))
+        .unwrap();
+    let future_1d = now.clone().checked_add_days(chrono::Days::new(1)).unwrap();
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = EligibleVoters {
@@ -102,7 +62,7 @@ fn test_init_errors() {
 
     // `election_start` is in the past
     let mut init_param = get_init_param();
-    let past_1d = now.clone().checked_sub_days(Days::new(1)).unwrap();
+    let past_1d = now.clone().checked_sub_days(chrono::Days::new(1)).unwrap();
     init_param.election_start = past_1d.try_into().expect("Valid datetime");
     initialize(&module_ref, &init_param, &mut chain).expect_err("Start time must be in the future");
 
@@ -143,8 +103,12 @@ fn test_init_config() {
         },
     ];
     let guardians = vec![BOB, CAROLINE];
-    let election_start = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
-    let election_end = election_start.checked_add_days(Days::new(1)).unwrap();
+    let election_start = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::seconds(5))
+        .unwrap();
+    let election_end = election_start
+        .checked_add_days(chrono::Days::new(1))
+        .unwrap();
     let eligible_voters = EligibleVoters {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha3256([0u8; 32]),
@@ -180,6 +144,10 @@ fn test_init_config() {
 #[test]
 fn test_receive_ballot() {
     let (mut chain, contract_address) = new_chain_and_contract();
+    let config: ViewConfigQueryResponse = view_config(&mut chain, &contract_address)
+        .expect("Can invoke config entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
 
     let param = vec![
         Vote {
@@ -192,7 +160,16 @@ fn test_receive_ballot() {
         },
     ];
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect("Can register ballot of expected format");
+        .expect_err("Vote registration prior to election window fails");
+
+    let dur_until_open = chain.block_time().duration_between(config.election_start);
+    chain
+        .tick_block_time(dur_until_open)
+        .expect("Block time does not overflow");
+
+    // Election window opens
+    register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect("Can register votes");
 
     register_votes_update(
         &mut chain,
@@ -204,6 +181,19 @@ fn test_receive_ballot() {
         &param,
     )
     .expect_err("Fails to register vote with contract sender");
+
+    let dur_until_closed = chain
+        .block_time()
+        .duration_between(config.election_end)
+        .checked_add(Duration::from_millis(1))
+        .expect("Does not overflow");
+    chain
+        .tick_block_time(dur_until_closed)
+        .expect("Block time does not overflow");
+
+    // Election window closed
+    register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Vote registration prior to election window fails");
 }
 
 #[test]
@@ -213,34 +203,52 @@ fn test_receive_election_result() {
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    let valid_param = vec![10; config.candidates.len()];
 
-    let param = vec![10; config.candidates.len() + 1];
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
+        .expect_err("Cannot post election result when election is not yet over");
+
+    let dur_until_closed = chain
+        .block_time()
+        .duration_between(config.election_end)
+        .checked_add(Duration::from_millis(1))
+        .expect("Does not overflow");
+    chain
+        .tick_block_time(dur_until_closed)
+        .expect("Block time does not overflow");
+
+    // Election window closed
+    let invalid_param = vec![10; config.candidates.len() + 1];
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
         .expect_err("Cannot submit election result with too many vote counts");
 
-    let param = vec![10; config.candidates.len() - 1];
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    let invalid_param = vec![10; config.candidates.len() - 1];
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
         .expect_err("Cannot submit election result with insufficient vote counts");
 
-    let param = vec![10; config.candidates.len()];
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    post_election_result_update(&mut chain, &contract_address, &contract_sender, &param)
-        .expect_err("Cannot submit election result from a contract address");
+    post_election_result_update(
+        &mut chain,
+        &contract_address,
+        &contract_sender,
+        &valid_param,
+    )
+    .expect_err("Cannot submit election result from a contract address");
 
     let non_admin_account_sender = Address::Account(BOB);
     post_election_result_update(
         &mut chain,
         &contract_address,
         &non_admin_account_sender,
-        &param,
+        &valid_param,
     )
     .expect_err("Cannot submit election result from a non-admin account");
 
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect("Can register ballot of expected format");
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
+        .expect("Can post election result");
     let election_result: ViewElectionResultQueryResponse =
         view_election_result(&mut chain, &contract_address)
             .expect("Can invoke entrypoint")
@@ -249,7 +257,7 @@ fn test_receive_election_result() {
     let expected_result: Vec<CandidateResult> = config
         .candidates
         .iter()
-        .zip(param)
+        .zip(valid_param)
         .map(|(candidate, cummulative_votes)| CandidateResult {
             candidate: candidate.clone(),
             cummulative_votes,
@@ -342,8 +350,12 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         },
     ];
     let guardians = vec![BOB, CAROLINE];
-    let election_start = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
-    let election_end = election_start.checked_add_days(Days::new(1)).unwrap();
+    let election_start = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::seconds(5))
+        .unwrap();
+    let election_end = election_start
+        .checked_add_days(chrono::Days::new(1))
+        .unwrap();
     let eligible_voters = EligibleVoters {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha3256([0u8; 32]),
@@ -365,7 +377,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
 }
 
 fn new_chain_and_module() -> (Chain, ModuleReference) {
-    let now = Utc::now().try_into().unwrap();
+    let now = chrono::Utc::now().try_into().unwrap();
     // Initialize the test chain.
     let mut chain = ChainBuilder::new()
         .block_time(now)

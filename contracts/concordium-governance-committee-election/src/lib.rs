@@ -47,6 +47,8 @@ pub enum Error {
     MalformedConfig,
     /// Election result does not consist of the expected elements
     MalformedElectionResult,
+    /// Election is closed
+    ElectionClosed,
     /// Election is not over
     Inconclusive,
 }
@@ -208,8 +210,16 @@ pub type RegisterVoteParameter = Ballot;
     parameter = "RegisterVoteParameter",
     error = "Error"
 )]
-fn register_votes(ctx: &ReceiveContext, _host: &Host<State>) -> Result<(), Error> {
+fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error> {
+    let now = ctx.metadata().block_time();
+    let config = host.state.config.get();
+
     ensure!(ctx.sender().is_account(), Error::Unauthorized);
+    ensure!(
+        config.election_start <= now && now <= config.election_end,
+        Error::ElectionClosed
+    );
+
     Ok(())
 }
 
@@ -226,7 +236,8 @@ pub type PostResultParameter = ElectionResult;
     mutable
 )]
 fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
+    let now = ctx.metadata().block_time();
+    let config = host.state.config.get();
 
     let Address::Account(sender) = ctx.sender() else {
         return Err(Error::Unauthorized);
@@ -235,8 +246,10 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
         sender == host.state.config.admin_account,
         Error::Unauthorized
     );
+    ensure!(now > config.election_end, Error::Inconclusive);
 
     let candidates = &host.state.config.candidates;
+    let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
     ensure!(
         parameter.len() == candidates.len(),
         Error::MalformedElectionResult
