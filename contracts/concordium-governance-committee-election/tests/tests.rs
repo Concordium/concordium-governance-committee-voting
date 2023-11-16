@@ -1,6 +1,6 @@
 use concordium_governance_committee_election::*;
 use concordium_smart_contract_testing::*;
-use concordium_std::HashSha3256;
+use concordium_std::HashSha2256;
 
 /// A test account.
 const ALICE: AccountAddress = AccountAddress([0u8; 32]);
@@ -36,12 +36,12 @@ fn test_init_errors() {
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = EligibleVoters {
         url:  "http://some.election/voters".to_string(),
-        hash: HashSha3256([0u8; 32]),
+        hash: HashSha2256([0u8; 32]),
     };
     let election_description = "Test election".to_string();
 
-    let get_init_param = || InitParameter {
-        admin_account: None,
+    let get_init_param = || ElectionConfig {
+        admin_account: ALICE,
         election_description: election_description.clone(),
         election_start,
         election_end,
@@ -111,12 +111,11 @@ fn test_init_config() {
         .unwrap();
     let eligible_voters = EligibleVoters {
         url:  "http://some.election/voters".to_string(),
-        hash: HashSha3256([0u8; 32]),
+        hash: HashSha2256([0u8; 32]),
     };
 
-    // Default admin account
-    let mut init_param = InitParameter {
-        admin_account: None,
+    let init_param = ElectionConfig {
+        admin_account: ALICE,
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
         election_end: election_end.try_into().expect("Valid datetime"),
@@ -127,24 +126,14 @@ fn test_init_config() {
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
         view_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
-    let config: ViewConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
+    let config: ElectionConfig = invocation.parse_return_value().expect("Can parse value");
     assert_eq!(config.admin_account, ALICE);
-
-    // Explicit admin account
-    init_param.admin_account = Some(BOB);
-    let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
-
-    let invocation =
-        view_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
-    let config: ViewConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
-
-    assert_eq!(config.admin_account, BOB);
 }
 
 #[test]
 fn test_receive_ballot() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ViewConfigQueryResponse = view_config(&mut chain, &contract_address)
+    let config: ElectionConfig = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
@@ -199,7 +188,7 @@ fn test_receive_ballot() {
 #[test]
 fn test_receive_election_result() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ViewConfigQueryResponse = view_config(&mut chain, &contract_address)
+    let config: ElectionConfig = view_config(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
@@ -358,12 +347,12 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         .unwrap();
     let eligible_voters = EligibleVoters {
         url:  "http://some.election/voters".to_string(),
-        hash: HashSha3256([0u8; 32]),
+        hash: HashSha2256([0u8; 32]),
     };
 
     // Default admin account
-    let init_param = InitParameter {
-        admin_account: None,
+    let init_param = ElectionConfig {
+        admin_account: ALICE,
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
         election_end: election_end.try_into().expect("Valid datetime"),
@@ -398,7 +387,7 @@ fn new_chain_and_module() -> (Chain, ModuleReference) {
 /// Helper method for initializing the contract.
 fn initialize(
     module_ref: &ModuleReference,
-    init_param: &InitParameter,
+    init_param: &ElectionConfig,
     chain: &mut Chain,
 ) -> Result<ContractInitSuccess, ContractInitError> {
     let payload = InitContractPayload {

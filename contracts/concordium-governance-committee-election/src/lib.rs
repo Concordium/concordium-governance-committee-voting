@@ -4,10 +4,6 @@
 
 use concordium_std::*;
 
-/// The concrete hash type used to represent the list of eligible voters and
-/// their respective weights.
-pub type EligibleVotersHash = HashSha3256; // TODO: Is this the correct hashing algorithm?
-
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
 #[derive(Serialize, SchemaType, Clone, Debug)]
@@ -15,7 +11,7 @@ pub struct EligibleVoters {
     /// The url where the list of voters can be found.
     pub url:  String,
     /// The hash of the list of voters accessible at `url`.
-    pub hash: EligibleVotersHash,
+    pub hash: HashSha2256,
 }
 
 /// Representation of a candidate that voters can vote for.
@@ -53,44 +49,53 @@ pub enum Error {
     Inconclusive,
 }
 
-/// The configuration of the contract
 #[derive(Serialize, SchemaType)]
-pub struct Config {
+pub struct GuardianState;
+
+/// The internal state of the contract
+#[derive(Serial, DeserialWithState)]
+#[concordium(state_parameter = "S")]
+pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        AccountAddress,
+    pub admin_account:        StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:           Vec<Candidate>,
+    pub candidates:           StateBox<Vec<Candidate>, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:            HashSet<AccountAddress>,
+    pub guardians:            StateMap<AccountAddress, GuardianState, S>,
     /// The list of eligible voters, represented by a url and a hash of the
     /// list.
-    pub eligible_voters:      EligibleVoters,
+    pub eligible_voters:      StateBox<EligibleVoters, S>,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
-    pub election_description: String,
+    pub election_description: StateBox<String, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
     pub election_start:       Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// The election result, which will be registered after `election_end` has
+    /// passed.
+    pub election_result:      StateBox<Option<ElectionResult>, S>,
 }
 
-impl Config {
+impl State {
     /// Creates new [`Config`] from passed arguments while also checking that
     /// the configuration is sensible.
     fn new_checked(
         ctx: &InitContext,
+        state_builder: &mut StateBuilder,
         admin_account: AccountAddress,
         candidates: Vec<Candidate>,
-        guardians: HashSet<AccountAddress>,
+        guardians: Vec<AccountAddress>,
         eligible_voters: EligibleVoters,
         election_description: String,
         election_start: Timestamp,
         election_end: Timestamp,
     ) -> Result<Self, Error> {
         let now = ctx.metadata().block_time();
+
         ensure!(election_start > now, Error::MalformedConfig);
         ensure!(election_start < election_end, Error::MalformedConfig);
         ensure!(!election_description.is_empty(), Error::MalformedConfig);
@@ -98,36 +103,33 @@ impl Config {
         ensure!(!guardians.is_empty(), Error::MalformedConfig);
         ensure!(!eligible_voters.url.is_empty(), Error::MalformedConfig);
 
+        let mut guardians_map = state_builder.new_map();
+        for g in guardians.iter() {
+            if guardians_map.insert(*g, GuardianState).is_some() {
+                return Err(Error::MalformedConfig);
+            }
+        }
+
         let config = Self {
-            admin_account,
-            candidates,
-            guardians,
-            eligible_voters,
-            election_description,
+            admin_account: state_builder.new_box(admin_account),
+            candidates: state_builder.new_box(candidates),
+            guardians: guardians_map,
+            eligible_voters: state_builder.new_box(eligible_voters),
+            election_description: state_builder.new_box(election_description),
             election_start,
             election_end,
+            election_result: state_builder.new_box(None),
         };
         Ok(config)
     }
 }
 
-/// The internal state of the contract
-#[derive(Serial, DeserialWithState)]
-#[concordium(state_parameter = "S")]
-pub struct State<S: HasStateApi = StateApi> {
-    pub config:          StateBox<Config, S>,
-    /// The election result, which will be registered after `election_end` has
-    /// passed.
-    pub election_result: StateBox<Option<ElectionResult>, S>,
-}
-
 /// Parameter supplied to [`init`].
 #[derive(Serialize, SchemaType, Debug)]
-pub struct InitParameter {
+pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
-    /// the final result of the election. If this is `None`, the account
-    /// used to instantiate the contract will be used.
-    pub admin_account:        Option<AccountAddress>,
+    /// the final result of the election.
+    pub admin_account:        AccountAddress,
     /// A list of candidates that voters can vote for in the election.
     pub candidates:           Vec<Candidate>,
     /// The list of guardians for the election.
@@ -145,7 +147,7 @@ pub struct InitParameter {
     pub election_end:         Timestamp,
 }
 
-impl InitParameter {
+impl ElectionConfig {
     /// Converts the init parameter to [`State`] with a supplied function for
     /// getting a fallback admin account if none is specified. The function
     /// consumes the parameter in the process.
@@ -154,23 +156,33 @@ impl InitParameter {
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
     ) -> Result<State, Error> {
-        let admin_account = self.admin_account.unwrap_or_else(|| ctx.init_origin());
-
-        let config = Config::new_checked(
+        let state = State::new_checked(
             ctx,
-            admin_account,
+            state_builder,
+            self.admin_account,
             self.candidates,
-            HashSet::from_iter(self.guardians.into_iter()),
+            self.guardians,
             self.eligible_voters,
             self.election_description,
             self.election_start,
             self.election_end,
         )?;
-        let state = State {
-            config:          state_builder.new_box(config),
-            election_result: state_builder.new_box(None),
-        };
         Ok(state)
+    }
+}
+
+impl From<&State> for ElectionConfig {
+    fn from(value: &State) -> Self {
+        Self {
+            admin_account:        *value.admin_account.get(),
+            election_description: value.election_description.get().clone(),
+            election_start:       value.election_start,
+            election_end:         value.election_end,
+            eligible_voters:      value.eligible_voters.get().clone(),
+            candidates:           value.candidates.get().clone(),
+            // Ignore associated `GuardianState` until we know more..
+            guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
+        }
     }
 }
 
@@ -178,11 +190,11 @@ impl InitParameter {
 /// derived from the supplied [`InitParameter`]
 #[init(
     contract = "concordium_governance_committee_election",
-    parameter = "InitParameter",
+    parameter = "ElectionConfig",
     error = "Error"
 )]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
-    let parameter: InitParameter = ctx.parameter_cursor().get()?;
+    let parameter: ElectionConfig = ctx.parameter_cursor().get()?;
     let initial_state = parameter.into_state(ctx, state_builder)?;
     Ok(initial_state)
 }
@@ -194,11 +206,8 @@ pub struct Vote {
     pub has_vote:        bool,
 }
 
-/// Temporary until election guard implements an encrypted version of this.
-pub type Ballot = Vec<Vote>;
-
 /// The parameter supplied to the [`register_votes`] entrypoint.
-pub type RegisterVoteParameter = Ballot;
+pub type RegisterVoteParameter = Vec<Vote>;
 
 /// Receive votes registration from voter. If a contract submits the vote, an
 /// error is returned. This function does not actually store anything. Instead
@@ -212,11 +221,10 @@ pub type RegisterVoteParameter = Ballot;
 )]
 fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error> {
     let now = ctx.metadata().block_time();
-    let config = host.state.config.get();
 
     ensure!(ctx.sender().is_account(), Error::Unauthorized);
     ensure!(
-        config.election_start <= now && now <= config.election_end,
+        host.state.election_start <= now && now <= host.state.election_end,
         Error::ElectionClosed
     );
 
@@ -224,7 +232,7 @@ fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error>
 }
 
 /// The parameter supplied to the [`post_election_result`] entrypoint.
-pub type PostResultParameter = ElectionResult;
+pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 
 /// Receive the election result and update the contract state with the supplied
 /// result from the parameter
@@ -237,18 +245,17 @@ pub type PostResultParameter = ElectionResult;
 )]
 fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let now = ctx.metadata().block_time();
-    let config = host.state.config.get();
 
     let Address::Account(sender) = ctx.sender() else {
         return Err(Error::Unauthorized);
     };
     ensure!(
-        sender == host.state.config.admin_account,
+        &sender == host.state.admin_account.get(),
         Error::Unauthorized
     );
-    ensure!(now > config.election_end, Error::Inconclusive);
+    ensure!(now > host.state.election_end, Error::Inconclusive);
 
-    let candidates = &host.state.config.candidates;
+    let candidates = &host.state.candidates.get();
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
     ensure!(
         parameter.len() == candidates.len(),
@@ -259,20 +266,14 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     Ok(())
 }
 
-/// The type returned by the [`config`] entrypoint.
-pub type ViewConfigQueryResponse = Config;
-
 /// View function that returns the contract configuration
 #[receive(
     contract = "concordium_governance_committee_election",
     name = "viewConfig",
-    return_value = "ViewConfigQueryResponse"
+    return_value = "ElectionConfig"
 )]
-fn view_config<'b>(
-    _ctx: &ReceiveContext,
-    host: &'b Host<State>,
-) -> ReceiveResult<&'b ViewConfigQueryResponse> {
-    Ok(host.state().config.get())
+fn view_config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<ElectionConfig> {
+    Ok(host.state().into())
 }
 
 /// Describes the election result for a single candidate.
@@ -300,7 +301,7 @@ fn view_election_result<'b>(
         return Ok(None);
     };
 
-    let candidates = &host.state.config.candidates;
+    let candidates = &host.state.candidates.get();
     let response: Vec<_> = candidates
         .iter()
         .zip(result)
