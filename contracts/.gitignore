@@ -1,1 +1,5 @@
 target
+
+# Build artifacts
+module.wasm.v1
+module.wasm.v1.tar
