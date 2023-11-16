@@ -56,6 +56,35 @@ const SIGNER: Signer = Signer::with_one_key();
 // }
 
 #[test]
+fn test_receive_vote() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+
+    let param = vec![
+        Vote {
+            candidate_index: 0,
+            has_vote: false,
+        },
+        Vote {
+            candidate_index: 1,
+            has_vote: true,
+        },
+    ];
+    register_vote_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect("Can register ballot of expected format");
+
+    register_vote_update(
+        &mut chain,
+        &contract_address,
+        &Address::Contract(ContractAddress {
+            index: 0,
+            subindex: 0,
+        }),
+        &param,
+    )
+    .expect_err("Fails to register vote with contract sender");
+}
+
+#[test]
 fn test_init_errors() {
     let (mut chain, module_ref) = new_chain_and_module();
 
@@ -96,7 +125,7 @@ fn test_init_errors() {
     init_param.election_start = election_end;
     init_param.election_end = election_start;
     initialize(&module_ref, &init_param, &mut chain)
-        .expect_err("Start and end time must be in correct order");
+        .expect_err("Election start time must be before election end time");
 
     // `election_start` is in the past
     let mut init_param = get_init_param();
@@ -160,7 +189,7 @@ fn test_init_config() {
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
-        invoke_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
+        config_view(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
     let config: ConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
     assert_eq!(config.admin_account, ALICE);
 
@@ -169,14 +198,33 @@ fn test_init_config() {
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
 
     let invocation =
-        invoke_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
+        config_view(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
     let config: ConfigQueryResponse = invocation.parse_return_value().expect("Can parse value");
 
     assert_eq!(config.admin_account, BOB);
 }
 
-/// Invokes `config` entrypoint on contract at `address`
-fn invoke_config(
+/// Performs contract update at `register_vote` entrypoint.
+fn register_vote_update(
+    chain: &mut Chain,
+    address: &ContractAddress,
+    sender: &Address,
+    param: &RegisterVoteParameter,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount: Amount::zero(),
+        address: *address,
+        receive_name: OwnedReceiveName::new_unchecked(
+            "concordium_governance_committee_election.registerVotes".to_string(),
+        ),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+    };
+
+    chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
+/// Invokes `config` entrypoint
+fn config_view(
     chain: &mut Chain,
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
@@ -190,6 +238,40 @@ fn invoke_config(
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
+}
+
+fn new_chain_and_contract() -> (Chain, ContractAddress) {
+    let (mut chain, module_ref) = new_chain_and_module();
+
+    let candidates = vec![
+        Candidate {
+            name: "John".to_string(),
+        },
+        Candidate {
+            name: "Peter".to_string(),
+        },
+    ];
+    let guardians = vec![BOB, CAROLINE];
+    let election_start = Utc::now().checked_add_signed(Duration::seconds(5)).unwrap();
+    let election_end = election_start.checked_add_days(Days::new(1)).unwrap();
+    let eligible_voters = EligibleVoters {
+        url: "http://some.election/voters".to_string(),
+        hash: HashSha3256([0u8; 32]),
+    };
+
+    // Default admin account
+    let init_param = InitParameter {
+        admin_account: None,
+        election_description: "Test election".to_string(),
+        election_start: election_start.try_into().expect("Valid datetime"),
+        election_end: election_end.try_into().expect("Valid datetime"),
+        candidates,
+        guardians,
+        eligible_voters,
+    };
+    let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
+
+    (chain, init.contract_address)
 }
 
 fn new_chain_and_module() -> (Chain, ModuleReference) {

@@ -199,9 +199,7 @@ pub type RegisterVoteParameter = Ballot;
     error = "Error"
 )]
 fn register_votes(ctx: &ReceiveContext, _host: &Host<State>) -> Result<(), Error> {
-    if ctx.sender().is_contract() {
-        return Err(Error::Unauthorized);
-    };
+    ensure!(ctx.sender().is_account(), Error::Unauthorized);
     Ok(())
 }
 
