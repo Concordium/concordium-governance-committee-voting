@@ -215,11 +215,11 @@ fn test_receive_election_result() {
         .expect("Can parse value");
 
     let param = vec![10; config.candidates.len() + 1];
-    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Cannot submit election result with too many vote counts");
 
     let param = vec![10; config.candidates.len() - 1];
-    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Cannot submit election result with insufficient vote counts");
 
     let param = vec![10; config.candidates.len()];
@@ -227,11 +227,11 @@ fn test_receive_election_result() {
         index:    0,
         subindex: 0,
     });
-    post_result_update(&mut chain, &contract_address, &contract_sender, &param)
+    post_election_result_update(&mut chain, &contract_address, &contract_sender, &param)
         .expect_err("Cannot submit election result from a contract address");
 
     let non_admin_account_sender = Address::Account(BOB);
-    post_result_update(
+    post_election_result_update(
         &mut chain,
         &contract_address,
         &non_admin_account_sender,
@@ -239,7 +239,7 @@ fn test_receive_election_result() {
     )
     .expect_err("Cannot submit election result from a non-admin account");
 
-    post_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect("Can register ballot of expected format");
     let election_result: ViewElectionResultQueryResponse =
         view_election_result(&mut chain, &contract_address)
@@ -258,8 +258,8 @@ fn test_receive_election_result() {
     assert_eq!(election_result, Some(expected_result));
 }
 
-/// Performs contract update at `post_result` entrypoint.
-fn post_result_update(
+/// Performs contract update at `post_election_result` entrypoint.
+fn post_election_result_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
@@ -269,7 +269,7 @@ fn post_result_update(
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.postResult".to_string(),
+            "concordium_governance_committee_election.postElectionResult".to_string(),
         ),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };

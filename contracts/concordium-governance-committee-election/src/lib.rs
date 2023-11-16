@@ -213,19 +213,19 @@ fn register_votes(ctx: &ReceiveContext, _host: &Host<State>) -> Result<(), Error
     Ok(())
 }
 
-/// The parameter supplied to the [`post_result`] entrypoint.
+/// The parameter supplied to the [`post_election_result`] entrypoint.
 pub type PostResultParameter = ElectionResult;
 
 /// Receive the election result and update the contract state with the supplied
 /// result from the parameter
 #[receive(
     contract = "concordium_governance_committee_election",
-    name = "postResult",
+    name = "postElectionResult",
     parameter = "PostResultParameter",
     error = "Error",
     mutable
 )]
-fn post_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
 
     let Address::Account(sender) = ctx.sender() else {
