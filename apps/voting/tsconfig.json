@@ -5,6 +5,7 @@
         "paths": {
             "@assets/*": ["./assets/*"],
             "@shell/*": ["./shell/*"],
+            "@pages/*": ["./pages/*"],
             "@shared/*": ["./shared/*"]
         }
     },

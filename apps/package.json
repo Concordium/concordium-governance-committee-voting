@@ -32,7 +32,8 @@
         "build:all": "yarn workspaces foreach --all -pt run build",
         "lint:all": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint-fix:all": "yarn lint --fix",
-        "fmt:all": "prettier . --write",
-        "fmt-check:all": "prettier . --check"
+        "prettier": "prettier ./.*.* ./*.* -u",
+        "fmt:all": "yarn prettier --write && yarn workspaces foreach --all run fmt",
+        "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all run fmt-check"
     }
 }

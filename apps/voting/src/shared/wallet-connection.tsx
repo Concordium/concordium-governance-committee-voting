@@ -189,7 +189,8 @@ interface WalletConnectionManagerState {
  */
 export class WalletConnectionManager
     extends Component<WalletConnectionManagerProps, WalletConnectionManagerState>
-    implements WalletConnectionDelegate {
+    implements WalletConnectionDelegate
+{
     constructor(props: WalletConnectionManagerProps) {
         super(props);
 
@@ -255,10 +256,10 @@ export class WalletConnectionManager
             connection === undefined
                 ? {}
                 : {
-                    chain: this.state.chains.get(connection),
-                    account: this.state.accounts.get(connection),
-                    connection,
-                };
+                      chain: this.state.chains.get(connection),
+                      account: this.state.accounts.get(connection),
+                      connection,
+                  };
 
         return (
             <WalletsProvider

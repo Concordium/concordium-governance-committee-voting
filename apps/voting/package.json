@@ -5,11 +5,12 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
+        "generate-contract-client": "ccd-js-gen --module ../../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --out-dir ./src/__generated__/election-contract",
         "build": "tsc && vite build",
         "preview": "vite preview",
         "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint-fix": "yarn lint --fix",
-        "prettier": "prettier . --ignore-path ../.gitignore --ignore-path ../.prettierignore",
+        "prettier": "prettier . --ignore-path ../.gitignore --ignore-path ../.prettierignore --ignore-path .gitignore",
         "fmt": "yarn prettier --write",
         "fmt-check": "yarn prettier --check"
     },
@@ -23,6 +24,7 @@
         "react-dom": "^18.2.0"
     },
     "devDependencies": {
+        "@concordium/ccd-js-gen": "^1.0.1",
         "@types/bootstrap": "^5",
         "@types/eslint": "^8",
         "@types/react": "^18.2.15",
