@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 
-import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
+import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ConcordiumIcon from '@assets/ccd.svg';
 import DisconnectIcon from '@assets/close.svg';
