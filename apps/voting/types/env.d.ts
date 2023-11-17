@@ -4,6 +4,8 @@ type TargetNetwork = 'testnet' | 'mainnet';
 
 declare namespace NodeJS {
     export interface ProcessEnv {
-        readonly VITE_NETWORK: TargetNetwork;
+        readonly CCD_ELECTION_NETWORK: TargetNetwork;
+        readonly CCD_ELECTION_CONTRACT_ADDRESS: string;
+        readonly CCD_ELECTION_NODE: string;
     }
 }

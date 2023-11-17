@@ -1,13 +1,13 @@
 {
     "extends": "../tsconfig.json",
     "compilerOptions": {
-        "baseUrl": "./src",
+        "baseUrl": ".",
         "paths": {
-            "@assets/*": ["./assets/*"],
-            "@shell/*": ["./shell/*"],
-            "@pages/*": ["./pages/*"],
-            "@shared/*": ["./shared/*"]
+            "@assets/*": ["./src/assets/*"],
+            "@shell/*": ["./src/shell/*"],
+            "@pages/*": ["./src/pages/*"],
+            "@shared/*": ["./src/shared/*"]
         }
     },
-    "include": ["src", "types"]
+    "include": ["src", "types", "scripts"]
 }

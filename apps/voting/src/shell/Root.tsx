@@ -1,5 +1,6 @@
 import { WalletConnectionManager } from '@shared/wallet-connection';
 import App from './App';
+import { ElectionContractProvider } from '@shared/election-contract';
 
 /**
  * The application root. This is in charge of setting up global contexts to be available from {@linkcode App} and
@@ -8,7 +9,9 @@ import App from './App';
 function Root() {
     return (
         <WalletConnectionManager>
-            <App />
+            <ElectionContractProvider>
+                <App />
+            </ElectionContractProvider>
         </WalletConnectionManager>
     );
 }
