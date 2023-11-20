@@ -2037,6 +2037,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"clsx@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "clsx@npm:2.0.0"
+  checksum: c09f43b3144a0b7826b6b11b6a111b2c7440831004eecc02d333533c5e58ef0aa5f2dce071d3b25fbb8c8ea97b45df96c74bcc1d51c8c2027eb981931107b0cd
+  languageName: node
+  linkType: hard
+
 "code-block-writer@npm:^12.0.0":
   version: 12.0.0
   resolution: "code-block-writer@npm:12.0.0"
@@ -5634,6 +5641,7 @@ __metadata:
     "@vitejs/plugin-react-swc": "npm:^3.3.2"
     "@walletconnect/types": "npm:^2.10.4"
     bootstrap: "npm:^5.3.2"
+    clsx: "npm:^2.0.0"
     commander: "npm:^11.1.0"
     dotenv: "npm:^16.3.1"
     eslint: "npm:^8.52.0"

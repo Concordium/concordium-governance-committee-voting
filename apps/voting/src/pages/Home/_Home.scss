@@ -1,0 +1,11 @@
+.candidate {
+    img {
+        border-bottom: 10px solid $gray-300;
+    }
+
+    &--selected {
+        img {
+            border-color: $green;
+        }
+    }
+}

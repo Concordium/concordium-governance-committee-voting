@@ -7,7 +7,6 @@ import url from 'node:url';
 
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 
-/** Type representing the CLI options/arguments and needs to match the options set with commander.js */
 interface Options {
     /** Smart contract module to generate clients from */
     module: string;
