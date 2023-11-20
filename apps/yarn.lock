@@ -2076,7 +2076,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"commander@npm:^11.0.0":
+"commander@npm:^11.0.0, commander@npm:^11.1.0":
   version: 11.1.0
   resolution: "commander@npm:11.1.0"
   checksum: 13cc6ac875e48780250f723fb81c1c1178d35c5decb1abb1b628b3177af08a8554e76b2c0f29de72d69eef7c864d12613272a71fabef8047922bc622ab75a179
@@ -5634,8 +5634,10 @@ __metadata:
     "@vitejs/plugin-react-swc": "npm:^3.3.2"
     "@walletconnect/types": "npm:^2.10.4"
     bootstrap: "npm:^5.3.2"
+    commander: "npm:^11.1.0"
     dotenv: "npm:^16.3.1"
     eslint: "npm:^8.52.0"
+    glob: "npm:^10.3.10"
     prettier: "npm:^3.0.3"
     react: "npm:^18.2.0"
     react-bootstrap: "npm:^2.9.1"
