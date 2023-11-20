@@ -9,5 +9,6 @@
             "@shared/*": ["./src/shared/*"]
         }
     },
-    "include": ["src", "types", "scripts"]
+    "include": ["src", "types", "scripts"],
+    "exclude": ["src/__generated__"]
 }
