@@ -3651,6 +3651,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jotai@npm:^2.5.1":
+  version: 2.5.1
+  resolution: "jotai@npm:2.5.1"
+  peerDependencies:
+    "@types/react": ">=17.0.0"
+    react: ">=17.0.0"
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+    react:
+      optional: true
+  checksum: af2c86e16e4dd4baad31e8ad5127db8ee07712a6f852c86049f915efc71c6a099661f28a910ecef2e7da0b7868f74477712161e3717d050c1131bd521754c562
+  languageName: node
+  linkType: hard
+
 "js-tokens@npm:^3.0.0 || ^4.0.0":
   version: 4.0.0
   resolution: "js-tokens@npm:4.0.0"
@@ -5646,6 +5661,7 @@ __metadata:
     dotenv: "npm:^16.3.1"
     eslint: "npm:^8.52.0"
     glob: "npm:^10.3.10"
+    jotai: "npm:^2.5.1"
     prettier: "npm:^3.0.3"
     react: "npm:^18.2.0"
     react-bootstrap: "npm:^2.9.1"

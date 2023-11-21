@@ -1,7 +1,8 @@
-import { TransactionHash } from '@concordium/web-sdk';
-import { ElectionContract, registerVotes, useElectionConfig } from '@shared/election-contract';
-import { useActiveWallet, useSelectConnection } from '@shared/wallet-connection';
+import { ElectionContract, registerVotes } from '@shared/election-contract';
+import { addSubmittedBallotAtom, electionConfigAtom, selectConnectionAtom } from '@shared/store';
+import { useActiveWallet } from '@shared/wallet-connection';
 import { clsx } from 'clsx';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row } from 'react-bootstrap';
 
@@ -32,12 +33,13 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
 }
 
 export default function Home() {
-    const electionConfig = useElectionConfig();
+    const electionConfig = useAtomValue(electionConfigAtom);
     const [selected, setSelected] = useState<number[]>([]);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [awaitConnection, setAwaitConnection] = useState(false);
     const { connection, account } = useActiveWallet();
-    const { open: openSelectConnection } = useSelectConnection();
+    const openSelectConnection = useAtomValue(selectConnectionAtom);
+    const addSubmission = useSetAtom(addSubmittedBallotAtom);
 
     const toggleCandidate = (i: number) => {
         setSelected((xs) => (xs.includes(i) ? xs.filter((x) => x !== i) : [...xs, i]));
@@ -53,14 +55,15 @@ export default function Home() {
             .map((_, i) => selected.includes(i))
             .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
 
-        const transactionHash = await registerVotes(ballot, connection, account);
-        console.log('submitted ballot:', transactionHash);
+        const transaction = await registerVotes(ballot, connection, account);
+        addSubmission({transaction, selectedCandidates: selected});
+        console.log('submitted ballot:', transaction);
 
         closeConfirm();
     };
 
     const submit = useCallback(() => {
-        if (connection === undefined || account === undefined) {
+        if ((connection === undefined || account === undefined) && openSelectConnection !== undefined) {
             openSelectConnection();
             setAwaitConnection(true);
         } else {

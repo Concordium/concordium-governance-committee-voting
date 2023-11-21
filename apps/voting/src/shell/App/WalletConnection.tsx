@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
+import { useSetAtom } from 'jotai';
+import { RESET } from 'jotai/utils';
 
-import { useActiveWallet, useBrowserWallet, useSelectConnection, useWalletConnect } from '@shared/wallet-connection';
+import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ConcordiumIcon from '@assets/ccd.svg';
 import DisconnectIcon from '@assets/close.svg';
+import { selectConnectionAtom } from '@shared/store';
 
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
@@ -50,11 +53,11 @@ function ConnectBrowser() {
 
 function SelectConnection() {
     const [showModal, setShowModal] = useState(false);
-    const {setSelectConnectionHandler} = useSelectConnection();
+    const setSelectConnectionHandler = useSetAtom(selectConnectionAtom);
 
     useEffect(() => {
-        setSelectConnectionHandler(() => setShowModal(true));
-        return () => setSelectConnectionHandler(() => {throw new Error('Context not available')});
+        setSelectConnectionHandler(() => () => setShowModal(true)); // atom setter interprets a function as a `SetStateAction`, which is why we pass an action which returns a function.
+        return () => setSelectConnectionHandler(RESET);
     }, [setSelectConnectionHandler]);
 
     return (

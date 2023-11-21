@@ -1,6 +1,14 @@
-import { SelectConnectionProvider, WalletConnectionManager } from '@shared/wallet-connection';
+import { WalletConnectionManager } from '@shared/wallet-connection';
 import App from './App';
-import { ElectionContractProvider } from '@shared/election-contract';
+import { Provider, createStore, useAtomValue } from 'jotai';
+import { electionConfigAtom } from '@shared/store';
+
+const store = createStore();
+
+function EnsureGlobalState() {
+    useAtomValue(electionConfigAtom);
+    return null;
+}
 
 /**
  * The application root. This is in charge of setting up global contexts to be available from {@linkcode App} and
@@ -9,11 +17,10 @@ import { ElectionContractProvider } from '@shared/election-contract';
 function Root() {
     return (
         <WalletConnectionManager>
-            <ElectionContractProvider>
-                <SelectConnectionProvider>
-                    <App />
-                </SelectConnectionProvider>
-            </ElectionContractProvider>
+            <Provider store={store}>
+                <EnsureGlobalState />
+                <App />
+            </Provider>
         </WalletConnectionManager>
     );
 }
