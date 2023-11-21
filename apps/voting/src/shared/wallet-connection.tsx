@@ -189,8 +189,7 @@ interface WalletConnectionManagerState {
  */
 export class WalletConnectionManager
     extends Component<WalletConnectionManagerProps, WalletConnectionManagerState>
-    implements WalletConnectionDelegate
-{
+    implements WalletConnectionDelegate {
     constructor(props: WalletConnectionManagerProps) {
         super(props);
 
@@ -256,10 +255,10 @@ export class WalletConnectionManager
             connection === undefined
                 ? {}
                 : {
-                      chain: this.state.chains.get(connection),
-                      account: this.state.accounts.get(connection),
-                      connection,
-                  };
+                    chain: this.state.chains.get(connection),
+                    account: this.state.accounts.get(connection),
+                    connection,
+                };
 
         return (
             <WalletsProvider
@@ -271,4 +270,33 @@ export class WalletConnectionManager
             </WalletsProvider>
         );
     }
+}
+
+interface SelectConnectionContext {
+    open(): void;
+    setSelectConnectionHandler(handler: () => void): void;
+}
+
+const initialSelectConnectionContext: SelectConnectionContext = {
+    open() {
+        throw new Error('Context not available');
+    },
+    setSelectConnectionHandler() {
+        throw new Error('Context not available');
+    },
+};
+
+const selectConnectionContext = createContext<SelectConnectionContext>(initialSelectConnectionContext);
+
+export function SelectConnectionProvider({children}: PropsWithChildren) {
+    const [openHandler, setOpenHandler] = useState<() => void>();
+    const setSelectConnectionHandler = useCallback((handler: () => void) => {
+        setOpenHandler(() => handler);
+    }, [setOpenHandler]);
+    const value = useMemo(() => ({open: openHandler ?? initialSelectConnectionContext.open, setSelectConnectionHandler}), [openHandler, setSelectConnectionHandler]);
+    return <selectConnectionContext.Provider value={value}>{children}</selectConnectionContext.Provider>
+}
+
+export function useSelectConnection() {
+    return useContext(selectConnectionContext);
 }

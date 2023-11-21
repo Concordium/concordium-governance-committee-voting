@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 
-import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
+import { useActiveWallet, useBrowserWallet, useSelectConnection, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ConcordiumIcon from '@assets/ccd.svg';
 import DisconnectIcon from '@assets/close.svg';
@@ -50,13 +50,19 @@ function ConnectBrowser() {
 
 function SelectConnection() {
     const [showModal, setShowModal] = useState(false);
+    const {setSelectConnectionHandler} = useSelectConnection();
+
+    useEffect(() => {
+        setSelectConnectionHandler(() => setShowModal(true));
+        return () => setSelectConnectionHandler(() => {throw new Error('Context not available')});
+    }, [setSelectConnectionHandler]);
 
     return (
         <>
             <Button variant="primary" onClick={() => setShowModal(true)}>
                 Connect
             </Button>
-            <Modal show={showModal} onHide={() => setShowModal(false)} animation={false}>
+            <Modal show={showModal} onHide={() => setShowModal(false)} backdrop="static">
                 <Modal.Header closeButton>Select wallet</Modal.Header>
                 <Modal.Body className="select-connection__wallets">
                     <ConnectBrowser />

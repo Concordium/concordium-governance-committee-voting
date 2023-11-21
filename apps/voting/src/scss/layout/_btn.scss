@@ -13,6 +13,10 @@
     @include button-variant($mineral-blue, $mineral-blue, $white);
 }
 
+.btn-outline-secondary {
+    @include button-outline-variant($mineral-blue);
+}
+
 .btn-danger {
     @include button-variant($red-600, $red-600);
 }

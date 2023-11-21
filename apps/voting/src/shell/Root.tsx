@@ -1,4 +1,4 @@
-import { WalletConnectionManager } from '@shared/wallet-connection';
+import { SelectConnectionProvider, WalletConnectionManager } from '@shared/wallet-connection';
 import App from './App';
 import { ElectionContractProvider } from '@shared/election-contract';
 
@@ -10,7 +10,9 @@ function Root() {
     return (
         <WalletConnectionManager>
             <ElectionContractProvider>
-                <App />
+                <SelectConnectionProvider>
+                    <App />
+                </SelectConnectionProvider>
             </ElectionContractProvider>
         </WalletConnectionManager>
     );
