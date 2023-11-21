@@ -1,6 +1,7 @@
-import { useElectionConfig } from '@shared/election-contract';
+import { TransactionHash } from '@concordium/web-sdk';
+import { ElectionContract, registerVotes, useElectionConfig } from '@shared/election-contract';
 import { useActiveWallet, useSelectConnection } from '@shared/wallet-connection';
-import {clsx} from 'clsx';
+import { clsx } from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row } from 'react-bootstrap';
 
@@ -35,8 +36,8 @@ export default function Home() {
     const [selected, setSelected] = useState<number[]>([]);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [awaitConnection, setAwaitConnection] = useState(false);
-    const {connection} = useActiveWallet();
-    const {open: openSelectConnection} = useSelectConnection();
+    const { connection, account } = useActiveWallet();
+    const { open: openSelectConnection } = useSelectConnection();
 
     const toggleCandidate = (i: number) => {
         setSelected((xs) => (xs.includes(i) ? xs.filter((x) => x !== i) : [...xs, i]));
@@ -44,26 +45,35 @@ export default function Home() {
 
     const closeConfirm = () => setConfirmOpen(false);
 
-    const confirmSubmission = () => {
-        console.log('submit', selected);
+    const confirmSubmission = async () => {
+        if (connection === undefined || electionConfig === undefined || account === undefined) {
+            throw new Error('Expected required parameters to be defined'); // Will not happen.
+        }
+        const ballot: ElectionContract.RegisterVotesParameter = electionConfig.candidates
+            .map((_, i) => selected.includes(i))
+            .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
+
+        const transactionHash = await registerVotes(ballot, connection, account);
+        console.log('submitted ballot:', transactionHash);
+
         closeConfirm();
     };
 
     const submit = useCallback(() => {
-        if (connection === undefined) {
+        if (connection === undefined || account === undefined) {
             openSelectConnection();
             setAwaitConnection(true);
         } else {
             setConfirmOpen(true);
         }
-    }, [connection, openSelectConnection]);
+    }, [connection, openSelectConnection, account]);
 
     useEffect(() => {
-        if (awaitConnection && connection !== undefined) {
+        if (awaitConnection && connection !== undefined && account !== undefined) {
             submit();
             setAwaitConnection(false);
         }
-    }, [awaitConnection, connection, submit]);
+    }, [awaitConnection, connection, submit, account]);
 
     if (electionConfig === undefined) {
         return null;
