@@ -5656,6 +5656,7 @@ __metadata:
     "@vitejs/plugin-react-swc": "npm:^3.3.2"
     "@walletconnect/types": "npm:^2.10.4"
     bootstrap: "npm:^5.3.2"
+    buffer: "npm:^6.0.3"
     clsx: "npm:^2.0.0"
     commander: "npm:^11.1.0"
     dotenv: "npm:^16.3.1"

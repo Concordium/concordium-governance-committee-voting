@@ -1,11 +1,12 @@
-import * as ElectionContract from '../__generated__/election-contract/module_concordium_governance_committee_election';
+import * as ElectionContract from '../__generated__/election-contract/module_ccd_gc_election';
 import {
     AccountTransactionType,
     ConcordiumGRPCWebClient,
     Parameter,
     toBuffer,
     UpdateContractPayload,
-    CcdAmount, ReceiveName,
+    CcdAmount,
+    ReceiveName,
     HexString,
     EntrypointName,
     Energy,
@@ -13,7 +14,12 @@ import {
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 
-export * as ElectionContract from '../__generated__/election-contract/module_concordium_governance_committee_election';
+export * as ElectionContract from '../__generated__/election-contract/module_ccd_gc_election';
+
+export interface ChecksumUrl {
+    url: string;
+    hash: HexString;
+}
 
 const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
@@ -42,12 +48,7 @@ export async function registerVotes(
         receiveName: ReceiveName.create(ElectionContract.contractName, EntrypointName.fromString('registerVotes')),
         maxContractExecutionEnergy,
     };
-    return await connection.signAndSendTransaction(
-        accountAddress,
-        AccountTransactionType.Update,
-        payload,
-        params,
-    );
+    return await connection.signAndSendTransaction(accountAddress, AccountTransactionType.Update, payload, params);
 }
 
 export async function getElectionConfig() {

@@ -1,19 +1,14 @@
-import { ElectionContract, registerVotes } from '@shared/election-contract';
-import { addSubmittedBallotAtom, electionConfigAtom, selectConnectionAtom } from '@shared/store';
-import { useActiveWallet } from '@shared/wallet-connection';
 import { clsx } from 'clsx';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row } from 'react-bootstrap';
 
-interface CandidateDetails {
-    name: string;
-    imageUrl: string;
-    descriptionUrl: string;
-}
+import { ElectionContract, registerVotes } from '@shared/election-contract';
+import { IndexedCandidateDetails, addSubmittedBallotAtom, electionConfigAtom, selectConnectionAtom } from '@shared/store';
+import { useActiveWallet } from '@shared/wallet-connection';
 
 interface CandidateProps {
-    candidate: CandidateDetails;
+    candidate: IndexedCandidateDetails;
     onClick(): void;
     isSelected: boolean;
 }
@@ -86,17 +81,12 @@ export default function Home() {
         <>
             <h1 className="text-center">{electionConfig?.election_description}</h1>
             <Row className="justify-content-md-center">
-                {electionConfig?.candidates.map((c, i) => (
-                    <Col className="mt-4" key={`${c.name}_${i}`} xs={12} sm={8} md={7} lg={5} xxl={4}>
+                {electionConfig?.candidates.map((c) => (
+                    <Col className="mt-4" key={c.index} xs={12} sm={8} md={7} lg={5} xxl={4}>
                         <Candidate
-                            candidate={{
-                                ...c,
-                                // TODO: remove temporary data
-                                imageUrl: 'https://picsum.photos/200/150',
-                                descriptionUrl: 'https://concordium.com',
-                            }}
-                            onClick={() => toggleCandidate(i)}
-                            isSelected={selected.includes(i)}
+                            candidate={c}
+                            onClick={() => toggleCandidate(c.index)}
+                            isSelected={selected.includes(c.index)}
                         />
                     </Col>
                 ))}
@@ -133,8 +123,8 @@ export default function Home() {
                             <ul>
                                 {selected
                                     .map((s) => electionConfig.candidates[s])
-                                    .map((c, i) => (
-                                        <li key={`${c.name}_${i}`}>{c.name}</li>
+                                    .map((c) => (
+                                        <li key={c.index}>{c.name}</li>
                                     ))}
                             </ul>
                         </>
