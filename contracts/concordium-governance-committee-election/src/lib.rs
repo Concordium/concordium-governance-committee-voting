@@ -6,27 +6,19 @@ use concordium_std::*;
 
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
-#[derive(Serialize, SchemaType, Clone, Debug)]
-pub struct EligibleVoters {
-    /// The url where the list of voters can be found.
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+pub struct ChecksumUrl {
+    /// The url of the data.
     pub url:  String,
-    /// The hash of the list of voters accessible at `url`.
+    /// The hash of the data found at `url`.
     pub hash: HashSha2256,
 }
 
-/// Representation of a candidate that voters can vote for.
-// TODO: what do we need to represent a candidate? Is it even feasible to store any data, or do we
-// also want to represent this in a derived and verifiable manner and store the actual list on the
-// corresponding election server?
-#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
-pub struct Candidate {
-    /// The name of the candidate.
-    pub name: String,
-}
-
+/// An amount of weighted votes for a candidate
 pub type CandidateWeightedVotes = u64;
+
 /// A list of weighted votes, where the position in the list identifies the
-/// corresponding [`Candidate`] in the list of candidates
+/// corresponding [`ChecksumUrl`] in the list of candidates
 pub type ElectionResult = Vec<CandidateWeightedVotes>;
 
 /// Describes errors that can happen during the execution of the contract.
@@ -35,8 +27,6 @@ pub enum Error {
     /// Failed parsing the parameter.
     #[from(ParseError)]
     ParseParams,
-    /// Duplicate candidate found when constructing unique list of candidates.
-    DuplicateCandidate,
     /// Tried to invoke contract from an unauthorized address.
     Unauthorized,
     /// Could not create [`Config`] struct.
@@ -49,6 +39,7 @@ pub enum Error {
     Inconclusive,
 }
 
+/// State associated with each guardian.
 #[derive(Serialize, SchemaType)]
 pub struct GuardianState;
 
@@ -61,12 +52,12 @@ pub struct State<S: HasStateApi = StateApi> {
     pub admin_account:        StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:           StateBox<Vec<Candidate>, S>,
+    pub candidates:           StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
     pub guardians:            StateMap<AccountAddress, GuardianState, S>,
     /// The list of eligible voters, represented by a url and a hash of the
     /// list.
-    pub eligible_voters:      StateBox<EligibleVoters, S>,
+    pub eligible_voters:      StateBox<ChecksumUrl, S>,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: StateBox<String, S>,
     /// The start time of the election, marking the time from which votes can be
@@ -87,9 +78,9 @@ impl State {
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
         admin_account: AccountAddress,
-        candidates: Vec<Candidate>,
+        candidates: Vec<ChecksumUrl>,
         guardians: Vec<AccountAddress>,
-        eligible_voters: EligibleVoters,
+        eligible_voters: ChecksumUrl,
         election_description: String,
         election_start: Timestamp,
         election_end: Timestamp,
@@ -109,10 +100,16 @@ impl State {
                 return Err(Error::MalformedConfig);
             }
         }
+        let mut candidates_set = state_builder.new_set();
+        for c in candidates.iter() {
+            if !candidates_set.insert(c.clone()) {
+                return Err(Error::MalformedConfig);
+            }
+        }
 
         let config = Self {
             admin_account: state_builder.new_box(admin_account),
-            candidates: state_builder.new_box(candidates),
+            candidates: candidates_set,
             guardians: guardians_map,
             eligible_voters: state_builder.new_box(eligible_voters),
             election_description: state_builder.new_box(election_description),
@@ -131,12 +128,12 @@ pub struct ElectionConfig {
     /// the final result of the election.
     pub admin_account:        AccountAddress,
     /// A list of candidates that voters can vote for in the election.
-    pub candidates:           Vec<Candidate>,
+    pub candidates:           Vec<ChecksumUrl>,
     /// The list of guardians for the election.
     pub guardians:            Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      EligibleVoters,
+    pub eligible_voters:      ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
     /// The start time of the election, marking the time from which votes can be
@@ -179,8 +176,8 @@ impl From<&State> for ElectionConfig {
             election_start:       value.election_start,
             election_end:         value.election_end,
             eligible_voters:      value.eligible_voters.get().clone(),
-            candidates:           value.candidates.get().clone(),
-            // Ignore associated `GuardianState` until we know more..
+            candidates:           value.candidates.iter().map(|c| c.clone()).collect(),
+            // FIXME: Ignores associated `GuardianState` until we know more..
             guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
         }
     }
@@ -189,7 +186,7 @@ impl From<&State> for ElectionConfig {
 /// Init function that creates a new smart contract with an initial [`State`]
 /// derived from the supplied [`InitParameter`]
 #[init(
-    contract = "concordium_governance_committee_election",
+    contract = "ccd_gc_election",
     parameter = "ElectionConfig",
     error = "Error"
 )]
@@ -214,7 +211,7 @@ pub type RegisterVoteParameter = Vec<Vote>;
 /// the encrypted votes should be read by traversing the transactions sent to
 /// the contract.
 #[receive(
-    contract = "concordium_governance_committee_election",
+    contract = "ccd_gc_election",
     name = "registerVotes",
     parameter = "RegisterVoteParameter",
     error = "Error"
@@ -237,7 +234,7 @@ pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 /// Receive the election result and update the contract state with the supplied
 /// result from the parameter
 #[receive(
-    contract = "concordium_governance_committee_election",
+    contract = "ccd_gc_election",
     name = "postElectionResult",
     parameter = "PostResultParameter",
     error = "Error",
@@ -255,7 +252,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     );
     ensure!(now > host.state.election_end, Error::Inconclusive);
 
-    let candidates = &host.state.candidates.get();
+    let candidates: Vec<_> = host.state.candidates.iter().collect();
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
     ensure!(
         parameter.len() == candidates.len(),
@@ -268,7 +265,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
 
 /// View function that returns the contract configuration
 #[receive(
-    contract = "concordium_governance_committee_election",
+    contract = "ccd_gc_election",
     name = "viewConfig",
     return_value = "ElectionConfig"
 )]
@@ -279,7 +276,7 @@ fn view_config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResul
 /// Describes the election result for a single candidate.
 #[derive(Serialize, SchemaType, Debug, PartialEq)]
 pub struct CandidateResult {
-    pub candidate:         Candidate,
+    pub candidate:         ChecksumUrl,
     pub cummulative_votes: CandidateWeightedVotes,
 }
 
@@ -288,7 +285,7 @@ pub type ViewElectionResultQueryResponse = Option<Vec<CandidateResult>>;
 
 /// View function that returns the content of the state.
 #[receive(
-    contract = "concordium_governance_committee_election",
+    contract = "ccd_gc_election",
     name = "viewElectionResult",
     return_value = "ViewElectionResultQueryResponse",
     error = "Error"
@@ -301,7 +298,7 @@ fn view_election_result<'b>(
         return Ok(None);
     };
 
-    let candidates = &host.state.candidates.get();
+    let candidates: Vec<_> = host.state.candidates.iter().map(|c| c.clone()).collect();
     let response: Vec<_> = candidates
         .iter()
         .zip(result)

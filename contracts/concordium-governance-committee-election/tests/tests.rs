@@ -20,11 +20,13 @@ fn test_init_errors() {
     let (mut chain, module_ref) = new_chain_and_module();
 
     let candidates = vec![
-        Candidate {
-            name: "John".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
-        Candidate {
-            name: "Peter".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -34,7 +36,7 @@ fn test_init_errors() {
     let future_1d = now.clone().checked_add_days(chrono::Days::new(1)).unwrap();
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
-    let eligible_voters = EligibleVoters {
+    let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
@@ -77,6 +79,22 @@ fn test_init_errors() {
     initialize(&module_ref, &init_param, &mut chain)
         .expect_err("Must have non-empty list of candidates");
 
+    // Duolicates found in `candidates` list
+    let candidates = vec![
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([0; 32]),
+        },
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([0; 32]),
+        },
+    ];
+    let mut init_param = get_init_param();
+    init_param.candidates = candidates;
+    initialize(&module_ref, &init_param, &mut chain)
+        .expect_err("Must not contain duplicate candidates");
+
     // Empty `guardians` list
     let mut init_param = get_init_param();
     init_param.guardians = vec![];
@@ -95,11 +113,13 @@ fn test_init_config() {
     let (mut chain, module_ref) = new_chain_and_module();
 
     let candidates = vec![
-        Candidate {
-            name: "John".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
-        Candidate {
-            name: "Peter".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -109,7 +129,7 @@ fn test_init_config() {
     let election_end = election_start
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
-    let eligible_voters = EligibleVoters {
+    let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
@@ -266,7 +286,7 @@ fn post_election_result_update(
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.postElectionResult".to_string(),
+            "ccd_gc_election.postElectionResult".to_string(),
         ),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
@@ -283,7 +303,7 @@ fn view_election_result(
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.viewElectionResult".to_string(),
+            "ccd_gc_election.viewElectionResult".to_string(),
         ),
         message:      OwnedParameter::empty(),
     };
@@ -301,9 +321,7 @@ fn register_votes_update(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.registerVotes".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.registerVotes".to_string()),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
@@ -318,9 +336,7 @@ fn view_config(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "concordium_governance_committee_election.viewConfig".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.viewConfig".to_string()),
         message:      OwnedParameter::empty(),
     };
 
@@ -331,11 +347,13 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
     let (mut chain, module_ref) = new_chain_and_module();
 
     let candidates = vec![
-        Candidate {
-            name: "John".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
-        Candidate {
-            name: "Peter".to_string(),
+        ChecksumUrl {
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -345,7 +363,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
     let election_end = election_start
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
-    let eligible_voters = EligibleVoters {
+    let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
@@ -393,9 +411,7 @@ fn initialize(
     let payload = InitContractPayload {
         amount:    Amount::zero(),
         mod_ref:   *module_ref,
-        init_name: OwnedContractName::new_unchecked(
-            "init_concordium_governance_committee_election".to_string(),
-        ),
+        init_name: OwnedContractName::new_unchecked("init_ccd_gc_election".to_string()),
         param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.
