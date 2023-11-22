@@ -9,7 +9,7 @@ import {
     addSubmittedBallotAtom,
     electionConfigAtom,
     selectConnectionAtom,
-    activeWalletAtom
+    activeWalletAtom,
 } from '@shared/store';
 
 interface CandidateProps {
@@ -23,7 +23,7 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
         <Col className="mt-4" xs={24} md={12} xl={8}>
             <Card role="button" onClick={onClick} className={clsx('candidate', isSelected && 'candidate--selected')}>
                 <Image src={imageUrl} alt={name} />
-                <Card.Body className='candidate__body'>
+                <Card.Body className="candidate__body">
                     <Card.Title>{name}</Card.Title>
                     <Card.Link
                         href={descriptionUrl}
@@ -63,7 +63,7 @@ export default function Home() {
             .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
 
         const transaction = await registerVotes(ballot, wallet.connection, wallet.account);
-        addSubmission({ transaction, selectedCandidates: selected });
+        addSubmission(transaction);
         console.log('submitted ballot:', transaction);
 
         closeConfirm();

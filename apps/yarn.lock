@@ -5649,6 +5649,7 @@ __metadata:
     "@concordium/ccd-js-gen": "npm:^1.0.1"
     "@concordium/wallet-connectors": "npm:^0.4.0"
     "@concordium/web-sdk": "npm:^7.1.0"
+    "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
     "@types/bootstrap": "npm:^5"
     "@types/eslint": "npm:^8"
     "@types/react": "npm:^18.2.15"

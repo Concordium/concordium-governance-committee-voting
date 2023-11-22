@@ -84,11 +84,15 @@ function ActiveConnection() {
         throw new Error('Connection must be available');
     }
 
-    const accountString = AccountAddress.toBase58(wallet.account)
+    const accountString = AccountAddress.toBase58(wallet.account);
     const accountShow = `${accountString.substring(0, 4)}...${accountString.substring(accountString.length - 5)}`;
 
     return (
-        <Button className="active-connection__disconnect" variant="danger" onClick={() => wallet.connection.disconnect()}>
+        <Button
+            className="active-connection__disconnect"
+            variant="danger"
+            onClick={() => wallet.connection.disconnect()}
+        >
             {accountShow}
             <img src={DisconnectIcon} alt="disconnect icon" />
         </Button>

@@ -1,10 +1,18 @@
 import { atom } from 'jotai';
 import { atomFamily, atomWithReset, atomWithStorage } from 'jotai/utils';
-import { AccountAddress, HexString } from '@concordium/web-sdk';
+import {
+    AccountAddress,
+    ConcordiumGRPCClient,
+    HexString,
+    TransactionHash,
+} from '@concordium/web-sdk';
 import { Buffer } from 'buffer/';
+import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
+import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
+
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
 import { isDefined } from './util';
-import { WalletConnection } from '@concordium/wallet-connectors';
+import { NETWORK } from './constants';
 
 interface CandidateDetails {
     name: string;
@@ -105,14 +113,98 @@ export interface Wallet {
 
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
-export interface BallotSubmission {
-    transaction: HexString;
-    selectedCandidates: number[];
+const enum BallotSubmissionStatus {
+    Committed,
+    Rejected,
+    Approved,
+    Included,
 }
 
-const submittedBallotsBaseAtom = atomFamily((account: AccountAddress.Type) =>
-    atomWithStorage<BallotSubmission[]>(`ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`, []),
-);
+export interface BallotSubmission {
+    transaction: TransactionHash.Type;
+    status: BallotSubmissionStatus;
+}
+
+interface StoredBallotSubmission {
+    transaction: HexString;
+    status: BallotSubmissionStatus;
+}
+
+interface InitAction {
+    type: 'init';
+}
+
+interface AddAction {
+    type: 'add';
+    submission: TransactionHash.Type;
+}
+
+type Action = InitAction | AddAction;
+
+const submittedBallotsBaseAtom = atomFamily((account: AccountAddress.Type) => {
+    const baseAtom = atomWithStorage<StoredBallotSubmission[]>(
+        `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
+        [],
+        undefined,
+        { unstable_getOnInit: true },
+    );
+
+    const jsonAtom = atom(
+        (get) => {
+            const json = get(baseAtom);
+            return json.map((j) => ({ ...j, transaction: TransactionHash.fromHexString(j.transaction) }));
+        },
+        (get, set, update: BallotSubmission[]) => {
+            set(baseAtom, [
+                ...get(baseAtom),
+                ...update.map((u) => ({ ...u, transaction: TransactionHash.toHexString(u.transaction) })),
+            ]);
+        },
+    );
+    const derived = atom(
+        (get) => get(jsonAtom),
+        (get, set, action: Action) => {
+            const ballots = get(jsonAtom);
+            const wallet = get(activeWalletAtom);
+
+            let grpc: ConcordiumGRPCClient | undefined;
+            if (wallet?.connection instanceof BrowserWalletConnector) {
+                grpc = new ConcordiumGRPCClient(wallet.connection.getGrpcTransport());
+            } else if (NETWORK.grpcOpts !== undefined) {
+                grpc = new ConcordiumGRPCClient(new GrpcWebFetchTransport(NETWORK.grpcOpts));
+            }
+
+            console.log(grpc);
+
+            let checklist: TransactionHash.Type[] = [];
+            if (action.type === 'add') {
+                set(jsonAtom, [
+                    ...ballots,
+                    {
+                        transaction: action.submission,
+                        status: BallotSubmissionStatus.Committed,
+                    },
+                ]);
+
+                checklist = [action.submission];
+
+                if (grpc === undefined) {
+                    return;
+                }
+
+            } else if (action.type === 'init') {
+                checklist = ballots.map((b) => b.transaction);
+            }
+
+            // TODO: poll `checklist` submissions for status changes
+            console.log(checklist);
+        },
+    );
+    derived.onMount = (setter) => {
+        void setter({ type: 'init' });
+    };
+    return derived;
+});
 
 export const submittedBallotsAtom = atom((get) => {
     const wallet = get(activeWalletAtom);
@@ -124,12 +216,15 @@ export const submittedBallotsAtom = atom((get) => {
     return get(submittedBallotsBaseAtom(wallet.account));
 });
 
-export const addSubmittedBallotAtom = atom(null, (get, set, submission: BallotSubmission) => {
+export const addSubmittedBallotAtom = atom(null, (get, set, submission: TransactionHash.Type) => {
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) {
         throw new Error('Cannot add ballot submission without a connected account');
     }
 
     const base = submittedBallotsBaseAtom(wallet?.account);
-    set(base, [...get(base), submission]);
-})
+    set(base, {
+        type: 'add',
+        submission,
+    });
+});
