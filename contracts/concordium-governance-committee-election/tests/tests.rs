@@ -21,12 +21,12 @@ fn test_init_errors() {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
-            hash: HashSha2256([0;32]),
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
-            hash: HashSha2256([1;32]),
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -82,12 +82,12 @@ fn test_init_errors() {
     // Duolicates found in `candidates` list
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
-            hash: HashSha2256([0;32]),
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
-            hash: HashSha2256([0;32]),
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([0; 32]),
         },
     ];
     let mut init_param = get_init_param();
@@ -114,12 +114,12 @@ fn test_init_config() {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
-            hash: HashSha2256([0;32]),
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
-            hash: HashSha2256([1;32]),
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -321,9 +321,7 @@ fn register_votes_update(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "ccd_gc_election.registerVotes".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.registerVotes".to_string()),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
@@ -338,9 +336,7 @@ fn view_config(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "ccd_gc_election.viewConfig".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.viewConfig".to_string()),
         message:      OwnedParameter::empty(),
     };
 
@@ -352,12 +348,12 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
-            hash: HashSha2256([0;32]),
+            url:  "https://candidates.concordium.com/john".to_string(),
+            hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
-            hash: HashSha2256([1;32]),
+            url:  "https://candidates.concordium.com/peter".to_string(),
+            hash: HashSha2256([1; 32]),
         },
     ];
     let guardians = vec![BOB, CAROLINE];
@@ -415,9 +411,7 @@ fn initialize(
     let payload = InitContractPayload {
         amount:    Amount::zero(),
         mod_ref:   *module_ref,
-        init_name: OwnedContractName::new_unchecked(
-            "init_ccd_gc_election".to_string(),
-        ),
+        init_name: OwnedContractName::new_unchecked("init_ccd_gc_election".to_string()),
         param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.

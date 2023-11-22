@@ -104,7 +104,7 @@ impl State {
         for c in candidates.iter() {
             if !candidates_set.insert(c.clone()) {
                 return Err(Error::MalformedConfig);
-            } 
+            }
         }
 
         let config = Self {
