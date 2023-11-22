@@ -1,0 +1,28 @@
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package]
+name = "concordium_governance_committee_election"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+authors = ["Concordium software <support@concordium.software>"]
+description = "A smart contract for facilitating Concordium goverance committee elections."
+
+[features]
+default = ["std"]
+std = ["concordium-std/std"]
+wee_alloc = ["concordium-std/wee_alloc"]
+
+[dependencies]
+concordium-std = { version = "8.1", default-features = false }
+
+[dev-dependencies]
+concordium-smart-contract-testing = "3"
+chrono = "0.4"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "s"
+codegen-units = 1
