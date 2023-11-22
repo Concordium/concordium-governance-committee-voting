@@ -67,7 +67,14 @@ async function getCandidate({ url, hash }: ChecksumUrl, index: number): Promise<
 }
 
 const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
+
+let electionConfigInitialized = false;
 electionConfigBaseAtom.onMount = (setAtom) => {
+    if (electionConfigInitialized) {
+        return;
+    }
+
+    electionConfigInitialized = true;
     void getElectionConfig().then(async (config) => {
         if (config === undefined) {
             return undefined;
@@ -82,6 +89,7 @@ electionConfigBaseAtom.onMount = (setAtom) => {
         setAtom(mappedConfig);
     });
 };
+
 export const electionConfigAtom = atom((get) => get(electionConfigBaseAtom));
 
 export const selectConnectionAtom = atomWithReset<(() => void) | undefined>(undefined);
