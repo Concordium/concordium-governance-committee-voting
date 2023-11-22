@@ -1,11 +1,20 @@
 .candidate {
-    img {
-        border-bottom: 10px solid $gray-300;
-    }
+    flex-direction: row;
+    overflow: hidden;
 
-    &--selected {
-        img {
+    &__body {
+        border-right: 10px solid $gray-300;
+        transition: border-color 0.1s linear;
+
+        .candidate--selected & {
             border-color: $green;
         }
+    }
+
+    img {
+        width: 105px;
+        height: 105px;
+        object-fit: cover;
+        object-position: center;
     }
 }

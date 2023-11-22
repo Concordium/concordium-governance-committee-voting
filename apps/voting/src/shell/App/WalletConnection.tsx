@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
-import { useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { RESET } from 'jotai/utils';
 
-import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
+import { useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ConcordiumIcon from '@assets/ccd.svg';
 import DisconnectIcon from '@assets/close.svg';
-import { selectConnectionAtom } from '@shared/store';
+import { activeWalletAtom, selectConnectionAtom } from '@shared/store';
+import { AccountAddress } from '@concordium/web-sdk';
 
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
@@ -77,16 +78,17 @@ function SelectConnection() {
 }
 
 function ActiveConnection() {
-    const { account, connection } = useActiveWallet();
+    const wallet = useAtomValue(activeWalletAtom);
 
-    if (!connection) {
+    if (wallet?.account === undefined) {
         throw new Error('Connection must be available');
     }
 
-    const accountShow = `${account?.substring(0, 4)}...${account?.substring(account.length - 5)}`;
+    const accountString = AccountAddress.toBase58(wallet.account)
+    const accountShow = `${accountString.substring(0, 4)}...${accountString.substring(accountString.length - 5)}`;
 
     return (
-        <Button className="active-connection__disconnect" variant="danger" onClick={() => connection.disconnect()}>
+        <Button className="active-connection__disconnect" variant="danger" onClick={() => wallet.connection.disconnect()}>
             {accountShow}
             <img src={DisconnectIcon} alt="disconnect icon" />
         </Button>
@@ -94,9 +96,9 @@ function ActiveConnection() {
 }
 
 export function WalletConnection() {
-    const { connection } = useActiveWallet();
+    const wallet = useAtomValue(activeWalletAtom);
 
-    if (connection) {
+    if (wallet?.account !== undefined) {
         return <ActiveConnection />;
     }
 

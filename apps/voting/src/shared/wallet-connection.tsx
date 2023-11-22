@@ -17,7 +17,10 @@ import {
     useMemo,
     useState,
 } from 'react';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { NETWORK } from './constants';
+import { activeWalletAtom, Wallet } from './store';
+import { AccountAddress } from '@concordium/web-sdk';
 
 export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     projectId: CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
@@ -28,24 +31,6 @@ export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
         icons: ['https://walletconnect.com/walletconnect-logo.png'],
     },
 };
-
-interface Wallet {
-    account: string | undefined;
-    chain: string | undefined;
-    connection: WalletConnection;
-}
-
-export type ActiveWallet = Partial<Wallet>;
-
-const activeWalletContext = createContext<ActiveWallet>({});
-
-/**
- * Provides access to properties of the active wallet of type {@linkcode ActiveWallet}.
- */
-export function useActiveWallet() {
-    return useContext(activeWalletContext);
-}
-
 /**
  * Describes the properties provided by any wallet context, i.e. {@linkcode browserWalletContext} or
  * {@linkcode walletConnectContext}.
@@ -88,11 +73,11 @@ export function useWalletConnect() {
 }
 
 function useWalletConnector(wc: WalletConnector): ConnectorContext {
-    const { connection, account } = useContext(activeWalletContext);
+    const wallet = useAtomValue(activeWalletAtom);
     const [isConnecting, setIsConnecting] = useState(false);
     const isActive = useMemo(
-        () => connection !== undefined && wc.getConnections().includes(connection),
-        [connection, wc],
+        () => wallet?.connection !== undefined && wc.getConnections().includes(wallet?.connection),
+        [wallet?.connection, wc],
     );
 
     const connect = useCallback(async () => {
@@ -105,10 +90,10 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
     }, [wc]);
 
     useEffect(() => {
-        if (isActive && account === undefined) {
+        if (isActive && wallet?.account === undefined) {
             void wc.disconnect();
         }
-    }, [account, isActive, wc]);
+    }, [wallet?.account, isActive, wc]);
 
     return {
         isConnecting,
@@ -145,7 +130,7 @@ type WalletsProviderProps = PropsWithChildren<{
     /** Connector instance to wallet connect compatible Concordium wallet */
     walletConnect: WalletConnectConnector;
     /** The currently active wallet */
-    activeWallet: ActiveWallet;
+    activeWallet: Wallet | undefined;
 }>;
 
 /**
@@ -153,12 +138,16 @@ type WalletsProviderProps = PropsWithChildren<{
  * component acting as wallet connector delegate.
  */
 function WalletsProvider({ browser, walletConnect, activeWallet, children }: WalletsProviderProps) {
+    const setActiveWallet = useSetAtom(activeWalletAtom);
+
+    useEffect(() => {
+        setActiveWallet(activeWallet);
+    }, [activeWallet, setActiveWallet]);
+
     return (
-        <activeWalletContext.Provider value={activeWallet}>
-            <WalletProvider connector={browser}>
-                <WalletProvider connector={walletConnect}>{children}</WalletProvider>
-            </WalletProvider>
-        </activeWalletContext.Provider>
+        <WalletProvider connector={browser}>
+            <WalletProvider connector={walletConnect}>{children}</WalletProvider>
+        </WalletProvider>
     );
 }
 
@@ -179,7 +168,7 @@ interface WalletConnectionManagerState {
     browserWalletConnector: BrowserWalletConnector | undefined;
     walletConnectConnector: WalletConnectConnector | undefined;
     connections: WalletConnection[];
-    accounts: Map<WalletConnection, string | undefined>;
+    accounts: Map<WalletConnection, AccountAddress.Type | undefined>;
     chains: Map<WalletConnection, string | undefined>;
 }
 
@@ -210,7 +199,11 @@ export class WalletConnectionManager
     onAccountChanged(connection: WalletConnection, address: string | undefined): void {
         this.setState((state) => ({
             ...state,
-            accounts: updateMapEntry(state.accounts, connection, address),
+            accounts: updateMapEntry(
+                state.accounts,
+                connection,
+                address !== undefined ? AccountAddress.fromBase58(address) : undefined,
+            ),
         }));
     }
     onConnected(connection: WalletConnection, address: string | undefined): void {
@@ -220,7 +213,11 @@ export class WalletConnectionManager
             return {
                 ...state,
                 connections,
-                accounts: updateMapEntry(state.accounts, connection, address),
+                accounts: updateMapEntry(
+                    state.accounts,
+                    connection,
+                    address !== undefined ? AccountAddress.fromBase58(address) : undefined,
+                ),
             };
         });
     }
@@ -251,9 +248,9 @@ export class WalletConnectionManager
         }
 
         const connection = this.state.connections[0];
-        const activeWallet: ActiveWallet =
+        const activeWallet: Wallet | undefined =
             connection === undefined
-                ? {}
+                ? undefined
                 : {
                     chain: this.state.chains.get(connection),
                     account: this.state.accounts.get(connection),

@@ -16,12 +16,12 @@ function EnsureGlobalState() {
  */
 function Root() {
     return (
-        <WalletConnectionManager>
-            <Provider store={store}>
+        <Provider store={store}>
+            <WalletConnectionManager>
                 <EnsureGlobalState />
                 <App />
-            </Provider>
-        </WalletConnectionManager>
+            </WalletConnectionManager>
+        </Provider>
     );
 }
 

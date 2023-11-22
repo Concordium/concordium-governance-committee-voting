@@ -10,6 +10,7 @@ import {
     HexString,
     EntrypointName,
     Energy,
+    AccountAddress,
 } from '@concordium/web-sdk';
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
@@ -29,7 +30,7 @@ const REGISTER_VOTES_SCHEMA = toBuffer('EAIUAAIAAAAPAAAAY2FuZGlkYXRlX2luZGV4AggA
 export async function registerVotes(
     ballot: ElectionContract.RegisterVotesParameter,
     connection: WalletConnection,
-    accountAddress: HexString,
+    accountAddress: AccountAddress.Type,
 ): Promise<HexString> {
     const params: TypedSmartContractParameters = {
         parameters: ballot,
@@ -48,7 +49,7 @@ export async function registerVotes(
         receiveName: ReceiveName.create(ElectionContract.contractName, EntrypointName.fromString('registerVotes')),
         maxContractExecutionEnergy,
     };
-    return await connection.signAndSendTransaction(accountAddress, AccountTransactionType.Update, payload, params);
+    return await connection.signAndSendTransaction(AccountAddress.toBase58(accountAddress), AccountTransactionType.Update, payload, params);
 }
 
 export async function getElectionConfig() {
