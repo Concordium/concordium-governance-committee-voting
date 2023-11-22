@@ -28,23 +28,15 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install nightly toolchain with rustfmt available
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ env.RUST_FMT }}
-          override: true
-          components: rustfmt
-
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --manifest-path=${{ matrix.crates }} -- --check
+        run: |
+          rustup default ${{ env.RUST_FMT }}
+          rustup component add rustfmt
+          cargo fmt --manifest-path=${{ matrix.crates }} -- --check
 
   test-contracts:
     name: test contracts
@@ -56,19 +48,9 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ env.RUST_VERSION }}
-          override: true
-
-      - name: Install Wasm target
-        run: rustup target install wasm32-unknown-unknown
 
       - name: Download and install Cargo Concordium
         run: |
@@ -78,4 +60,7 @@ jobs:
           sudo mv $CARGO_CCD /usr/bin/cargo-concordium
 
       - name: Run cargo concordium test
-        run: cargo concordium test --out "${{ matrix.contracts }}/concordium-out/module.wasm.v1" -- --manifest-path "${{ matrix.contracts }}/Cargo.toml"
+        run: |
+          rustup default ${{ env.RUST_VERSION }}
+          rustup target install wasm32-unknown-unknown
+          cargo concordium test --out "${{ matrix.contracts }}/concordium-out/module.wasm.v1" -- --manifest-path "${{ matrix.contracts }}/Cargo.toml"

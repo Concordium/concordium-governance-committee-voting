@@ -28,7 +28,7 @@ jobs:
       run:
         working-directory: ./apps
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
@@ -59,7 +59,7 @@ jobs:
       run:
         working-directory: apps
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v3
         with:
@@ -85,7 +85,7 @@ jobs:
       run:
         working-directory: apps
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v3
         with:
