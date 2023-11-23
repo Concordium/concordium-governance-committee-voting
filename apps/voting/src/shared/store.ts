@@ -2,9 +2,12 @@ import { atom } from 'jotai';
 import { atomFamily, atomWithReset, atomWithStorage } from 'jotai/utils';
 import {
     AccountAddress,
+    AccountTransactionType,
     ConcordiumGRPCClient,
     HexString,
     TransactionHash,
+    TransactionKindString,
+    TransactionSummaryType,
 } from '@concordium/web-sdk';
 import { Buffer } from 'buffer/';
 import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
@@ -114,20 +117,113 @@ export interface Wallet {
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
 const enum BallotSubmissionStatus {
+    /** Committed to the node */
     Committed,
+    /** Rejected by the node */
     Rejected,
+    /** Approved by the node */
     Approved,
+    /** Included in the election tally */
     Included,
-}
-
-export interface BallotSubmission {
-    transaction: TransactionHash.Type;
-    status: BallotSubmissionStatus;
+    /** Excluded from the election tally (could not verify the ballot submission) */
+    Excluded,
 }
 
 interface StoredBallotSubmission {
-    transaction: HexString;
+    transaction: TransactionHash.Serializable;
     status: BallotSubmissionStatus;
+}
+
+export class BallotSubmission {
+    constructor(
+        public readonly transaction: TransactionHash.Type,
+        public readonly status: BallotSubmissionStatus,
+    ) { }
+
+    public static fromSerializable(value: StoredBallotSubmission) {
+        return new BallotSubmission(TransactionHash.fromHexString(value.transaction), value.status);
+    }
+
+    public toJSON(): StoredBallotSubmission {
+        return { transaction: TransactionHash.toHexString(this.transaction), status: this.status };
+    }
+
+    public changeStatus(status: BallotSubmissionStatus): BallotSubmission {
+        return new BallotSubmission(this.transaction, status);
+    }
+
+    public eq(other: BallotSubmission) {
+        return TransactionHash.equals(this.transaction, other.transaction);
+    }
+}
+
+async function monitorAccountSubmission(
+    submission: BallotSubmission,
+    grpc: ConcordiumGRPCClient,
+    abortSignal: AbortSignal,
+    setStatus: (status: BallotSubmissionStatus) => void,
+) {
+    if (submission.status === BallotSubmissionStatus.Committed) {
+        const outcome = await grpc.waitForTransactionFinalization(submission.transaction);
+        if (outcome.summary.type !== TransactionSummaryType.AccountTransaction) {
+            throw new Error('Expected account transaction');
+        }
+
+        const success = outcome.summary.transactionType !== TransactionKindString.Failed;
+        setStatus(success ? BallotSubmissionStatus.Approved : BallotSubmissionStatus.Rejected);
+    }
+    if (submission.status === BallotSubmissionStatus.Approved) {
+        return new Promise<void>((resolve) => {
+            abortSignal.addEventListener('abort', () => {
+                console.log('Aborted monitoring ballot submission for:', submission);
+                resolve();
+            });
+            // TODO: Poll the election server
+        });
+    }
+}
+
+interface RefCountAbortState {
+    refCount: number;
+    abortController: AbortController;
+}
+
+function atomRefCountAbort() {
+    const baseAtom = atom<RefCountAbortState>({ refCount: 0, abortController: new AbortController() });
+
+    const derivedAtom = atom(
+        (get) => {
+            const { refCount, abortController } = get(baseAtom);
+            return { refCount, abortSignal: abortController.signal };
+        },
+        (get, set, update: 'init' | 'drop') => {
+            const current = get(baseAtom);
+
+            let refCount: number;
+            if (update === 'init') {
+                refCount = current.refCount + 1;
+            } else {
+                refCount = current.refCount - 1;
+            }
+
+            if (refCount === 0) {
+                current.abortController.abort();
+            }
+
+            set(baseAtom, (v) => ({
+                abortController: v.abortController.signal.aborted ? new AbortController() : v.abortController,
+                refCount: refCount,
+            }));
+        },
+    );
+    derivedAtom.onMount = (setValue) => {
+        setValue('init');
+        return () => {
+            setValue('drop');
+        };
+    };
+
+    return atom((get) => get(derivedAtom));
 }
 
 interface InitAction {
@@ -141,69 +237,91 @@ interface AddAction {
 
 type Action = InitAction | AddAction;
 
-const submittedBallotsBaseAtom = atomFamily((account: AccountAddress.Type) => {
+const submittedBallotsFamily = atomFamily((account: AccountAddress.Type) => {
+    /** Base atom which handles storing the values both in memory and in localstorage */
     const baseAtom = atomWithStorage<StoredBallotSubmission[]>(
         `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
         [],
         undefined,
-        { unstable_getOnInit: true },
+        { unstable_getOnInit: true }, // Needed to load values from localstorage on init.
     );
 
+    /** Handles converting to/from serializable format */
     const jsonAtom = atom(
         (get) => {
             const json = get(baseAtom);
-            return json.map((j) => ({ ...j, transaction: TransactionHash.fromHexString(j.transaction) }));
+            return json.map(BallotSubmission.fromSerializable);
         },
-        (get, set, update: BallotSubmission[]) => {
-            set(baseAtom, [
-                ...get(baseAtom),
-                ...update.map((u) => ({ ...u, transaction: TransactionHash.toHexString(u.transaction) })),
-            ]);
+        (_, set, update: BallotSubmission[]) => {
+            set(
+                baseAtom,
+                update.map((u) => u.toJSON()),
+            );
         },
     );
-    const derived = atom(
-        (get) => get(jsonAtom),
+
+    const abortAtom = atomRefCountAbort();
+
+    /** Polls for submission status updates */
+    const monitorAtom = atom(
+        (get) => {
+            get(abortAtom); // To trigger `onMount`
+        },
         (get, set, action: Action) => {
             const ballots = get(jsonAtom);
-            const wallet = get(activeWalletAtom);
+            const { abortSignal, refCount } = get(abortAtom);
 
-            let grpc: ConcordiumGRPCClient | undefined;
+            if (action.type === 'init' && refCount > 1) {
+                return; // Already monitoring submissions.
+            }
+
+            let checklist: BallotSubmission[] = [];
+            if (action.type === 'init') {
+                checklist = ballots;
+            } else if (action.type === 'add') {
+                const ballot = new BallotSubmission(action.submission, BallotSubmissionStatus.Committed);
+                set(jsonAtom, [...ballots, ballot]);
+                checklist = [ballot];
+            }
+
+            const wallet = get(activeWalletAtom);
+            let grpc: ConcordiumGRPCClient;
             if (wallet?.connection instanceof BrowserWalletConnector) {
                 grpc = new ConcordiumGRPCClient(wallet.connection.getGrpcTransport());
-            } else if (NETWORK.grpcOpts !== undefined) {
+            } else if (NETWORK.grpcOpts === undefined) {
+                throw new Error('Expected GRPC options to be available');
+            } else {
                 grpc = new ConcordiumGRPCClient(new GrpcWebFetchTransport(NETWORK.grpcOpts));
             }
 
-            console.log(grpc);
-
-            let checklist: TransactionHash.Type[] = [];
-            if (action.type === 'add') {
-                set(jsonAtom, [
-                    ...ballots,
-                    {
-                        transaction: action.submission,
-                        status: BallotSubmissionStatus.Committed,
-                    },
-                ]);
-
-                checklist = [action.submission];
-
-                if (grpc === undefined) {
-                    return;
-                }
-
-            } else if (action.type === 'init') {
-                checklist = ballots.map((b) => b.transaction);
-            }
-
-            // TODO: poll `checklist` submissions for status changes
-            console.log(checklist);
+            const setStatus = (submission: BallotSubmission) => (status: BallotSubmissionStatus) => {
+                const current = get(jsonAtom);
+                set(
+                    jsonAtom,
+                    current.map((b) => (b.eq(submission) ? b.changeStatus(status) : b)),
+                );
+            };
+            checklist.forEach(
+                (checklistItem) =>
+                    void monitorAccountSubmission(checklistItem, grpc, abortSignal, setStatus(checklistItem)),
+            );
         },
     );
-    derived.onMount = (setter) => {
+    monitorAtom.onMount = (setter) => {
         void setter({ type: 'init' });
     };
-    return derived;
+
+    /** Exposes `AddAction` update and parsed value */
+    const derivedAtom = atom(
+        (get) => {
+            get(monitorAtom); // To trigger `onMount`
+            return get(jsonAtom);
+        },
+        (_, set, update: AddAction) => {
+            set(monitorAtom, update);
+        },
+    );
+    return derivedAtom;
 });
 
 export const submittedBallotsAtom = atom((get) => {
@@ -213,7 +331,7 @@ export const submittedBallotsAtom = atom((get) => {
         return undefined;
     }
 
-    return get(submittedBallotsBaseAtom(wallet.account));
+    return get(submittedBallotsFamily(wallet.account));
 });
 
 export const addSubmittedBallotAtom = atom(null, (get, set, submission: TransactionHash.Type) => {
@@ -222,7 +340,7 @@ export const addSubmittedBallotAtom = atom(null, (get, set, submission: Transact
         throw new Error('Cannot add ballot submission without a connected account');
     }
 
-    const base = submittedBallotsBaseAtom(wallet?.account);
+    const base = submittedBallotsFamily(wallet?.account);
     set(base, {
         type: 'add',
         submission,
