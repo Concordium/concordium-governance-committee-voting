@@ -21,6 +21,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { NETWORK } from './constants';
 import { activeWalletAtom, Wallet } from './store';
 import { AccountAddress } from '@concordium/web-sdk';
+import { updateMapEntry } from './util';
 
 export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     projectId: CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
@@ -149,18 +150,6 @@ function WalletsProvider({ browser, walletConnect, activeWallet, children }: Wal
             <WalletProvider connector={walletConnect}>{children}</WalletProvider>
         </WalletProvider>
     );
-}
-
-function updateMapEntry<K, V>(map: Map<K, V>, key: K | undefined, value: V | undefined) {
-    const res = new Map(map);
-    if (key !== undefined) {
-        if (value !== undefined) {
-            res.set(key, value);
-        } else {
-            res.delete(key);
-        }
-    }
-    return res;
 }
 
 type WalletConnectionManagerProps = PropsWithChildren;

@@ -91,8 +91,7 @@ export default function Home() {
 
     return (
         <>
-            <h1 className="text-center">{electionConfig?.election_description}</h1>
-            <Row>
+            <Row className='mt-n4'>
                 {electionConfig?.candidates.map((c) => (
                     <Candidate
                         key={c.index}
