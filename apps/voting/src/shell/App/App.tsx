@@ -1,8 +1,7 @@
 import { Container } from 'react-bootstrap';
 import { useAtomValue } from 'jotai';
-import { electionConfigAtom } from '@shared/store';
-import { Timestamp } from '@concordium/web-sdk';
 
+import { electionConfigAtom } from '@shared/store';
 import Home from '@pages/Home';
 import { WalletConnection } from './WalletConnection';
 
@@ -21,10 +20,10 @@ function App() {
             <header className="d-flex flex-wrap justify-content-between mb-4">
                 {electionConfig !== undefined && (
                     <div className="mb-2">
-                        <h2 className='mb-0'>{electionConfig.election_description}</h2>
+                        <h2 className="mb-0">{electionConfig.election_description}</h2>
                         <div>
-                            {Timestamp.toDate(electionConfig.election_start).toLocaleString(undefined, dateFormat)} -{' '}
-                            {Timestamp.toDate(electionConfig.election_end).toLocaleString(undefined, dateFormat)}
+                            {electionConfig.start.toLocaleString(undefined, dateFormat)} -{' '}
+                            {electionConfig.end.toLocaleString(undefined, dateFormat)}
                         </div>
                     </div>
                 )}

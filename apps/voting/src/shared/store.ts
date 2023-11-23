@@ -3,6 +3,7 @@ import { atomFamily, atomWithReset, atomWithStorage } from 'jotai/utils';
 import {
     AccountAddress,
     ConcordiumGRPCClient,
+    Timestamp,
     TransactionHash,
     TransactionKindString,
     TransactionSummaryType,
@@ -51,9 +52,11 @@ export interface IndexedCandidateDetails extends CandidateDetails {
 /**
  * Representation of the election configration.
  */
-export interface ElectionConfig extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates'> {
+export interface ElectionConfig extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates' | 'election_start' | 'election_end'> {
     /** The election candidates */
     candidates: IndexedCandidateDetails[];
+    start: Date;
+    end: Date;
 }
 
 /**
@@ -110,6 +113,8 @@ electionConfigBaseAtom.onMount = (setAtom) => {
         const candidates = (await Promise.all(candiatePromises)).filter(isDefined);
         const mappedConfig: ElectionConfig = {
             ...config,
+            start: Timestamp.toDate(config.election_start),
+            end: Timestamp.toDate(config.election_end),
             candidates,
         };
         setAtom(mappedConfig);
@@ -343,6 +348,7 @@ const submittedBallotsFamily = atomFamily((account: AccountAddress.Type) => {
  */
 export const submittedBallotsAtom = atom((get) => {
     const wallet = get(activeWalletAtom);
+    // FIXME: doesn't get updated
 
     if (wallet?.account === undefined) {
         return undefined;

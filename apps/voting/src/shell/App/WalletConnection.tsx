@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Modal } from 'react-bootstrap';
+import { Button, Offcanvas } from 'react-bootstrap';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { RESET } from 'jotai/utils';
 
 import { useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
 import ConcordiumIcon from '@assets/ccd.svg';
-import DisconnectIcon from '@assets/close.svg';
-import { activeWalletAtom, selectConnectionAtom } from '@shared/store';
+import { Wallet, activeWalletAtom, selectConnectionAtom, submittedBallotsAtom } from '@shared/store';
 import { AccountAddress } from '@concordium/web-sdk';
+import { accountShowShort } from '@shared/util';
 
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
@@ -53,6 +53,104 @@ function ConnectBrowser() {
 }
 
 function SelectConnection() {
+    const showSidebar = useAtomValue(selectConnectionAtom);
+
+    return (
+        <Button variant="primary" onClick={() => showSidebar?.()}>
+            Connect
+        </Button>
+    );
+}
+
+function SelectConnectionTitle() {
+    return <>Select wallet</>;
+}
+
+function SelectConnectionBody() {
+    return (
+        <Offcanvas.Body>
+            <ConnectBrowser />
+            <ConnectWalletConnect />
+        </Offcanvas.Body>
+    );
+}
+
+type WalletWithAccount = Omit<Wallet, 'account'> & {
+    account: AccountAddress.Type;
+};
+
+function withActiveAccount<P>(Component: React.ComponentType<P & WalletWithAccount>) {
+    return function Inner(props: P) {
+        const wallet = useAtomValue(activeWalletAtom);
+
+        if (wallet?.account === undefined) {
+            throw new Error('Connection must be available');
+        }
+
+        return <Component {...props} {...wallet} account={wallet.account} />;
+    };
+}
+
+const ActiveConnection = withActiveAccount(({ account }) => {
+    const showSidebar = useAtomValue(selectConnectionAtom);
+
+    return (
+        <Button variant="outline-success" onClick={() => showSidebar?.()}>
+            {accountShowShort(account)}
+        </Button>
+    );
+});
+
+const ActiveConnectionTitle = withActiveAccount(({ account }) => {
+    return (
+        <Offcanvas.Title className="d-flex">
+            <div>
+                <div>Connected</div>
+                <div className="active-connection__sub-title">{accountShowShort(account)}</div>
+            </div>
+        </Offcanvas.Title>
+    );
+});
+
+const ActiveConnectionBody = withActiveAccount(({ connection }) => {
+    const submissions = useAtomValue(submittedBallotsAtom);
+
+    return (
+        <Offcanvas.Body>
+            <section className="mb-4">
+                <h5>Actions</h5>
+                <Button variant="danger" size="sm" onClick={() => connection.disconnect()}>
+                    Disconnect
+                </Button>
+            </section>
+            <section>
+                <h5>Ballot submissions</h5>
+                {submissions
+                    ?.map((s) => s.toJSON())
+                    .map((s) => (
+                        <div key={s.transaction}>
+                            {s.transaction.slice(0, 8)} - {s.status}
+                        </div>
+                    ))}
+            </section>
+        </Offcanvas.Body>
+    );
+});
+
+const activeConn = {
+    Show: ActiveConnection,
+    Title: ActiveConnectionTitle,
+    Body: ActiveConnectionBody,
+};
+
+const selectConn: typeof activeConn = {
+    Show: SelectConnection,
+    Title: SelectConnectionTitle,
+    Body: SelectConnectionBody,
+};
+
+export function WalletConnection() {
+    const wallet = useAtomValue(activeWalletAtom);
     const [showModal, setShowModal] = useState(false);
     const setSelectConnectionHandler = useSetAtom(selectConnectionAtom);
 
@@ -61,50 +159,17 @@ function SelectConnection() {
         return () => setSelectConnectionHandler(RESET);
     }, [setSelectConnectionHandler]);
 
+    const { Show, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
+
     return (
         <>
-            <Button variant="primary" onClick={() => setShowModal(true)}>
-                Connect
-            </Button>
-            <Modal show={showModal} onHide={() => setShowModal(false)} backdrop="static">
-                <Modal.Header closeButton>Select wallet</Modal.Header>
-                <Modal.Body className="select-connection__wallets">
-                    <ConnectBrowser />
-                    <ConnectWalletConnect />
-                </Modal.Body>
-            </Modal>
+            <Show />
+            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
+                <Offcanvas.Header closeButton>
+                    <Title />
+                </Offcanvas.Header>
+                <Body />
+            </Offcanvas>
         </>
     );
-}
-
-function ActiveConnection() {
-    const wallet = useAtomValue(activeWalletAtom);
-
-    if (wallet?.account === undefined) {
-        throw new Error('Connection must be available');
-    }
-
-    const accountString = AccountAddress.toBase58(wallet.account);
-    const accountShow = `${accountString.substring(0, 4)}...${accountString.substring(accountString.length - 5)}`;
-
-    return (
-        <Button
-            className="active-connection__disconnect"
-            variant="danger"
-            onClick={() => wallet.connection.disconnect()}
-        >
-            {accountShow}
-            <img src={DisconnectIcon} alt="disconnect icon" />
-        </Button>
-    );
-}
-
-export function WalletConnection() {
-    const wallet = useAtomValue(activeWalletAtom);
-
-    if (wallet?.account !== undefined) {
-        return <ActiveConnection />;
-    }
-
-    return <SelectConnection />;
 }
