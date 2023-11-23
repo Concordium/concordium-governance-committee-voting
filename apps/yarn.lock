@@ -793,6 +793,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@swc-jotai/react-refresh@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "@swc-jotai/react-refresh@npm:0.1.0"
+  checksum: c83a70d810a3aba305846ba702d391db85bd129a4691d2f7c557464e102a604341e6fbad5810b7f089f1c7692b2d0c7573d53698b5de1e1eb76f7bbfce4bca28
+  languageName: node
+  linkType: hard
+
 "@swc/core-darwin-arm64@npm:1.3.95":
   version: 1.3.95
   resolution: "@swc/core-darwin-arm64@npm:1.3.95"
@@ -5650,6 +5657,7 @@ __metadata:
     "@concordium/wallet-connectors": "npm:^0.4.0"
     "@concordium/web-sdk": "npm:^7.1.0"
     "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
+    "@swc-jotai/react-refresh": "npm:^0.1.0"
     "@types/bootstrap": "npm:^5"
     "@types/eslint": "npm:^8"
     "@types/react": "npm:^18.2.15"

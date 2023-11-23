@@ -29,6 +29,7 @@
     },
     "devDependencies": {
         "@concordium/ccd-js-gen": "^1.0.1",
+        "@swc-jotai/react-refresh": "^0.1.0",
         "@types/bootstrap": "^5",
         "@types/eslint": "^8",
         "@types/react": "^18.2.15",
