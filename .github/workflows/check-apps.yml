@@ -17,8 +17,10 @@ on:
 env:
   DUMMY: 0 # For cache busting.
   NODE_VERSION: 18.16.0
-  RUST_VERSION: 1.65
+  RUST_VERSION: 1.67
   RUST_FMT: nightly-2023-04-01-x86_64-unknown-linux-gnu
+  CARGO_CONCORDIUM_VERSION: 3.0.0
+  CCD_ELECTION_CONTRACT_ADDRESS: <0,0> # Otherwise build will fail
 
 jobs:
   deps:
@@ -50,11 +52,72 @@ jobs:
             ${{ runner.os }}-yarn
 
       - name: Get dependencies
+        if: ${{ steps.yarn-cache.outputs.cache-hit != 'true' }}
         run: yarn install --immutable
-  lint:
+
+  generate-client:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
     needs: deps
+    defaults:
+      run:
+        working-directory: ./apps
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Cache election contract client
+        id: election-contract-cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./apps/voting/src/__generated__/election-contract
+          key: ${{ runner.os }}-election-contract-${{ hashFiles('./contracts/concordium-governance-committee-election/src/lib.rs') }}-${{ env.DUMMY }}
+          restore-keys: |
+            ${{ runner.os }}-election-contract
+
+      - name: Download and install Cargo Concordium
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        run: |
+          CARGO_CCD=cargo-concordium_${{ env.CARGO_CONCORDIUM_VERSION }}
+          wget https://distribution.concordium.software/tools/linux/$CARGO_CCD
+          chmod +x $CARGO_CCD
+          sudo mv $CARGO_CCD /usr/bin/cargo-concordium
+
+      - name: Build election contract
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        working-directory: ./contracts/concordium-governance-committee-election
+        run: |
+          rustup default ${{ env.RUST_VERSION }}
+          rustup target install wasm32-unknown-unknown
+          cargo concordium build --schema-embed --out "./concordium-out/module.wasm.v1"
+
+      - uses: actions/setup-node@v3
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          cache-dependency-path: "**/yarn.lock"
+
+      - name: Restore dependencies
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ./apps/node_modules
+            ./apps/voting/node_modules
+          key: ${{ runner.os }}-yarn
+
+      - name: Generate contract client
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        working-directory: ./apps/voting
+        run: yarn generate-contract-client
+
+  check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+    needs: [deps, generate-client]
     defaults:
       run:
         working-directory: apps
@@ -74,32 +137,16 @@ jobs:
             ./apps/node_modules
             ./apps/voting/node_modules
           key: ${{ runner.os }}-yarn
+
+      - name: Restore generated contract client
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ./apps/voting/src/__generated__/election-contract
+          key: ${{ runner.os }}-election-contract
 
       - name: Lint
         run: yarn lint:all && yarn fmt-check:all
-  build:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-22.04
-    needs: deps
-    defaults:
-      run:
-        working-directory: apps
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v3
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: yarn
-          cache-dependency-path: "**/yarn.lock"
-
-      - name: Restore dependencies
-        uses: actions/cache/restore@v3
-        with:
-          path: |
-            ./apps/node_modules
-            ./apps/voting/node_modules
-          key: ${{ runner.os }}-yarn
 
       - name: Build
         run: yarn build:all
