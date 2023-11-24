@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
+        "build-election-contract": "cargo concordium build --schema-embed --out ../../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 -- --manifest-path ../../contracts/concordium-governance-committee-election/Cargo.toml",
         "generate-contract-client": "tsx ./scripts/generate-election-contract-client.ts",
         "build": "tsc && vite build",
         "preview": "vite preview",
