@@ -18,6 +18,9 @@ interface CandidateProps {
     isSelected: boolean;
 }
 
+/**
+ * Renders an election candidate
+ */
 function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isSelected }: CandidateProps) {
     return (
         <Col className="mt-4" xs={24} md={12} xl={8}>
@@ -39,6 +42,9 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
     );
 }
 
+/**
+ * The home page component.
+ */
 export default function Home() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const [selected, setSelected] = useState<number[]>([]);
@@ -48,12 +54,22 @@ export default function Home() {
     const openSelectConnection = useAtomValue(selectConnectionAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
 
-    const toggleCandidate = (i: number) => {
-        setSelected((xs) => (xs.includes(i) ? xs.filter((x) => x !== i) : [...xs, i]));
+    /**
+     * Toggle the selection of a candidate at `index`
+     * @param index - The candidate index to toggle selection for
+     */
+    const toggleCandidate = (index: number) => {
+        setSelected((xs) => (xs.includes(index) ? xs.filter((x) => x !== index) : [...xs, index]));
     };
 
+    /**
+     * Closes the confirmation modal (if open)
+     */
     const closeConfirm = () => setConfirmOpen(false);
 
+    /**
+     * Confirms the ballot submission, i.e. attempts to register the ballot on chain.
+     */
     const confirmSubmission = async () => {
         if (wallet?.connection === undefined || electionConfig === undefined || wallet?.account === undefined) {
             throw new Error('Expected required parameters to be defined'); // Will not happen.
@@ -69,6 +85,10 @@ export default function Home() {
         closeConfirm();
     };
 
+    /**
+     * Opens a confirmation modal for ballot submission. If not connected at this point, a connection prompt will be
+     * made prior to opening the modal.
+     */
     const submit = useCallback(() => {
         if ((wallet?.connection === undefined || wallet?.account === undefined) && openSelectConnection !== undefined) {
             openSelectConnection();
@@ -78,6 +98,7 @@ export default function Home() {
         }
     }, [wallet?.connection, openSelectConnection, wallet?.account]);
 
+    // Handle connecting due to a submission attempt while not connected.
     useEffect(() => {
         if (awaitConnection && wallet?.connection !== undefined && wallet?.account !== undefined) {
             submit();
@@ -91,7 +112,7 @@ export default function Home() {
 
     return (
         <>
-            <Row className='mt-n4'>
+            <Row className="mt-n4">
                 {electionConfig?.candidates.map((c) => (
                     <Candidate
                         key={c.index}

@@ -29,6 +29,9 @@ interface CandidateDetails {
     descriptionUrl: string;
 }
 
+/**
+ * Verifies that an object is conforms to the {@linkcode CandidateDetails} type
+ */
 function verifyCandidateDetails(details: unknown): details is CandidateDetails {
     return (
         typeof details === 'object' &&
@@ -57,7 +60,9 @@ export interface ElectionConfig
     extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates' | 'election_start' | 'election_end'> {
     /** The election candidates */
     candidates: IndexedCandidateDetails[];
+    /** The election start time */
     start: Date;
+    /** The election end time */
     end: Date;
 }
 
@@ -97,15 +102,19 @@ async function getCandidate({ url, hash }: ChecksumUrl, index: number): Promise<
     }
 }
 
+/**
+ * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
+ */
 const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
 
-let electionConfigInitialized = false;
-electionConfigBaseAtom.onMount = (setAtom) => {
-    if (electionConfigInitialized) {
+/**
+ * Ensures an election config is fetched if the primitive atom holds no value.
+ */
+const ensureElectionConfigAtom = atomEffect((get, set) => {
+    if (get(electionConfigBaseAtom) !== undefined) {
         return;
     }
 
-    electionConfigInitialized = true;
     void getElectionConfig().then(async (config) => {
         if (config === undefined) {
             return undefined;
@@ -119,15 +128,18 @@ electionConfigBaseAtom.onMount = (setAtom) => {
             end: Timestamp.toDate(config.election_end),
             candidates,
         };
-        setAtom(mappedConfig);
+        set(electionConfigBaseAtom, mappedConfig);
     });
-};
+});
 
 /**
  * Holds the configuration of the election contract. A reference to this should always be kept in the application root
  * to avoid having to fetch the configuration more than once.
  */
-export const electionConfigAtom = atom((get) => get(electionConfigBaseAtom));
+export const electionConfigAtom = atom((get) => {
+    get(ensureElectionConfigAtom);
+    return get(electionConfigBaseAtom);
+});
 
 /**
  * Exposes a function for opening the wallet connection interface (if available).
@@ -161,14 +173,18 @@ export const enum BallotSubmissionStatus {
     Rejected,
     /** Approved by the node */
     Approved,
-    /** Included in the election tally */
-    Included,
     /** Excluded from the election tally (could not verify the ballot submission) */
-    Excluded,
+    Discarded,
+    /** Included in the election tally */
+    Verified,
 }
 
-interface StoredBallotSubmission {
+/**
+ * The type used to represent serialized ballot submissions.
+ */
+interface SerializableBallotSubmission {
     transaction: TransactionHash.Serializable;
+    submitted: string;
     status: BallotSubmissionStatus;
 }
 
@@ -179,6 +195,7 @@ export class BallotSubmission {
     constructor(
         public readonly transaction: TransactionHash.Type,
         public readonly status: BallotSubmissionStatus,
+        public readonly submitted: Date = new Date(),
     ) { }
 
     /** Construct ballot submission from {@linkcode TransactionHash.Type} with "Committed" status */
@@ -186,14 +203,22 @@ export class BallotSubmission {
         return new BallotSubmission(transaction, BallotSubmissionStatus.Committed);
     }
 
-    /** Construct ballot submission from {@linkcode StoredBallotSubmission} */
-    public static fromSerializable(value: StoredBallotSubmission) {
-        return new BallotSubmission(TransactionHash.fromHexString(value.transaction), value.status);
+    /** Construct ballot submission from {@linkcode SerializableBallotSubmission} */
+    public static fromSerializable(value: SerializableBallotSubmission) {
+        return new BallotSubmission(
+            TransactionHash.fromHexString(value.transaction),
+            value.status,
+            new Date(value.submitted),
+        );
     }
 
-    /** Represent ballot submission as {@linkcode StoredBallotSubmission} */
-    public toJSON(): StoredBallotSubmission {
-        return { transaction: TransactionHash.toHexString(this.transaction), status: this.status };
+    /** Represent ballot submission as {@linkcode SerializableBallotSubmission} */
+    public toJSON(): SerializableBallotSubmission {
+        return {
+            transaction: TransactionHash.toHexString(this.transaction),
+            status: this.status,
+            submitted: this.submitted.toISOString(),
+        };
     }
 
     /** Change the status of a ballot submission. Returns new ballot submission instead of mutating. */
@@ -207,10 +232,13 @@ export class BallotSubmission {
     }
 }
 
+/**
+ * Provides a list of {@linkcode SerializableBallotSubmission} items mapped by {@linkcode AccountAddress.Type}
+ */
 const submittedBallotsAtomFamily = atomFamily(
     (account: AccountAddress.Type) =>
         /** Base atom which handles storing the values both in memory and in localstorage */
-        atomWithStorage<StoredBallotSubmission[]>(
+        atomWithStorage<SerializableBallotSubmission[]>(
             `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
             [],
             undefined,
@@ -219,6 +247,9 @@ const submittedBallotsAtomFamily = atomFamily(
     (a, b) => a.address === b.address,
 );
 
+/**
+ * Provides a list of {@linkcode BallotSubmission} items for the currently selected account.
+ */
 const currentAccountSubmittedBallotsAtom = atom(
     (get) => {
         const wallet = get(activeWalletAtom);
@@ -241,7 +272,6 @@ const currentAccountSubmittedBallotsAtom = atom(
         );
     },
 );
-
 
 /**
  * Monitors the status of a single {@linkcode BallotSubmission} until `abortSignal` is received.
@@ -272,6 +302,11 @@ async function monitorAccountSubmission(
     }
 }
 
+/**
+ * An effect which is triggered when the submitted ballots of the currently active account changes, which results in
+ * monitoring the submission status for each submitted ballot. Monitoring of submitted ballots is restarted when changes
+ * occur, and aborted completely when the atom is unmounted.
+ */
 const ballotMonitorAtom = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
     const ballots = get(currentAccountSubmittedBallotsAtom) ?? [];
@@ -291,10 +326,13 @@ const ballotMonitorAtom = atomEffect((get, set) => {
     const abortController = new AbortController();
     const setStatus = (ballot: BallotSubmission) => (status: BallotSubmissionStatus) => {
         const current = expectValue(get(currentAccountSubmittedBallotsAtom), 'Expected submitted ballots');
-        set(currentAccountSubmittedBallotsAtom, current.map(b => b.eq(ballot) ? b.changeStatus(status): b));
-    }
+        set(
+            currentAccountSubmittedBallotsAtom,
+            current.map((b) => (b.eq(ballot) ? b.changeStatus(status) : b)),
+        );
+    };
 
-    ballots.forEach(b => void monitorAccountSubmission(b, grpc, abortController.signal, setStatus(b)))
+    ballots.forEach((b) => void monitorAccountSubmission(b, grpc, abortController.signal, setStatus(b)));
 
     return () => {
         abortController.abort();

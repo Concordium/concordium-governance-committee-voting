@@ -25,4 +25,22 @@
         font-size: 12px;
         font-weight: $font-weight-normal;
     }
+
+    &__submission {
+        font-size: 12px;
+
+        &--inactive {
+            .progress-bar:not(.bg-danger) {
+                background: $gray-400 !important;
+            }
+        }
+    }
+
+    &__submission-status {
+        font-size: 11px;
+
+        .active-connection__submission--inactive & {
+            text-decoration: line-through;
+        }
+    }
 }

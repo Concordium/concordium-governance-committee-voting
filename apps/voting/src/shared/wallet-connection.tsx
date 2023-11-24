@@ -37,7 +37,9 @@ export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
  * {@linkcode walletConnectContext}.
  */
 export type ConnectorContext = WalletConnector & {
+    /** Shows if the connector is in the process of connecting */
     isConnecting: boolean;
+    /** Shows if the connector is active */
     isActive: boolean;
 };
 
@@ -73,6 +75,13 @@ export function useWalletConnect() {
     return useContext(walletConnectContext);
 }
 
+/**
+ * Hook for managing connections of a {@linkcode WalletConnector}.
+ *
+ * @param wc - A {@linkcode WalletConnector} to use.
+ *
+ * @returns A corresponding {@linkcode ConnectorContext}
+ */
 function useWalletConnector(wc: WalletConnector): ConnectorContext {
     const wallet = useAtomValue(activeWalletAtom);
     const [isConnecting, setIsConnecting] = useState(false);
@@ -109,6 +118,9 @@ type WalletProviderProps = PropsWithChildren<{
     connector: WalletConnector;
 }>;
 
+/**
+ * Provides the context of a single {@linkcode WalletConnector} to the component tree below
+ */
 function WalletProvider({ connector, children }: WalletProviderProps) {
     const contextValue = useWalletConnector(connector);
 

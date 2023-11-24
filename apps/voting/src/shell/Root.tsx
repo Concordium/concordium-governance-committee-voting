@@ -5,6 +5,9 @@ import { electionConfigAtom } from '@shared/store';
 
 const store = createStore();
 
+/**
+ * Component which ensures selected parts of global state stays in memory for the lifetime of the application
+ */
 function EnsureGlobalState() {
     useAtomValue(electionConfigAtom);
     return null;

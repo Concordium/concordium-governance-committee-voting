@@ -18,6 +18,9 @@ import { TypedSmartContractParameters, WalletConnection } from '@concordium/wall
 
 export * as ElectionContract from '../__generated__/election-contract/module_ccd_gc_election';
 
+/**
+ * Representation of a url with associated checksum from the election contract.
+ */
 export interface ChecksumUrl {
     url: string;
     hash: HexString;
@@ -28,6 +31,16 @@ const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
 
 const REGISTER_VOTES_SCHEMA = toBuffer('EAIUAAIAAAAPAAAAY2FuZGlkYXRlX2luZGV4AggAAABoYXNfdm90ZQE=', 'base64');
 
+/**
+ * Register a ballot in the election contract.
+ *
+ * @param ballot - The ballot to register the votes for
+ * @param connection - The wallet connection to use for sending the transaction
+ * @param accountAddress - The account address to send from
+ *
+ * @throws If the contract could not be updated
+ * @returns A promise resolving with the corresponding {@linkcode TransactionHash.Type}
+ */
 export async function registerVotes(
     ballot: ElectionContract.RegisterVotesParameter,
     connection: WalletConnection,
@@ -55,6 +68,10 @@ export async function registerVotes(
         .then(TransactionHash.fromHexString);
 }
 
+/**
+ * Gets the configuration of the election contract.
+ * @returns A promise resolving with the corresponding {@linkcode ElectionContract.ReturnValueViewConfig}
+ */
 export async function getElectionConfig() {
     const result = await ElectionContract.dryRunViewConfig(contract, Parameter.empty());
     return ElectionContract.parseReturnValueViewConfig(result);
