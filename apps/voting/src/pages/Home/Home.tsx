@@ -11,6 +11,7 @@ import {
     selectConnectionAtom,
     activeWalletAtom,
 } from '@shared/store';
+import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
@@ -22,9 +23,20 @@ interface CandidateProps {
  * Renders an election candidate
  */
 function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isSelected }: CandidateProps) {
+    const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
+    const handleClick = () => {
+        if (isElectionOpen) {
+            onClick();
+        }
+    };
     return (
         <Col className="mt-4" xs={24} md={12} xl={8}>
-            <Card role="button" onClick={onClick} className={clsx('candidate', isSelected && 'candidate--selected')}>
+            <Card
+                role="button"
+                onClick={handleClick}
+                aria-disabled={!isElectionOpen}
+                className={clsx('candidate', isSelected && isElectionOpen && 'candidate--selected')}
+            >
                 <Image src={imageUrl} alt={name} />
                 <Card.Body className="candidate__body">
                     <Card.Title>{name}</Card.Title>
@@ -53,6 +65,7 @@ export default function Home() {
     const wallet = useAtomValue(activeWalletAtom);
     const openSelectConnection = useAtomValue(selectConnectionAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
+    const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -122,11 +135,13 @@ export default function Home() {
                     />
                 ))}
             </Row>
-            <div className="d-flex justify-content-center mt-4">
-                <Button className="text-center" variant="primary" onClick={submit}>
-                    Submit
-                </Button>
-            </div>
+            {isElectionOpen && (
+                <div className="d-flex justify-content-center mt-4">
+                    <Button className="text-center" variant="primary" onClick={submit}>
+                        Submit
+                    </Button>
+                </div>
+            )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">
                 <Modal.Header closeButton>
                     <Modal.Title>Modal heading</Modal.Title>

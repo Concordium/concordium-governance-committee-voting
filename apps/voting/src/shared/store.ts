@@ -196,7 +196,7 @@ export class BallotSubmission {
         public readonly transaction: TransactionHash.Type,
         public readonly status: BallotSubmissionStatus,
         public readonly submitted: Date = new Date(),
-    ) { }
+    ) {}
 
     /** Construct ballot submission from {@linkcode TransactionHash.Type} with "Committed" status */
     public static fromTransaction(transaction: TransactionHash.Type) {

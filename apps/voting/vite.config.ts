@@ -15,7 +15,7 @@ if (!process.env.CCD_ELECTION_CONTRACT_ADDRESS?.match(/<\d*,\d*>/)) {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [react({plugins: [['@swc-jotai/react-refresh', {}]]}), tsconfigPaths()],
+    plugins: [react({ plugins: [['@swc-jotai/react-refresh', {}]] }), tsconfigPaths()],
     define: {
         'process.env': {
             CCD_ELECTION_NETWORK: process.env.CCD_ELECTION_NETWORK ?? 'testnet',

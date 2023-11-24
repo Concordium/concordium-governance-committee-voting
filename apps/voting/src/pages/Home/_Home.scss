@@ -2,6 +2,10 @@
     flex-direction: row;
     overflow: hidden;
 
+    &[aria-disabled='true'] {
+        cursor: default;
+    }
+
     &__body {
         border-right: 10px solid $gray-300;
         transition: border-color 0.1s linear;

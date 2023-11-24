@@ -157,7 +157,7 @@ const stepToProgress = (step: 1 | 2 | 3) => Math.ceil((step / 3) * 100);
 /**
  * Map of {@linkcode BallotSubmissionStatus} to {@linkcode ProgressBarProps}
  */
-const statusProgress: {[p in BallotSubmissionStatus]: Partial<ProgressBarProps>} = {
+const statusProgress: { [p in BallotSubmissionStatus]: Partial<ProgressBarProps> } = {
     [BallotSubmissionStatus.Committed]: { now: stepToProgress(1), variant: 'info', animated: true },
     [BallotSubmissionStatus.Rejected]: { now: stepToProgress(1), variant: 'danger' },
     [BallotSubmissionStatus.Approved]: { now: stepToProgress(2), variant: 'info', animated: true },
@@ -167,14 +167,13 @@ const statusProgress: {[p in BallotSubmissionStatus]: Partial<ProgressBarProps>}
 /**
  * Map of {@linkcode BallotSubmissionStatus} to status description
  */
-const showStatus: {[p in BallotSubmissionStatus]: string} = {
+const showStatus: { [p in BallotSubmissionStatus]: string } = {
     [BallotSubmissionStatus.Committed]: 'Ballot submitted to chain',
     [BallotSubmissionStatus.Rejected]: 'Ballot rejected by chain',
     [BallotSubmissionStatus.Approved]: 'Ballot finalized on chain',
     [BallotSubmissionStatus.Discarded]: 'Ballot verification failed',
     [BallotSubmissionStatus.Verified]: 'Ballot has been included in election tally',
 };
-
 
 /**
  * Shows the details and actions of the connected account.

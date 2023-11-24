@@ -1,4 +1,4 @@
-import { AccountAddress } from "@concordium/web-sdk";
+import { AccountAddress } from '@concordium/web-sdk';
 
 /**
  * Type predicate for checking if a value is defined.
