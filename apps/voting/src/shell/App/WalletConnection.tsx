@@ -138,13 +138,13 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
 });
 
 const activeConn = {
-    Show: ActiveConnection,
+    Trigger: ActiveConnection,
     Title: ActiveConnectionTitle,
     Body: ActiveConnectionBody,
 };
 
 const selectConn: typeof activeConn = {
-    Show: SelectConnection,
+    Trigger: SelectConnection,
     Title: SelectConnectionTitle,
     Body: SelectConnectionBody,
 };
@@ -159,11 +159,11 @@ export function WalletConnection() {
         return () => setSelectConnectionHandler(RESET);
     }, [setSelectConnectionHandler]);
 
-    const { Show, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
+    const { Trigger, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
 
     return (
         <>
-            <Show />
+            <Trigger />
             <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
                 <Offcanvas.Header closeButton>
                     <Title />

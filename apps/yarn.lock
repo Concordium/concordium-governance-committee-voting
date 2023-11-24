@@ -3658,6 +3658,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jotai-effect@npm:^0.2.3":
+  version: 0.2.3
+  resolution: "jotai-effect@npm:0.2.3"
+  peerDependencies:
+    jotai: ">=2.4.3"
+  checksum: 0f33747d2231e9c763bdc8dae0b25a2575c3fcac73c4c8e7bc28e5daffd8ca8b801c26ebc6e0c5139c95ae544374d5e664c947e31888ee7fe34b5c45643fcba3
+  languageName: node
+  linkType: hard
+
 "jotai@npm:^2.5.1":
   version: 2.5.1
   resolution: "jotai@npm:2.5.1"
@@ -5672,6 +5681,7 @@ __metadata:
     eslint: "npm:^8.52.0"
     glob: "npm:^10.3.10"
     jotai: "npm:^2.5.1"
+    jotai-effect: "npm:^0.2.3"
     prettier: "npm:^3.0.3"
     react: "npm:^18.2.0"
     react-bootstrap: "npm:^2.9.1"

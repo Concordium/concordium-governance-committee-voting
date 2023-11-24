@@ -11,9 +11,10 @@ import {
 import { Buffer } from 'buffer/';
 import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
+import { atomEffect } from 'jotai-effect';
 
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
-import { isDefined } from './util';
+import { expectValue, isDefined } from './util';
 import { NETWORK } from './constants';
 
 /**
@@ -52,7 +53,8 @@ export interface IndexedCandidateDetails extends CandidateDetails {
 /**
  * Representation of the election configration.
  */
-export interface ElectionConfig extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates' | 'election_start' | 'election_end'> {
+export interface ElectionConfig
+    extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates' | 'election_start' | 'election_end'> {
     /** The election candidates */
     candidates: IndexedCandidateDetails[];
     start: Date;
@@ -179,6 +181,11 @@ export class BallotSubmission {
         public readonly status: BallotSubmissionStatus,
     ) { }
 
+    /** Construct ballot submission from {@linkcode TransactionHash.Type} with "Committed" status */
+    public static fromTransaction(transaction: TransactionHash.Type) {
+        return new BallotSubmission(transaction, BallotSubmissionStatus.Committed);
+    }
+
     /** Construct ballot submission from {@linkcode StoredBallotSubmission} */
     public static fromSerializable(value: StoredBallotSubmission) {
         return new BallotSubmission(TransactionHash.fromHexString(value.transaction), value.status);
@@ -200,6 +207,42 @@ export class BallotSubmission {
     }
 }
 
+const submittedBallotsAtomFamily = atomFamily(
+    (account: AccountAddress.Type) =>
+        /** Base atom which handles storing the values both in memory and in localstorage */
+        atomWithStorage<StoredBallotSubmission[]>(
+            `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
+            [],
+            undefined,
+            { unstable_getOnInit: true }, // Needed to load values from localstorage on init.
+        ),
+    (a, b) => a.address === b.address,
+);
+
+const currentAccountSubmittedBallotsAtom = atom(
+    (get) => {
+        const wallet = get(activeWalletAtom);
+        if (wallet?.account === undefined) {
+            return undefined;
+        }
+
+        const baseAtom = submittedBallotsAtomFamily(wallet.account);
+        return get(baseAtom).map(BallotSubmission.fromSerializable);
+    },
+    (get, set, update: BallotSubmission[]) => {
+        const account = expectValue(
+            get(activeWalletAtom)?.account,
+            'Cannot update ballot submissions without an active account',
+        );
+        const baseAtom = submittedBallotsAtomFamily(account);
+        set(
+            baseAtom,
+            update.map((u) => u.toJSON()),
+        );
+    },
+);
+
+
 /**
  * Monitors the status of a single {@linkcode BallotSubmission} until `abortSignal` is received.
  */
@@ -209,166 +252,67 @@ async function monitorAccountSubmission(
     abortSignal: AbortSignal,
     setStatus: (status: BallotSubmissionStatus) => void,
 ) {
+    abortSignal.addEventListener('abort', () => {
+        console.log('Aborted monitoring ballot submission for:', submission);
+    });
+
     if (submission.status === BallotSubmissionStatus.Committed) {
         const outcome = await grpc.waitForTransactionFinalization(submission.transaction);
         if (outcome.summary.type !== TransactionSummaryType.AccountTransaction) {
             throw new Error('Expected account transaction');
         }
 
-        const success = outcome.summary.transactionType !== TransactionKindString.Failed;
-        setStatus(success ? BallotSubmissionStatus.Approved : BallotSubmissionStatus.Rejected);
+        if (!abortSignal.aborted) {
+            const success = outcome.summary.transactionType !== TransactionKindString.Failed;
+            setStatus(success ? BallotSubmissionStatus.Approved : BallotSubmissionStatus.Rejected);
+        }
     }
     if (submission.status === BallotSubmissionStatus.Approved) {
-        return new Promise<void>((resolve) => {
-            abortSignal.addEventListener('abort', () => {
-                console.log('Aborted monitoring ballot submission for:', submission);
-                resolve();
-            });
-            // TODO: Poll the election server
-        });
+        // TODO: Poll the election server
     }
 }
 
-function atomAbort() {
-    const baseAtom = atom<AbortController>(new AbortController());
+const ballotMonitorAtom = atomEffect((get, set) => {
+    const wallet = get(activeWalletAtom);
+    const ballots = get(currentAccountSubmittedBallotsAtom) ?? [];
+    if (wallet === undefined || ballots.length === 0) {
+        return;
+    }
 
-    const derivedAtom = atom(
-        (get) => get(baseAtom).signal,
-        (get, set) => {
-            const current = get(baseAtom);
-            current.abort();
-            set(baseAtom, (v) => (v.signal.aborted ? new AbortController() : v));
-        },
-    );
-    derivedAtom.onMount = (abort) => () => abort();
+    // Get the best possible GRPC client: browser wallet > NETWORK
+    let grpc: ConcordiumGRPCClient;
+    if (wallet?.connection instanceof BrowserWalletConnector) {
+        grpc = new ConcordiumGRPCClient(wallet.connection.getGrpcTransport());
+    } else {
+        const grpcOpts = expectValue(NETWORK.grpcOpts, 'Expected GRPC options to be available');
+        grpc = new ConcordiumGRPCClient(new GrpcWebFetchTransport(grpcOpts));
+    }
 
-    return atom((get) => get(derivedAtom));
-}
+    const abortController = new AbortController();
+    const setStatus = (ballot: BallotSubmission) => (status: BallotSubmissionStatus) => {
+        const current = expectValue(get(currentAccountSubmittedBallotsAtom), 'Expected submitted ballots');
+        set(currentAccountSubmittedBallotsAtom, current.map(b => b.eq(ballot) ? b.changeStatus(status): b));
+    }
 
-interface InitAction {
-    type: 'init';
-}
+    ballots.forEach(b => void monitorAccountSubmission(b, grpc, abortController.signal, setStatus(b)))
 
-interface AddAction {
-    type: 'add';
-    submission: TransactionHash.Type;
-}
-
-type Action = InitAction | AddAction;
-
-const submittedBallotsFamily = atomFamily((account: AccountAddress.Type) => {
-    /** Base atom which handles storing the values both in memory and in localstorage */
-    const baseAtom = atomWithStorage<StoredBallotSubmission[]>(
-        `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
-        [],
-        undefined,
-        { unstable_getOnInit: true }, // Needed to load values from localstorage on init.
-    );
-
-    /** Handles converting to/from serializable format */
-    const jsonAtom = atom(
-        (get) => {
-            const json = get(baseAtom);
-            return json.map(BallotSubmission.fromSerializable);
-        },
-        (_, set, update: BallotSubmission[]) => {
-            set(
-                baseAtom,
-                update.map((u) => u.toJSON()),
-            );
-        },
-    );
-
-    /** Holds the abort controller used to stop monitoring on unmount */
-    const abortAtom = atomAbort();
-
-    /** Polls for submission status updates */
-    const monitorAtom = atom(
-        (get) => {
-            get(abortAtom); // To trigger `onMount`
-        },
-        (get, set, action: Action) => {
-            const ballots = get(jsonAtom);
-
-            // Figure out which ballots to monitor status for
-            let monitorList: BallotSubmission[] = [];
-            if (action.type === 'init') {
-                monitorList = ballots;
-            } else if (action.type === 'add') {
-                const ballot = new BallotSubmission(action.submission, BallotSubmissionStatus.Committed);
-                set(jsonAtom, [...ballots, ballot]);
-                monitorList = [ballot];
-            }
-
-            // Get the best possible GRPC client: browser wallet > NETWORK
-            const wallet = get(activeWalletAtom);
-            let grpc: ConcordiumGRPCClient;
-            if (wallet?.connection instanceof BrowserWalletConnector) {
-                grpc = new ConcordiumGRPCClient(wallet.connection.getGrpcTransport());
-            } else if (NETWORK.grpcOpts === undefined) {
-                throw new Error('Expected GRPC options to be available');
-            } else {
-                grpc = new ConcordiumGRPCClient(new GrpcWebFetchTransport(NETWORK.grpcOpts));
-            }
-
-            const abortSignal = get(abortAtom);
-            const setStatus = (submission: BallotSubmission) => (status: BallotSubmissionStatus) => {
-                set(
-                    jsonAtom,
-                    get(jsonAtom).map((b) => (b.eq(submission) ? b.changeStatus(status) : b)),
-                );
-            };
-            // Start monitoring the status for the ballot submissions
-            monitorList.forEach(
-                (monitorListItem) =>
-                    void monitorAccountSubmission(monitorListItem, grpc, abortSignal, setStatus(monitorListItem)),
-            );
-        },
-    );
-    monitorAtom.onMount = (setter) => {
-        console.log('monitorAtom init');
-        void setter({ type: 'init' });
+    return () => {
+        abortController.abort();
     };
-
-    /** Exposes `AddAction` update and parsed value */
-    const derivedAtom = atom(
-        (get) => {
-            get(monitorAtom); // To trigger `onMount`
-            return get(jsonAtom);
-        },
-        (_, set, update: AddAction) => {
-            set(monitorAtom, update);
-        },
-    );
-    return derivedAtom;
 });
 
 /**
  * Holds the ballots submitted for the currently selected account (if any).
  */
 export const submittedBallotsAtom = atom((get) => {
-    const wallet = get(activeWalletAtom);
-    // FIXME: doesn't get updated
-
-    if (wallet?.account === undefined) {
-        return undefined;
-    }
-
-    return get(submittedBallotsFamily(wallet.account));
+    get(ballotMonitorAtom); // Subscribe to status updates
+    return get(currentAccountSubmittedBallotsAtom);
 });
 
 /**
  * Exposes an atom setter, which adds a ballot submission to the submitted ballots of the currently selected account.
  */
 export const addSubmittedBallotAtom = atom(null, (get, set, submission: TransactionHash.Type) => {
-    const wallet = get(activeWalletAtom);
-    if (wallet?.account === undefined) {
-        throw new Error('Cannot add ballot submission without a connected account');
-    }
-
-    const base = submittedBallotsFamily(wallet?.account);
-    set(base, {
-        type: 'add',
-        submission,
-    });
+    const ballots = expectValue(get(currentAccountSubmittedBallotsAtom), 'Could not get ballot submissions');
+    set(currentAccountSubmittedBallotsAtom, [...ballots, BallotSubmission.fromTransaction(submission)]);
 });

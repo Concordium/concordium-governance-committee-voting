@@ -16,6 +16,14 @@ export function updateMapEntry<K, V>(map: Map<K, V>, key: K | undefined, value: 
     return res;
 }
 
+export function expectValue<T>(value: T | undefined, error: string): T {
+    if (value === undefined) {
+        throw new Error(error);
+    }
+
+    return value;
+}
+
 export function accountShowShort(account: AccountAddress.Type, numChars = 8): string {
     const half = numChars / 2;
     const start = Math.ceil(half);
