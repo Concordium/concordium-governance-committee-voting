@@ -144,7 +144,7 @@ export const electionConfigAtom = atom((get) => {
 /**
  * Exposes a function for opening the wallet connection interface (if available).
  */
-export const selectConnectionAtom = atomWithReset<(() => void) | undefined>(undefined);
+export const connectionViewAtom = atomWithReset<(() => void) | undefined>(undefined);
 
 /**
  * Representation of a connection to a wallet.

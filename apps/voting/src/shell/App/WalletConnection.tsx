@@ -10,7 +10,7 @@ import {
     BallotSubmissionStatus,
     Wallet,
     activeWalletAtom,
-    selectConnectionAtom,
+    connectionViewAtom,
     submittedBallotsAtom,
 } from '@shared/store';
 import { AccountAddress, TransactionHash } from '@concordium/web-sdk';
@@ -69,7 +69,7 @@ function ConnectBrowser() {
  * Trigger to open sidebar when no connection is available
  */
 function SelectConnectionTrigger() {
-    const showSidebar = useAtomValue(selectConnectionAtom);
+    const showSidebar = useAtomValue(connectionViewAtom);
 
     return (
         <Button variant="primary" onClick={() => showSidebar?.()}>
@@ -127,7 +127,7 @@ function withActiveAccount<P>(Component: React.ComponentType<P & WalletWithAccou
  * @throws if used without a connected account in the global store.
  */
 const ActiveConnectionTrigger = withActiveAccount(({ account }) => {
-    const showSidebar = useAtomValue(selectConnectionAtom);
+    const showSidebar = useAtomValue(connectionViewAtom);
 
     return (
         <Button variant="outline-success" onClick={() => showSidebar?.()}>
@@ -193,6 +193,11 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
             </section>
             <section>
                 <h5>Ballot submissions</h5>
+                {submissions?.length === 0 && (
+                    <span className="active-connection__no-submissions text-muted">
+                        No submissions stored for the selected account
+                    </span>
+                )}
                 {submissions?.map(({ status, transaction, submitted }, i, arr) => {
                     const transactionString = TransactionHash.toHexString(transaction);
                     const isLatest = i === arr.length - 1;
@@ -242,12 +247,12 @@ const selectConn: typeof activeConn = {
 export function WalletConnection() {
     const wallet = useAtomValue(activeWalletAtom);
     const [showModal, setShowModal] = useState(false);
-    const setSelectConnectionHandler = useSetAtom(selectConnectionAtom);
+    const setConnectionViewHandler = useSetAtom(connectionViewAtom);
 
     useEffect(() => {
-        setSelectConnectionHandler(() => () => setShowModal(true)); // atom setter interprets a function as a `SetStateAction`, which is why we pass an action which returns a function.
-        return () => setSelectConnectionHandler(RESET);
-    }, [setSelectConnectionHandler]);
+        setConnectionViewHandler(() => () => setShowModal(true)); // atom setter interprets a function as a `SetStateAction`, which is why we pass an action which returns a function.
+        return () => setConnectionViewHandler(RESET);
+    }, [setConnectionViewHandler]);
 
     const { Trigger, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
 

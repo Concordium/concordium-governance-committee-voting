@@ -8,7 +8,7 @@ import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
     electionConfigAtom,
-    selectConnectionAtom,
+    connectionViewAtom,
     activeWalletAtom,
 } from '@shared/store';
 import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
@@ -63,7 +63,7 @@ export default function Home() {
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [awaitConnection, setAwaitConnection] = useState(false);
     const wallet = useAtomValue(activeWalletAtom);
-    const openSelectConnection = useAtomValue(selectConnectionAtom);
+    const openViewConnection = useAtomValue(connectionViewAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
 
@@ -96,6 +96,7 @@ export default function Home() {
         console.log('submitted ballot:', transaction);
 
         closeConfirm();
+        openViewConnection?.();
     };
 
     /**
@@ -103,13 +104,13 @@ export default function Home() {
      * made prior to opening the modal.
      */
     const submit = useCallback(() => {
-        if ((wallet?.connection === undefined || wallet?.account === undefined) && openSelectConnection !== undefined) {
-            openSelectConnection();
+        if ((wallet?.connection === undefined || wallet?.account === undefined) && openViewConnection !== undefined) {
+            openViewConnection();
             setAwaitConnection(true);
         } else {
             setConfirmOpen(true);
         }
-    }, [wallet?.connection, openSelectConnection, wallet?.account]);
+    }, [wallet?.connection, openViewConnection, wallet?.account]);
 
     // Handle connecting due to a submission attempt while not connected.
     useEffect(() => {
