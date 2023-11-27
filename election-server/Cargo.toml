@@ -7,7 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+chrono = "0.4"
 clap = { version = "4.4", features = ["derive", "env"] }
 concordium-rust-sdk = "3.2"
-tokio = "1.34"
+futures = "0.3"
+tokio = { version = "1.34", features = ["rt-multi-thread", "signal"]}
 tokio-postgres = "0.7"
+tonic = {version = "0.10", features = ["tls", "tls-roots"]} # Use system trust roots.
