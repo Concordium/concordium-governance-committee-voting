@@ -4,12 +4,22 @@ use std::sync::{
 };
 
 use anyhow::{anyhow, Context};
+use chrono::{DateTime, Utc};
 use clap::Parser;
+use concordium_governance_committee_election::RegisterVotesParameter;
 use concordium_rust_sdk::{
-    types::{hashes::BlockHash, AbsoluteBlockHeight},
+    smart_contracts::common as contracts_common,
+    types::{
+        hashes::{BlockHash, TransactionHash},
+        smart_contracts::OwnedReceiveName,
+        AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
+    },
     v2::{Client, Endpoint},
 };
+use futures::{future, StreamExt, TryFutureExt, TryStreamExt};
+use serde::Serialize;
 use tokio::task::JoinHandle;
+use tokio_postgres::types::{Json, ToSql};
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser)]
@@ -32,6 +42,13 @@ struct Args {
                 application.",
         env = "GC_ELECTION_DB_CONNECTION"
     )]
+    /// The contract address used to filter contract updates
+    #[arg(
+        long = "contract-address",
+        help = "The contract address to index transactions for",
+        env = "GC_ELECTION_DB_CONNECTION"
+    )]
+    contract_address: ContractAddress,
     db_connection: tokio_postgres::config::Config,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
@@ -43,13 +60,29 @@ struct Args {
     max_behind_s: u32,
 }
 
+/// Describes an election ballot submission
+#[derive(Serialize, Debug)]
+struct BallotSubmission {
+    /// The account which submitted the ballot
+    account: contracts_common::AccountAddress,
+    /// The ballot submitted
+    ballot: RegisterVotesParameter,
+    /// The transaction hash of the ballot submission
+    transaction_hash: TransactionHash,
+    /// Whether the ballot proof could be verified.
+    verified: bool,
+}
+
 /// The data collected for each block.
 struct BlockData {
     /// The hash of the block
     block_hash: BlockHash,
     /// The height of the block
     height: AbsoluteBlockHeight,
-    // TODO: add ballot information
+    /// The block time of the block
+    timestamp: DateTime<Utc>,
+    /// The ballots submitted in the block
+    ballots: Vec<BallotSubmission>,
 }
 
 /// The set of queries used to communicate with the postgres DB.
@@ -90,6 +123,24 @@ impl PreparedStatements {
         } else {
             Ok(None)
         }
+    }
+
+    async fn insert_ballot(
+        &self,
+        db: &tokio_postgres::Client,
+        height: AbsoluteBlockHeight,
+        timestamp: DateTime<Utc>,
+        ballot: BallotSubmission,
+    ) -> Result<(), tokio_postgres::Error> {
+        let params: [&(dyn ToSql + Sync); 6] = [
+            &ballot.transaction_hash.as_ref(),
+            &(height.height as i64),
+            &timestamp.timestamp(),
+            &Json(&ballot.ballot),
+            &ballot.account.0.as_ref(),
+            &false,
+        ];
+        Ok(())
     }
 }
 
@@ -148,7 +199,6 @@ async fn run_db_process(
     height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
     stop_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    println!("CONFIG {:?}", db_connection);
     let mut db = DBConn::create(db_connection.clone(), true)
         .await
         .context("Could not create database connection")?;
@@ -285,20 +335,73 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn get_ballot_submission(
+    transaction: BlockItemSummary,
+    contract_address: &ContractAddress,
+) -> Option<BallotSubmission> {
+    let account = transaction.sender_account()?;
+    let transaction_hash = transaction.hash;
+    let ExecutionTree::V1(ExecutionTreeV1 {
+        address,
+        receive_name,
+        message,
+        ..
+    }) = transaction.contract_update()?
+    else {
+        return None;
+    };
+
+    let expected_receive_name =
+        OwnedReceiveName::new_unchecked("ccd_gc_election.registerVotes".to_string());
+    if address != *contract_address || receive_name != expected_receive_name {
+        return None;
+    };
+
+    let ballot = contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref()).ok()?;
+    let ballot_submission = BallotSubmission {
+        ballot,
+        verified: false, // TODO: verify with election guard
+        account,
+        transaction_hash,
+    };
+    Some(ballot_submission)
+}
+
 /// Process a block, represented by `block_hash`, updating the `db`
 /// corresponding to events captured by the block.
-async fn process_block(node: &mut Client, block_hash: BlockHash) -> anyhow::Result<BlockData> {
+async fn process_block(
+    node: &mut Client,
+    block_hash: BlockHash,
+    contract_address: &ContractAddress,
+) -> anyhow::Result<BlockData> {
     let block_info = node
         .get_block_info(block_hash)
         .await
         .with_context(|| format!("Could not get block info for block: {}", block_hash))?
         .response;
 
-    // TODO: Collect election data (if any) from block.
+    let ballots = node
+        .get_block_transaction_events(block_info.block_hash)
+        .await
+        .with_context(|| format!("Could not get transactions for block: {}", block_hash))?
+        .response
+        .try_filter_map(|transaction| {
+            future::ok(get_ballot_submission(transaction, contract_address))
+        })
+        .try_collect()
+        .await
+        .with_context(|| {
+            format!(
+                "Error while streaming transactions for block: {}",
+                block_hash
+            )
+        })?;
 
     let block_data = BlockData {
         block_hash,
         height: block_info.block_height,
+        timestamp: block_info.block_slot_time,
+        ballots,
     };
 
     Ok(block_data)
@@ -309,6 +412,7 @@ async fn process_block(node: &mut Client, block_hash: BlockHash) -> anyhow::Resu
 /// `block_sender`. Process runs until stopped or an error happens internally.
 async fn node_process(
     node_endpoint: Endpoint,
+    contract_address: &ContractAddress,
     latest_height: &mut Option<AbsoluteBlockHeight>,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
@@ -338,7 +442,7 @@ async fn node_process(
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
-        let block_data = process_block(&mut node, block.block_hash).await?;
+        let block_data = process_block(&mut node, block.block_hash, contract_address).await?;
         if block_sender.send(block_data).await.is_err() {
             println!("The database connection has been closed. Terminating node queries.");
             return Ok(());
@@ -402,6 +506,7 @@ async fn main() -> anyhow::Result<()> {
         // The process keeps running until stopped manually, or an error happens.
         let node_result = node_process(
             node.clone(),
+            &args.contract_address,
             &mut latest_height,
             &block_sender,
             args.max_behind_s,

@@ -607,6 +607,7 @@ dependencies = [
  "chrono",
  "concordium-smart-contract-testing",
  "concordium-std",
+ "serde",
 ]
 
 [[package]]

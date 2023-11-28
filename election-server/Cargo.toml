@@ -10,7 +10,9 @@ anyhow = "1.0"
 chrono = "0.4"
 clap = { version = "4.4", features = ["derive", "env"] }
 concordium-rust-sdk = "3.2"
+concordium_governance_committee_election = { version = "0.1.0", path = "../contracts/concordium-governance-committee-election", features = ["serde"] }
 futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.34", features = ["rt-multi-thread", "signal"]}
-tokio-postgres = "0.7"
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"]}
 tonic = {version = "0.10", features = ["tls", "tls-roots"]} # Use system trust roots.

@@ -565,6 +565,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordium-std"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "194f22e2a418e367e584fb3e26238298578ccc944fd2355d53a4473eb4b47a51"
+dependencies = [
+ "concordium-contracts-common",
+]
+
+[[package]]
 name = "concordium-wasm"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -632,6 +641,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "concordium_governance_committee_election"
+version = "0.1.0"
+dependencies = [
+ "concordium-std",
+ "serde",
 ]
 
 [[package]]
@@ -861,7 +878,9 @@ dependencies = [
  "chrono",
  "clap",
  "concordium-rust-sdk",
+ "concordium_governance_committee_election",
  "futures",
+ "serde",
  "tokio",
  "tokio-postgres",
  "tonic 0.10.2",
@@ -1700,6 +1719,8 @@ dependencies = [
  "bytes",
  "fallible-iterator",
  "postgres-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
