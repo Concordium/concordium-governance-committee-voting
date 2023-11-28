@@ -34,7 +34,7 @@ struct Args {
         env = "GC_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints: Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -44,14 +44,13 @@ struct Args {
                 application.",
         env = "GC_ELECTION_DB_CONNECTION"
     )]
-    db_connection: tokio_postgres::config::Config,
+    db_connection:    tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
-    #[arg(
-        long = "contract-address",
-        help = "The contract address to index transactions for",
-        env = "GC_ELECTION_DB_CONNECTION"
-    )]
+    #[arg(long = "contract-address", env = "GC_ELECTION_DB_CONNECTION")]
     contract_address: ContractAddress,
+    /// The absolute block height to start indexing ballot submissions from
+    #[arg(long = "from-height", env = "GC_ELECTION_FROM_HEIGHT")]
+    from_height:      Option<AbsoluteBlockHeight>,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -59,20 +58,20 @@ struct Args {
         default_value_t = 240,
         env = "KPI_TRACKER_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s: u32,
+    max_behind_s:     u32,
 }
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
 struct BallotSubmission {
     /// The account which submitted the ballot
-    account: contracts_common::AccountAddress,
+    account:          contracts_common::AccountAddress,
     /// The ballot submitted
-    ballot: RegisterVotesParameter,
+    ballot:           RegisterVotesParameter,
     /// The transaction hash of the ballot submission
     transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    verified: bool,
+    verified:         bool,
 }
 
 /// The data collected for each block.
@@ -81,15 +80,15 @@ struct BlockData {
     /// The hash of the block
     block_hash: BlockHash,
     /// The height of the block
-    height: AbsoluteBlockHeight,
+    height:     AbsoluteBlockHeight,
     /// The block time of the block
-    timestamp: DateTime<Utc>,
+    timestamp:  DateTime<Utc>,
     /// The ballots submitted in the block
-    ballots: Vec<BallotSubmission>,
+    ballots:    Vec<BallotSubmission>,
 }
 
 struct DBSettings {
-    latest_height: AbsoluteBlockHeight,
+    latest_height:    Option<AbsoluteBlockHeight>,
     contract_address: ContractAddress,
 }
 
@@ -97,13 +96,13 @@ impl TryFrom<tokio_postgres::Row> for DBSettings {
     type Error = tokio_postgres::Error;
 
     fn try_from(value: tokio_postgres::Row) -> Result<Self, Self::Error> {
-        let raw_latest_height: i64 = value.try_get(0)?;
+        let raw_latest_height: Option<i64> = value.try_get(0)?;
         let raw_contract_index: i64 = value.try_get(1)?;
         let raw_contract_subindex: i64 = value.try_get(2)?;
         let contract_address =
             ContractAddress::new(raw_contract_index as u64, raw_contract_subindex as u64);
         let settings = Self {
-            latest_height: (raw_latest_height as u64).into(),
+            latest_height: raw_latest_height.map(|v| (v as u64).into()),
             contract_address,
         };
         Ok(settings)
@@ -113,11 +112,11 @@ impl TryFrom<tokio_postgres::Row> for DBSettings {
 /// The set of queries used to communicate with the postgres DB.
 struct PreparedStatements {
     /// Insert block into DB
-    insert_ballot: tokio_postgres::Statement,
+    insert_ballot:     tokio_postgres::Statement,
     /// Init the settings table
-    init_settings: tokio_postgres::Statement,
+    init_settings:     tokio_postgres::Statement,
     /// Get the settings stored in the settings table of the DB
-    get_settings: tokio_postgres::Statement,
+    get_settings:      tokio_postgres::Statement,
     /// Get the latest recorded block height from the DB
     set_latest_height: tokio_postgres::Statement,
 }
@@ -128,10 +127,16 @@ impl PreparedStatements {
     async fn new(client: &tokio_postgres::Client) -> Result<Self, tokio_postgres::Error> {
         let insert_ballot = client
             .prepare(
-                "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) \
+                 VALUES ($1, $2, $3, $4, $5)",
             )
             .await?;
-        let init_settings = client.prepare("INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON CONFLICT DO NOTHING").await?;
+        let init_settings = client
+            .prepare(
+                "INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON \
+                 CONFLICT DO NOTHING",
+            )
+            .await?;
         let get_settings = client
             .prepare("SELECT latest_height, contract_index, contract_subindex FROM settings")
             .await?;
@@ -146,8 +151,8 @@ impl PreparedStatements {
         })
     }
 
-    /// Inserts a row in the settings table holding the application configuration. The table is
-    /// constrained to only hold a single row.
+    /// Inserts a row in the settings table holding the application
+    /// configuration. The table is constrained to only hold a single row.
     async fn init_settings(
         &self,
         db: &tokio_postgres::Client,
@@ -180,15 +185,18 @@ impl PreparedStatements {
         Ok(())
     }
 
+    /// Insert a ballot submission into the DB.
     async fn insert_ballot<'a, 'b>(
         &'a self,
         db_tx: &tokio_postgres::Transaction<'b>,
         timestamp: DateTime<Utc>,
         ballot: &BallotSubmission,
-    ) -> Result<(), tokio_postgres::Error> {
+    ) -> anyhow::Result<()> {
+        let timestamp = chrono::NaiveDateTime::from_timestamp_millis(timestamp.timestamp_millis())
+            .context("Expect timestamp to be in range of u64")?;
         let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
-            &timestamp.timestamp(),
+            &timestamp,
             &Json(&ballot.ballot),
             &ballot.account.0.as_ref(),
             &false,
@@ -201,8 +209,8 @@ impl PreparedStatements {
 /// Holds [`tokio_postgres::Client`] to query the database and
 /// [`PreparedStatements`] which can be executed with the client.
 struct DBConn {
-    client: tokio_postgres::Client,
-    prepared: PreparedStatements,
+    client:            tokio_postgres::Client,
+    prepared:          PreparedStatements,
     connection_handle: JoinHandle<()>,
 }
 
@@ -250,7 +258,7 @@ async fn run_db_process(
     db_connection: tokio_postgres::config::Config,
     contract_address: &ContractAddress,
     mut block_receiver: tokio::sync::mpsc::Receiver<BlockData>,
-    height_sender: tokio::sync::oneshot::Sender<AbsoluteBlockHeight>,
+    height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
     stop_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let mut db = DBConn::create(db_connection.clone(), true)
@@ -439,8 +447,9 @@ fn get_ballot_submission(
     Some(ballot_submission)
 }
 
-/// Process a block, represented by `block_hash`, checking it for election ballot submissions to
-/// `contract_address` and returning [`BlockSubmissions`] if any were found.
+/// Process a block, represented by `block_hash`, checking it for election
+/// ballot submissions to `contract_address` and returning [`BlockSubmissions`]
+/// if any were found.
 ///
 /// Returns error if any occur while querying the node
 async fn process_block(
@@ -481,10 +490,10 @@ async fn process_block(
     Ok(block_data)
 }
 
-/// Verify that the contract instance represented by `contract_address` is an election contract. We
-/// check this to avoid failing silently from not indexing any transactions made to the contract
-/// due to either listening to transactions made to the wrong contract of a wrong contract
-/// entrypoint.
+/// Verify that the contract instance represented by `contract_address` is an
+/// election contract. We check this to avoid failing silently from not indexing
+/// any transactions made to the contract due to either listening to
+/// transactions made to the wrong contract of a wrong contract entrypoint.
 async fn verify_contract(
     node: &mut Client,
     contract_address: &ContractAddress,
@@ -510,35 +519,61 @@ async fn verify_contract(
     Ok(())
 }
 
+/// Config spanning accross all `node_pcocess invocatoins.`
+struct NodeProcessConfig {
+    /// Whether the contract has been verified to be an election contract.
+    contract_verified: bool,
+    /// The latest processed height.
+    processed_height:  Option<AbsoluteBlockHeight>,
+}
+
+impl From<Option<AbsoluteBlockHeight>> for NodeProcessConfig {
+    fn from(value: Option<AbsoluteBlockHeight>) -> Self {
+        Self {
+            contract_verified: Default::default(),
+            processed_height:  value,
+        }
+    }
+}
+
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
-    contract_verified: &mut bool,
-    latest_height: &mut AbsoluteBlockHeight,
+    config: &mut NodeProcessConfig,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
 ) -> anyhow::Result<()> {
-    println!(
-        "Processing blocks from height {} using node {}",
-        latest_height,
-        node_endpoint.uri()
-    );
-
     let mut node = Client::new(node_endpoint.clone())
         .await
         .context("Could not connect to node.")?;
 
-    if !*contract_verified {
+    if !config.contract_verified {
         verify_contract(&mut node, contract_address).await?;
-        *contract_verified = true;
+        config.contract_verified = true;
     }
 
+    let from_height = if let Some(height) = config.processed_height {
+        height.next()
+    } else {
+        let (height, ..) = node
+            .find_instance_creation(.., *contract_address)
+            .await
+            .context("Could not find contract instance creation block")?;
+        height
+    };
+
+    println!(
+        "Processing blocks from height {} using node {}",
+        from_height,
+        node_endpoint.uri()
+    );
+
     let mut blocks_stream = node
-        .get_finalized_blocks_from(*latest_height)
+        .get_finalized_blocks_from(from_height)
         .await
         .context("Error querying blocks")?;
     let timeout = std::time::Duration::from_secs(max_behind_s.into());
@@ -556,7 +591,7 @@ async fn node_process(
             return Ok(());
         }
 
-        *latest_height = block.height;
+        config.processed_height = Some(block.height);
     }
 
     println!("Service stopped gracefully from exit signal.");
@@ -594,12 +629,15 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let mut latest_height = height_receiver
+    let latest_height = height_receiver
         .await
         .context("Did not receive height of most recent block recorded in database")?;
+    let latest_height = latest_height.or(args
+        .from_height
+        .map(|v| (v.height.saturating_sub(1)).into()));
 
     let mut latest_successful_node: u64 = 0;
-    let mut contract_verified = false;
+    let mut node_process_config: NodeProcessConfig = latest_height.into();
     let num_nodes = args.node_endpoints.len() as u64;
     for (node, i) in args.node_endpoints.into_iter().cycle().zip(0u64..) {
         let start_height = latest_height;
@@ -624,8 +662,7 @@ async fn main() -> anyhow::Result<()> {
         let node_result = node_process(
             node.clone(),
             &args.contract_address,
-            &mut contract_verified,
-            &mut latest_height,
+            &mut node_process_config,
             &block_sender,
             args.max_behind_s,
             stop_flag.as_ref(),
