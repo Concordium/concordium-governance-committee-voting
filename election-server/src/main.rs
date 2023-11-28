@@ -94,6 +94,8 @@ struct PreparedStatements {
     insert_ballot: tokio_postgres::Statement,
     /// Get the latest recorded block height from the DB
     get_latest_height: tokio_postgres::Statement,
+    /// Get the latest recorded block height from the DB
+    set_latest_height: tokio_postgres::Statement,
 }
 
 impl PreparedStatements {
@@ -102,15 +104,15 @@ impl PreparedStatements {
     async fn new(client: &tokio_postgres::Client) -> Result<Self, tokio_postgres::Error> {
         let insert_ballot = client
             .prepare(
-                "INSERT INTO ballots (transaction_hash, height, timestamp, ballot, account, verified) VALUES ($1, $2, $3, $4, $5, $6)",
+                "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) VALUES ($1, $2, $3, $4, $5)",
             )
             .await?;
-        let get_latest_height = client
-            .prepare("SELECT latest_height FROM settings")
-            .await?;
+        let get_latest_height = client.prepare("SELECT latest_height FROM settings").await?;
+        let set_latest_height = client.prepare("UPDATE settings SET latest_height = $1 WHERE id = true").await?;
         Ok(Self {
             insert_ballot,
             get_latest_height,
+            set_latest_height,
         })
     }
 
@@ -128,21 +130,32 @@ impl PreparedStatements {
         }
     }
 
-    async fn insert_ballot(
-        &self,
-        db: &tokio_postgres::Client,
+    async fn set_latest_height<'a, 'b>(
+        &'a self,
+        db_tx: &tokio_postgres::Transaction<'b>,
         height: AbsoluteBlockHeight,
-        timestamp: DateTime<Utc>,
-        ballot: BallotSubmission,
     ) -> Result<(), tokio_postgres::Error> {
-        let params: [&(dyn ToSql + Sync); 6] = [
+        let params: [&(dyn ToSql + Sync); 1] = [
+            &(height.height as i64)
+        ];
+        db_tx.execute(&self.set_latest_height, &params).await?;
+        Ok(())
+    }
+
+    async fn insert_ballot<'a, 'b>(
+        &'a self,
+        db_tx: &tokio_postgres::Transaction<'b>,
+        timestamp: DateTime<Utc>,
+        ballot: &BallotSubmission,
+    ) -> Result<(), tokio_postgres::Error> {
+        let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
-            &(height.height as i64),
             &timestamp.timestamp(),
             &Json(&ballot.ballot),
             &ballot.account.0.as_ref(),
             &false,
         ];
+        db_tx.execute(&self.insert_ballot, &params).await?;
         Ok(())
     }
 }
@@ -298,8 +311,13 @@ async fn db_insert_block<'a>(
     let tx_ref = &db_tx;
     let prepared_ref = &db.prepared;
 
-    // TODO: Insert block data into DB.
     println!("Received block data: {:?}", block_data);
+
+    prepared_ref.set_latest_height(tx_ref, block_data.height).await?;
+
+    for ballot in block_data.ballots.iter() {
+        prepared_ref.insert_ballot(tx_ref, block_data.timestamp, ballot).await?;
+    }
 
     let now = tokio::time::Instant::now();
     db_tx
@@ -512,12 +530,14 @@ async fn main() -> anyhow::Result<()> {
     let stop_flag = Arc::new(AtomicBool::new(false));
     let shutdown_handle = tokio::spawn(set_shutdown(stop_flag.clone()));
 
-    let db_handle = tokio::spawn(run_db_process(
-        args.db_connection,
-        block_receiver,
-        height_sender,
-        stop_flag.clone(),
-    ));
+    let db_stop = stop_flag.clone();
+    let db_handle = tokio::spawn(async move {
+        let result =
+            run_db_process(args.db_connection, block_receiver, height_sender, db_stop).await;
+        if let Err(error) = result {
+            println!("Error happened while running DB process: {:?}", error);
+        }
+    });
 
     let mut latest_height = height_receiver
         .await
