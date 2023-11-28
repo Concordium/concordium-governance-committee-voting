@@ -106,7 +106,7 @@ impl PreparedStatements {
             )
             .await?;
         let get_latest_height = client
-            .prepare("SELECT height FROM ballots ORDER BY height DESC LIMIT 1")
+            .prepare("SELECT latest_height FROM settings")
             .await?;
         Ok(Self {
             insert_ballot,
