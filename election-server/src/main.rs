@@ -88,12 +88,36 @@ struct BlockData {
     ballots: Vec<BallotSubmission>,
 }
 
+struct DBSettings {
+    latest_height: AbsoluteBlockHeight,
+    contract_address: ContractAddress,
+}
+
+impl TryFrom<tokio_postgres::Row> for DBSettings {
+    type Error = tokio_postgres::Error;
+
+    fn try_from(value: tokio_postgres::Row) -> Result<Self, Self::Error> {
+        let raw_latest_height: i64 = value.try_get(0)?;
+        let raw_contract_index: i64 = value.try_get(1)?;
+        let raw_contract_subindex: i64 = value.try_get(2)?;
+        let contract_address =
+            ContractAddress::new(raw_contract_index as u64, raw_contract_subindex as u64);
+        let settings = Self {
+            latest_height: (raw_latest_height as u64).into(),
+            contract_address,
+        };
+        Ok(settings)
+    }
+}
+
 /// The set of queries used to communicate with the postgres DB.
 struct PreparedStatements {
     /// Insert block into DB
     insert_ballot: tokio_postgres::Statement,
-    /// Get the latest recorded block height from the DB
-    get_latest_height: tokio_postgres::Statement,
+    /// Init the settings table
+    init_settings: tokio_postgres::Statement,
+    /// Get the settings stored in the settings table of the DB
+    get_settings: tokio_postgres::Statement,
     /// Get the latest recorded block height from the DB
     set_latest_height: tokio_postgres::Statement,
 }
@@ -107,37 +131,51 @@ impl PreparedStatements {
                 "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) VALUES ($1, $2, $3, $4, $5)",
             )
             .await?;
-        let get_latest_height = client.prepare("SELECT latest_height FROM settings").await?;
-        let set_latest_height = client.prepare("UPDATE settings SET latest_height = $1 WHERE id = true").await?;
+        let init_settings = client.prepare("INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON CONFLICT DO NOTHING").await?;
+        let get_settings = client
+            .prepare("SELECT latest_height, contract_index, contract_subindex FROM settings")
+            .await?;
+        let set_latest_height = client
+            .prepare("UPDATE settings SET latest_height = $1 WHERE id = true")
+            .await?;
         Ok(Self {
             insert_ballot,
-            get_latest_height,
+            init_settings,
+            get_settings,
             set_latest_height,
         })
     }
 
-    /// Get the latest block height recorded in the DB.
-    async fn get_latest_height(
+    /// Inserts a row in the settings table holding the application configuration. The table is
+    /// constrained to only hold a single row.
+    async fn init_settings(
         &self,
         db: &tokio_postgres::Client,
-    ) -> Result<Option<AbsoluteBlockHeight>, tokio_postgres::Error> {
-        let row = db.query_opt(&self.get_latest_height, &[]).await?;
-        if let Some(row) = row {
-            let raw = row.try_get::<_, i64>(0)?;
-            Ok(Some((raw as u64).into()))
-        } else {
-            Ok(None)
-        }
+        contract_address: &ContractAddress,
+    ) -> Result<(), tokio_postgres::Error> {
+        let params: [&(dyn ToSql + Sync); 2] = [
+            &(contract_address.index as i64),
+            &(contract_address.subindex as i64),
+        ];
+        db.execute(&self.init_settings, &params).await?;
+        Ok(())
     }
 
+    /// Get the latest block height recorded in the DB.
+    async fn get_settings(
+        &self,
+        db: &tokio_postgres::Client,
+    ) -> Result<DBSettings, tokio_postgres::Error> {
+        db.query_one(&self.get_settings, &[]).await?.try_into()
+    }
+
+    /// Set the latest height in the DB.
     async fn set_latest_height<'a, 'b>(
         &'a self,
         db_tx: &tokio_postgres::Transaction<'b>,
         height: AbsoluteBlockHeight,
     ) -> Result<(), tokio_postgres::Error> {
-        let params: [&(dyn ToSql + Sync); 1] = [
-            &(height.height as i64)
-        ];
+        let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
         db_tx.execute(&self.set_latest_height, &params).await?;
         Ok(())
     }
@@ -183,7 +221,6 @@ impl DBConn {
 
         let connection_handle = tokio::spawn(async move {
             if let Err(e) = connection.await {
-                // TODO: change to tracing
                 println!("Connection error: {}", e);
             }
         });
@@ -211,21 +248,31 @@ impl DBConn {
 /// defined in `db_connection`
 async fn run_db_process(
     db_connection: tokio_postgres::config::Config,
+    contract_address: &ContractAddress,
     mut block_receiver: tokio::sync::mpsc::Receiver<BlockData>,
-    height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
+    height_sender: tokio::sync::oneshot::Sender<AbsoluteBlockHeight>,
     stop_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let mut db = DBConn::create(db_connection.clone(), true)
         .await
         .context("Could not create database connection")?;
-    let latest_height = db
+    db.prepared
+        .init_settings(&db.client, contract_address)
+        .await
+        .context("Could not init settings in DB")?;
+    let settings = db
         .prepared
-        .get_latest_height(&db.client)
+        .get_settings(&db.client)
         .await
         .context("Could not get best height from database")?;
 
+    anyhow::ensure!(
+        settings.contract_address == *contract_address,
+        "Contract address does not match the contract address found in the database"
+    );
+
     height_sender
-        .send(latest_height)
+        .send(settings.latest_height)
         .map_err(|_| anyhow!("Best block height could not be sent to node process"))?;
 
     // In case of DB errors, this is used to store the value to retry insertion for
@@ -313,10 +360,14 @@ async fn db_insert_block<'a>(
 
     println!("Received block data: {:?}", block_data);
 
-    prepared_ref.set_latest_height(tx_ref, block_data.height).await?;
+    prepared_ref
+        .set_latest_height(tx_ref, block_data.height)
+        .await?;
 
     for ballot in block_data.ballots.iter() {
-        prepared_ref.insert_ballot(tx_ref, block_data.timestamp, ballot).await?;
+        prepared_ref
+            .insert_ballot(tx_ref, block_data.timestamp, ballot)
+            .await?;
     }
 
     let now = tokio::time::Instant::now();
@@ -466,16 +517,14 @@ async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
     contract_verified: &mut bool,
-    latest_height: &mut Option<AbsoluteBlockHeight>,
+    latest_height: &mut AbsoluteBlockHeight,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
 ) -> anyhow::Result<()> {
-    let from_height = latest_height.map_or(0.into(), |h| h.next());
-
     println!(
         "Processing blocks from height {} using node {}",
-        from_height,
+        latest_height,
         node_endpoint.uri()
     );
 
@@ -489,7 +538,7 @@ async fn node_process(
     }
 
     let mut blocks_stream = node
-        .get_finalized_blocks_from(from_height)
+        .get_finalized_blocks_from(*latest_height)
         .await
         .context("Error querying blocks")?;
     let timeout = std::time::Duration::from_secs(max_behind_s.into());
@@ -507,7 +556,7 @@ async fn node_process(
             return Ok(());
         }
 
-        *latest_height = Some(block.height);
+        *latest_height = block.height;
     }
 
     println!("Service stopped gracefully from exit signal.");
@@ -532,8 +581,14 @@ async fn main() -> anyhow::Result<()> {
 
     let db_stop = stop_flag.clone();
     let db_handle = tokio::spawn(async move {
-        let result =
-            run_db_process(args.db_connection, block_receiver, height_sender, db_stop).await;
+        let result = run_db_process(
+            args.db_connection,
+            &args.contract_address,
+            block_receiver,
+            height_sender,
+            db_stop,
+        )
+        .await;
         if let Err(error) = result {
             println!("Error happened while running DB process: {:?}", error);
         }
