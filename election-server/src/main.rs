@@ -11,15 +11,17 @@ use concordium_rust_sdk::{
     smart_contracts::common as contracts_common,
     types::{
         hashes::{BlockHash, TransactionHash},
-        smart_contracts::OwnedReceiveName,
+        smart_contracts::InstanceInfo,
         AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
-    v2::{Client, Endpoint},
+    v2::{BlockIdentifier, Client, Endpoint},
 };
-use futures::{future, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{future, TryStreamExt};
 use serde::Serialize;
 use tokio::task::JoinHandle;
 use tokio_postgres::types::{Json, ToSql};
+
+const REGISTER_VOTES_RECEIVE: &str = "ccd_gc_election.registerVotes";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser)]
@@ -42,6 +44,7 @@ struct Args {
                 application.",
         env = "GC_ELECTION_DB_CONNECTION"
     )]
+    db_connection: tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(
         long = "contract-address",
@@ -49,7 +52,6 @@ struct Args {
         env = "GC_ELECTION_DB_CONNECTION"
     )]
     contract_address: ContractAddress,
-    db_connection: tokio_postgres::config::Config,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -74,6 +76,7 @@ struct BallotSubmission {
 }
 
 /// The data collected for each block.
+#[derive(Debug)]
 struct BlockData {
     /// The hash of the block
     block_hash: BlockHash,
@@ -296,6 +299,7 @@ async fn db_insert_block<'a>(
     let prepared_ref = &db.prepared;
 
     // TODO: Insert block data into DB.
+    println!("Received block data: {:?}", block_data);
 
     let now = tokio::time::Instant::now();
     db_tx
@@ -335,6 +339,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Extracts the ballot submission (if any) from `transaction`.
 fn get_ballot_submission(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
@@ -351,9 +356,7 @@ fn get_ballot_submission(
         return None;
     };
 
-    let expected_receive_name =
-        OwnedReceiveName::new_unchecked("ccd_gc_election.registerVotes".to_string());
-    if address != *contract_address || receive_name != expected_receive_name {
+    if address != *contract_address || receive_name != REGISTER_VOTES_RECEIVE {
         return None;
     };
 
@@ -367,8 +370,10 @@ fn get_ballot_submission(
     Some(ballot_submission)
 }
 
-/// Process a block, represented by `block_hash`, updating the `db`
-/// corresponding to events captured by the block.
+/// Process a block, represented by `block_hash`, checking it for election ballot submissions to
+/// `contract_address` and returning [`BlockSubmissions`] if any were found.
+///
+/// Returns error if any occur while querying the node
 async fn process_block(
     node: &mut Client,
     block_hash: BlockHash,
@@ -380,7 +385,7 @@ async fn process_block(
         .with_context(|| format!("Could not get block info for block: {}", block_hash))?
         .response;
 
-    let ballots = node
+    let ballots: Vec<_> = node
         .get_block_transaction_events(block_info.block_hash)
         .await
         .with_context(|| format!("Could not get transactions for block: {}", block_hash))?
@@ -407,12 +412,42 @@ async fn process_block(
     Ok(block_data)
 }
 
+/// Verify that the contract instance represented by `contract_address` is an election contract. We
+/// check this to avoid failing silently from not indexing any transactions made to the contract
+/// due to either listening to transactions made to the wrong contract of a wrong contract
+/// entrypoint.
+async fn verify_contract(
+    node: &mut Client,
+    contract_address: &ContractAddress,
+) -> anyhow::Result<()> {
+    let instance_info = node
+        .get_instance_info(*contract_address, BlockIdentifier::LastFinal)
+        .await
+        .context("Could not get instance info for election contract")?
+        .response;
+    let methods = match instance_info {
+        InstanceInfo::V0 { methods, .. } => methods,
+        InstanceInfo::V1 { methods, .. } => methods,
+    };
+
+    anyhow::ensure!(
+        methods.iter().any(|m| m == REGISTER_VOTES_RECEIVE),
+        format!(
+            "Expected method with receive name \"{}\" to be available on contract",
+            REGISTER_VOTES_RECEIVE
+        )
+    );
+
+    Ok(())
+}
+
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
+    contract_verified: &mut bool,
     latest_height: &mut Option<AbsoluteBlockHeight>,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
@@ -429,6 +464,12 @@ async fn node_process(
     let mut node = Client::new(node_endpoint.clone())
         .await
         .context("Could not connect to node.")?;
+
+    if !*contract_verified {
+        verify_contract(&mut node, contract_address).await?;
+        *contract_verified = true;
+    }
+
     let mut blocks_stream = node
         .get_finalized_blocks_from(from_height)
         .await
@@ -483,6 +524,7 @@ async fn main() -> anyhow::Result<()> {
         .context("Did not receive height of most recent block recorded in database")?;
 
     let mut latest_successful_node: u64 = 0;
+    let mut contract_verified = false;
     let num_nodes = args.node_endpoints.len() as u64;
     for (node, i) in args.node_endpoints.into_iter().cycle().zip(0u64..) {
         let start_height = latest_height;
@@ -507,6 +549,7 @@ async fn main() -> anyhow::Result<()> {
         let node_result = node_process(
             node.clone(),
             &args.contract_address,
+            &mut contract_verified,
             &mut latest_height,
             &block_sender,
             args.max_behind_s,
