@@ -149,7 +149,8 @@ export default function Home() {
                 <Modal.Body>
                     {selected.length === 0 && (
                         <p>
-                            You have not selected any candidates. Confirming this submission will result in not voting for any candidate(s).
+                            You have not selected any candidates. Confirming this submission will result in not voting
+                            for any candidate(s).
                         </p>
                     )}
                     {selected.length === electionConfig.candidates.length && (
@@ -160,9 +161,7 @@ export default function Home() {
                     )}
                     {0 < selected.length && selected.length < electionConfig.candidates.length && (
                         <>
-                            <p>
-                                You have selected the following candidates:
-                            </p>
+                            <p>You have selected the following candidates:</p>
                             <ul>
                                 {electionConfig.candidates
                                     .filter((c) => selected.includes(c.index))
