@@ -185,11 +185,7 @@ impl From<&State> for ElectionConfig {
 
 /// Init function that creates a new smart contract with an initial [`State`]
 /// derived from the supplied [`InitParameter`]
-#[init(
-    contract = "election",
-    parameter = "ElectionConfig",
-    error = "Error"
-)]
+#[init(contract = "election", parameter = "ElectionConfig", error = "Error")]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
     let parameter: ElectionConfig = ctx.parameter_cursor().get()?;
     let initial_state = parameter.into_state(ctx, state_builder)?;
