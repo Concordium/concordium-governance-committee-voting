@@ -285,9 +285,7 @@ fn post_election_result_update(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "election.postElectionResult".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("election.postElectionResult".to_string()),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
@@ -302,9 +300,7 @@ fn view_election_result(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "election.viewElectionResult".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("election.viewElectionResult".to_string()),
         message:      OwnedParameter::empty(),
     };
 
