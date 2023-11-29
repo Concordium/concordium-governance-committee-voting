@@ -56,7 +56,7 @@ export async function registerVotes(
         throw new Error('Failed to invoke contract');
     }
 
-    const maxContractExecutionEnergy = Energy.create(result.usedEnergy.value * 2n);
+    const maxContractExecutionEnergy = Energy.create(result.usedEnergy.value + 1n); // +1 needs to be here, as there seems to be an issue with running out of energy 1 energy prior to reaching the execution limit
     const payload: Omit<UpdateContractPayload, 'message'> = {
         amount: CcdAmount.zero(),
         address: CONTRACT_ADDRESS,
