@@ -93,7 +93,6 @@ export default function Home() {
 
         const transaction = await registerVotes(ballot, wallet.connection, wallet.account);
         addSubmission(transaction);
-        console.log('submitted ballot:', transaction);
 
         closeConfirm();
         openViewConnection?.();
@@ -145,28 +144,24 @@ export default function Home() {
             )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">
                 <Modal.Header closeButton>
-                    <Modal.Title>Modal heading</Modal.Title>
+                    <Modal.Title>Confirm candidate selection</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
                     {selected.length === 0 && (
                         <p>
-                            You have not selected any candidates. Confirming this submission will result in en empty
-                            ballot.
+                            You have not selected any candidates. Confirming this submission will result in not voting
+                            for any candidate(s).
                         </p>
                     )}
                     {selected.length === electionConfig.candidates.length && (
                         <p>
                             You have selected all candidates. Confirming this submission will result in a ballot with
-                            equal weight distribution on all candidates, which is essentially the same as an empty
-                            ballot.
+                            equal weight distribution on all candidates.
                         </p>
                     )}
                     {0 < selected.length && selected.length < electionConfig.candidates.length && (
                         <>
-                            <p>
-                                You have selected {selected.length} out of {electionConfig.candidates.length}{' '}
-                                candidates:
-                            </p>
+                            <p>You have selected the following candidates:</p>
                             <ul>
                                 {electionConfig.candidates
                                     .filter((c) => selected.includes(c.index))

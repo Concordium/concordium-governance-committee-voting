@@ -1,4 +1,4 @@
-import * as ElectionContract from '../__generated__/election-contract/module_ccd_gc_election';
+import * as ElectionContract from '../__generated__/election-contract/module_election';
 import {
     AccountTransactionType,
     ConcordiumGRPCWebClient,
@@ -16,7 +16,7 @@ import {
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 
-export * as ElectionContract from '../__generated__/election-contract/module_ccd_gc_election';
+export * as ElectionContract from '../__generated__/election-contract/module_election';
 
 /**
  * Representation of a url with associated checksum from the election contract.

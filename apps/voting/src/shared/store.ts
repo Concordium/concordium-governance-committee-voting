@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import { atomFamily, atomWithReset, atomWithStorage } from 'jotai/utils';
+import { atomFamily, atomWithReset } from 'jotai/utils';
 import {
     AccountAddress,
     ConcordiumGRPCClient,
@@ -236,14 +236,10 @@ export class BallotSubmission {
  * Provides a list of {@linkcode SerializableBallotSubmission} items mapped by {@linkcode AccountAddress.Type}
  */
 const submittedBallotsAtomFamily = atomFamily(
-    (account: AccountAddress.Type) =>
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_: AccountAddress.Type) =>
         /** Base atom which handles storing the values both in memory and in localstorage */
-        atomWithStorage<SerializableBallotSubmission[]>(
-            `ccd-gc-election.submissions.${AccountAddress.toBase58(account)}`,
-            [],
-            undefined,
-            { unstable_getOnInit: true }, // Needed to load values from localstorage on init.
-        ),
+        atom<SerializableBallotSubmission[]>([]),
     (a, b) => a.address === b.address,
 );
 
@@ -282,10 +278,6 @@ async function monitorAccountSubmission(
     abortSignal: AbortSignal,
     setStatus: (status: BallotSubmissionStatus) => void,
 ) {
-    abortSignal.addEventListener('abort', () => {
-        console.log('Aborted monitoring ballot submission for:', submission);
-    });
-
     if (submission.status === BallotSubmissionStatus.Committed) {
         const outcome = await grpc.waitForTransactionFinalization(submission.transaction);
         if (outcome.summary.type !== TransactionSummaryType.AccountTransaction) {

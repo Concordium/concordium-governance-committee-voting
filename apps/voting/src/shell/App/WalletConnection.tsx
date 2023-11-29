@@ -195,7 +195,7 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
                 <h5>Ballot submissions</h5>
                 {submissions?.length === 0 && (
                     <span className="active-connection__no-submissions text-muted">
-                        No submissions stored for the selected account
+                        No ballot submissions registered for the selected account
                     </span>
                 )}
                 {submissions?.map(({ status, transaction, submitted }, i, arr) => {
