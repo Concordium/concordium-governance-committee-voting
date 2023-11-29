@@ -51,6 +51,13 @@ struct Args {
     /// The absolute block height to start indexing ballot submissions from
     #[arg(long = "from-height", env = "GC_ELECTION_FROM_HEIGHT")]
     from_height:      Option<AbsoluteBlockHeight>,
+    /// Maximum log level
+    #[clap(
+        long = "log-level",
+        default_value = "info",
+        env = "GC_ELECTION_LOG_LEVEL"
+    )]
+    log_level:            tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -601,6 +608,18 @@ async fn node_process(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+
+    {
+        use tracing_subscriber::prelude::*;
+        let log_filter = tracing_subscriber::filter::Targets::new()
+            .with_target(module_path!(), args.log_level)
+            .with_target("tower_http", args.log_level);
+
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(log_filter)
+            .init();
+    }
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
