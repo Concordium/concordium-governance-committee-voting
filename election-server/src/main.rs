@@ -21,7 +21,7 @@ use serde::Serialize;
 use tokio::task::JoinHandle;
 use tokio_postgres::types::{Json, ToSql};
 
-const REGISTER_VOTES_RECEIVE: &str = "ccd_gc_election.registerVotes";
+const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser)]
@@ -31,7 +31,7 @@ struct Args {
         long = "node",
         help = "The endpoints are expected to point to concordium node grpc v2 API's.",
         default_value = "http://localhost:20001",
-        env = "GC_ELECTION_NODES",
+        env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
     node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
@@ -42,20 +42,20 @@ struct Args {
                          port=5432",
         help = "A connection string detailing the connection to the database used by the \
                 application.",
-        env = "GC_ELECTION_DB_CONNECTION"
+        env = "CCD_ELECTION_DB_CONNECTION"
     )]
     db_connection:    tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
-    #[arg(long = "contract-address", env = "GC_ELECTION_DB_CONNECTION")]
+    #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address: ContractAddress,
     /// The absolute block height to start indexing ballot submissions from
-    #[arg(long = "from-height", env = "GC_ELECTION_FROM_HEIGHT")]
+    #[arg(long = "from-height", env = "CCD_ELECTION_FROM_HEIGHT")]
     from_height:      Option<AbsoluteBlockHeight>,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
-        env = "GC_ELECTION_LOG_LEVEL"
+        env = "CCD_ELECTION_LOG_LEVEL"
     )]
     log_level:        tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
@@ -63,7 +63,7 @@ struct Args {
     #[arg(
         long = "max-behind-seconds",
         default_value_t = 240,
-        env = "KPI_TRACKER_MAX_BEHIND_SECONDS"
+        env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
     max_behind_s:     u32,
 }
