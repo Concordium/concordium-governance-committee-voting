@@ -57,7 +57,7 @@ struct Args {
         default_value = "info",
         env = "GC_ELECTION_LOG_LEVEL"
     )]
-    log_level:            tracing_subscriber::filter::LevelFilter,
+    log_level:        tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -225,6 +225,7 @@ impl DBConn {
     /// Create new `DBConn` from `tokio_postgres::config::Config`. If
     /// `try_create_tables` is true, database tables are created using
     /// `/resources/schema.sql`.
+    #[tracing::instrument]
     async fn create(
         conn_string: tokio_postgres::config::Config,
         try_create_tables: bool,
@@ -236,7 +237,7 @@ impl DBConn {
 
         let connection_handle = tokio::spawn(async move {
             if let Err(e) = connection.await {
-                println!("Connection error: {}", e);
+                tracing::error!("Connection error: {}", e);
             }
         });
 
@@ -307,7 +308,7 @@ async fn run_db_process(
             match db_insert_block(&mut db, &block_data).await {
                 Ok(time) => {
                     successive_db_errors = 0;
-                    println!(
+                    tracing::info!(
                         "Processed block {} at height {} transactions in {}ms",
                         block_data.block_hash,
                         block_data.height.height,
@@ -322,7 +323,7 @@ async fn run_db_process(
                     let delay = std::time::Duration::from_millis(
                         500 * (1 << std::cmp::min(successive_db_errors, 8)),
                     );
-                    println!(
+                    tracing::warn!(
                         "Database connection lost due to {:#}. Will attempt to reconnect in {}ms.",
                         e,
                         delay.as_millis()
@@ -359,6 +360,7 @@ async fn run_db_process(
 /// defined by `db`. Everything is commited as a single transactions allowing
 /// for easy restoration from the last recorded block (by height) inserted into
 /// the database. Returns the duration it took to process the block.
+#[tracing::instrument(skip(db))]
 async fn db_insert_block<'a>(
     db: &mut DBConn,
     block_data: &'a BlockData,
@@ -372,8 +374,6 @@ async fn db_insert_block<'a>(
 
     let tx_ref = &db_tx;
     let prepared_ref = &db.prepared;
-
-    println!("Received block data: {:?}", block_data);
 
     prepared_ref
         .set_latest_height(tx_ref, block_data.height)
@@ -390,7 +390,7 @@ async fn db_insert_block<'a>(
         .commit()
         .await
         .context("Failed to commit DB transaction.")?;
-    println!("Commit completed in {}ms.", now.elapsed().as_millis());
+    tracing::debug!("Commit completed in {}ms.", now.elapsed().as_millis());
 
     let end = chrono::Utc::now().signed_duration_since(start);
     Ok(end)
@@ -546,6 +546,7 @@ impl From<Option<AbsoluteBlockHeight>> for NodeProcessConfig {
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
+#[tracing::instrument(skip_all, fields(node_endpoint = %node_endpoint.uri()))]
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
@@ -573,7 +574,7 @@ async fn node_process(
         height
     };
 
-    println!(
+    tracing::info!(
         "Processing blocks from height {} using node {}",
         from_height,
         node_endpoint.uri()
@@ -594,14 +595,14 @@ async fn node_process(
         };
         let block_data = process_block(&mut node, block.block_hash, contract_address).await?;
         if block_sender.send(block_data).await.is_err() {
-            println!("The database connection has been closed. Terminating node queries.");
+            tracing::error!("The database connection has been closed. Terminating node queries.");
             return Ok(());
         }
 
         config.processed_height = Some(block.height);
     }
 
-    println!("Service stopped gracefully from exit signal.");
+    tracing::info!("Service stopped gracefully from exit signal.");
     Ok(())
 }
 
@@ -620,6 +621,8 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    tracing::info!("Service started with configuration: {:?}", args);
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
@@ -644,7 +647,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await;
         if let Err(error) = result {
-            println!("Error happened while running DB process: {:?}", error);
+            tracing::error!("Error happened while running DB process: {:?}", error);
         }
     });
 
@@ -668,7 +671,7 @@ async fn main() -> anyhow::Result<()> {
         if i.saturating_sub(latest_successful_node) >= num_nodes {
             // we skipped all the nodes without success.
             let delay = std::time::Duration::from_secs(5);
-            println!(
+            tracing::warn!(
                 "Connections to all nodes have failed. Pausing for {}s before trying node {} \
                  again.",
                 delay.as_secs(),
@@ -689,7 +692,7 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
         if let Err(e) = node_result {
-            println!(
+            tracing::warn!(
                 "Endpoint {} failed with error {}. Trying next.",
                 node.uri(),
                 e
