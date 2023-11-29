@@ -282,10 +282,6 @@ async function monitorAccountSubmission(
     abortSignal: AbortSignal,
     setStatus: (status: BallotSubmissionStatus) => void,
 ) {
-    abortSignal.addEventListener('abort', () => {
-        console.log('Aborted monitoring ballot submission for:', submission);
-    });
-
     if (submission.status === BallotSubmissionStatus.Committed) {
         const outcome = await grpc.waitForTransactionFinalization(submission.transaction);
         if (outcome.summary.type !== TransactionSummaryType.AccountTransaction) {
