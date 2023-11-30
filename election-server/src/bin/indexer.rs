@@ -16,7 +16,7 @@ use concordium_rust_sdk::{
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
-use election_server::db::{DBConn, StoredBallotSubmission};
+use election_server::db::{Database, StoredBallotSubmission};
 use futures::{future, TryStreamExt};
 use serde::Serialize;
 
@@ -128,7 +128,7 @@ async fn run_db_process(
     height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
     stop_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    let mut db = DBConn::create(db_connection.clone(), true)
+    let mut db = Database::create(db_connection.clone(), true)
         .await
         .context("Could not create database connection")?;
     db.prepared
@@ -189,7 +189,7 @@ async fn run_db_process(
                     );
                     tokio::time::sleep(delay).await;
 
-                    let new_db = match DBConn::create(db_connection.clone(), false).await {
+                    let new_db = match Database::create(db_connection.clone(), false).await {
                         Ok(db) => db,
                         Err(e) => {
                             block_receiver.close();
@@ -198,9 +198,7 @@ async fn run_db_process(
                     };
 
                     // and drop the old database connection.
-                    let old_db = std::mem::replace(&mut db, new_db);
-                    old_db.connection_handle.abort();
-
+                    db = new_db;
                     retry_block_data = Some(block_data);
                 }
             }
@@ -210,7 +208,6 @@ async fn run_db_process(
     }
 
     block_receiver.close();
-    db.connection_handle.abort();
 
     Ok(())
 }
@@ -221,7 +218,7 @@ async fn run_db_process(
 /// the database. Returns the duration it took to process the block.
 #[tracing::instrument(skip(db))]
 async fn db_insert_block<'a>(
-    db: &mut DBConn,
+    db: &mut Database,
     block_data: &'a BlockData,
 ) -> anyhow::Result<chrono::Duration> {
     let start = chrono::Utc::now();

@@ -1,11 +1,12 @@
 use anyhow::Context;
 use axum::Router;
 use clap::Parser;
+use election_server::db::{Database, DatabasePool};
 
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
-struct Args {
+struct AppConfig {
     /// The node used for querying
     #[arg(
         long = "node",
@@ -24,6 +25,13 @@ struct Args {
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
     db_connection:    tokio_postgres::config::Config,
+    /// Maximum size of the database connection pool
+    #[clap(
+        long = "db-pool-size",
+        default_value = "16",
+        env = "CCD_ELECTION_DB_POOL_SIZE"
+    )]
+    pool_size:            usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
@@ -47,9 +55,16 @@ struct Args {
     listen_address:       std::net::SocketAddr,
 }
 
+#[derive(Clone)]
+struct AppState {
+    db_pool: DatabasePool
+}
+
+async fn get_ballot_submission() {}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let args = AppConfig::parse();
 
     {
         use tracing_subscriber::prelude::*;
@@ -68,7 +83,12 @@ async fn main() -> anyhow::Result<()> {
     let timeout = args.request_timeout;
     let listener = tokio::net::TcpListener::bind(args.listen_address).await.with_context(|| format!("Could not create tcp listener on address: {}", &args.listen_address))?;
 
+    let state = AppState {
+        db_pool: DatabasePool::create(args.db_connection, args.pool_size).context("Failed to connect to the database")?
+    };
+
     let router = Router::new()
+        .with_state(state)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
                 .make_span_with(tower_http::trace::DefaultMakeSpan::new())
