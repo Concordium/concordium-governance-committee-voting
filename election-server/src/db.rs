@@ -1,17 +1,38 @@
 use anyhow::Context;
+use axum::http::StatusCode;
 use chrono::NaiveDateTime;
 use concordium_governance_committee_election::RegisterVotesParameter;
 use concordium_rust_sdk::{
-    smart_contracts::common::AccountAddress,
+    smart_contracts::common::{AccountAddress, ACCOUNT_ADDRESS_SIZE},
     types::{hashes::TransactionHash, AbsoluteBlockHeight, ContractAddress},
 };
-use deadpool_postgres::{BuildError, Object};
+use deadpool_postgres::Object;
+use serde::Serialize;
 use tokio_postgres::{
     types::{Json, ToSql},
     NoTls,
 };
 
+#[derive(thiserror::Error, Debug)]
+pub enum DatabaseError {
+    #[error("{0}")]
+    Postgres(#[from] tokio_postgres::Error),
+    #[error("Failed to convert type")]
+    TypeConversion,
+    #[error("Could not configure database: {0}")]
+    Configuration(#[from] anyhow::Error),
+}
+
+impl From<DatabaseError> for StatusCode {
+    fn from(_: DatabaseError) -> Self {
+        Self::INTERNAL_SERVER_ERROR
+    }
+}
+
+type DatabaseResult<T = ()> = Result<T, DatabaseError>;
+
 /// The server configuration stored in the DB.
+#[derive(Debug, Serialize)]
 pub struct StoredConfiguration {
     /// The latest recorded block height.
     pub latest_height: Option<AbsoluteBlockHeight>,
@@ -20,9 +41,9 @@ pub struct StoredConfiguration {
 }
 
 impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
-    type Error = tokio_postgres::Error;
+    type Error = DatabaseError;
 
-    fn try_from(value: tokio_postgres::Row) -> Result<Self, Self::Error> {
+    fn try_from(value: tokio_postgres::Row) -> DatabaseResult<Self> {
         let raw_latest_height: Option<i64> = value.try_get(0)?;
         let raw_contract_index: i64 = value.try_get(1)?;
         let raw_contract_subindex: i64 = value.try_get(2)?;
@@ -37,6 +58,7 @@ impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
 }
 
 /// Describes an election ballot submission as it is stored in the database
+#[derive(Serialize)]
 pub struct StoredBallotSubmission {
     /// The account which submitted the ballot
     pub account: AccountAddress,
@@ -50,6 +72,34 @@ pub struct StoredBallotSubmission {
     pub verified: bool,
 }
 
+impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
+    type Error = DatabaseError;
+
+    fn try_from(value: tokio_postgres::Row) -> DatabaseResult<Self> {
+        let raw_transaction_hash: &[u8] = value.try_get(0)?;
+        let timestamp: NaiveDateTime = value.try_get(1)?;
+        let Json(ballot) = value.try_get(2)?;
+        let raw_account: &[u8] = value.try_get(3)?;
+        let verified: bool = value.try_get(4)?;
+
+        let account_bytes: [u8; ACCOUNT_ADDRESS_SIZE] = raw_account
+            .try_into()
+            .map_err(|_| DatabaseError::TypeConversion)?;
+
+        let stored_ballot = StoredBallotSubmission {
+            transaction_hash: raw_transaction_hash
+                .try_into()
+                .map_err(|_| DatabaseError::TypeConversion)?,
+            timestamp,
+            account: AccountAddress(account_bytes),
+            ballot,
+            verified,
+        };
+
+        Ok(stored_ballot)
+    }
+}
+
 /// The set of queries used to communicate with the postgres DB.
 pub struct PreparedStatements {
     /// Insert block into DB
@@ -60,12 +110,14 @@ pub struct PreparedStatements {
     pub get_settings: tokio_postgres::Statement,
     /// Get the latest recorded block height from the DB
     pub set_latest_height: tokio_postgres::Statement,
+    /// Get the latest recorded block height from the DB
+    pub get_ballot_submission: tokio_postgres::Statement,
 }
 
 impl PreparedStatements {
     /// Construct `PreparedStatements` using the supplied
     /// `tokio_postgres::Client`
-    async fn new(client: &Object) -> Result<Self, tokio_postgres::Error> {
+    async fn new(client: &Object) -> DatabaseResult<Self> {
         let insert_ballot = client
             .prepare(
                 "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) \
@@ -84,35 +136,36 @@ impl PreparedStatements {
         let set_latest_height = client
             .prepare("UPDATE settings SET latest_height = $1 WHERE id = true")
             .await?;
+        let get_ballot_submission = client
+            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE transaction_hash = $1")
+            .await?;
         Ok(Self {
             insert_ballot,
             init_settings,
             get_settings,
             set_latest_height,
+            get_ballot_submission,
         })
     }
 
     /// Inserts a row in the settings table holding the application
     /// configuration. The table is constrained to only hold a single row.
-    pub async fn init_settings(
-        &self,
-        db: &Object,
-        contract_address: &ContractAddress,
-    ) -> Result<(), tokio_postgres::Error> {
+    pub async fn init_settings(&self, db: &Object, contract_address: &ContractAddress) -> DatabaseResult<()> {
         let params: [&(dyn ToSql + Sync); 2] = [
             &(contract_address.index as i64),
             &(contract_address.subindex as i64),
         ];
-        db.execute(&self.init_settings, &params).await?;
+        db.execute(&self.init_settings, &params)
+            .await?;
         Ok(())
     }
 
     /// Get the latest block height recorded in the DB.
-    pub async fn get_settings(
-        &self,
-        db: &Object,
-    ) -> Result<StoredConfiguration, tokio_postgres::Error> {
-        db.query_one(&self.get_settings, &[]).await?.try_into()
+    pub async fn get_settings(&self, db: &Object) -> DatabaseResult<StoredConfiguration> {
+        db
+            .query_one(&self.get_settings, &[])
+            .await?
+            .try_into()
     }
 
     /// Set the latest height in the DB.
@@ -120,9 +173,11 @@ impl PreparedStatements {
         &'a self,
         db_tx: &tokio_postgres::Transaction<'b>,
         height: AbsoluteBlockHeight,
-    ) -> Result<(), tokio_postgres::Error> {
+    ) -> DatabaseResult<()> {
         let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
-        db_tx.execute(&self.set_latest_height, &params).await?;
+        db_tx
+            .execute(&self.set_latest_height, &params)
+            .await?;
         Ok(())
     }
 
@@ -131,7 +186,7 @@ impl PreparedStatements {
         &'a self,
         db_tx: &tokio_postgres::Transaction<'b>,
         ballot: &StoredBallotSubmission,
-    ) -> anyhow::Result<()> {
+    ) -> DatabaseResult<()> {
         let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
             &ballot.timestamp,
@@ -141,6 +196,19 @@ impl PreparedStatements {
         ];
         db_tx.execute(&self.insert_ballot, &params).await?;
         Ok(())
+    }
+
+    /// Get ballot submission by transaction hash
+    pub async fn get_ballot_submission(
+        &self,
+        db: &Object,
+        transaction_hash: TransactionHash,
+    ) -> DatabaseResult<Option<StoredBallotSubmission>> {
+        let params: [&(dyn ToSql + Sync); 1] = [&transaction_hash.as_ref()];
+        let row = db
+            .query_opt(&self.get_ballot_submission, &params)
+            .await?;
+        row.map(StoredBallotSubmission::try_from).transpose()
     }
 }
 
@@ -164,7 +232,7 @@ impl Database {
     pub async fn create(
         conn_string: tokio_postgres::config::Config,
         try_create_tables: bool,
-    ) -> anyhow::Result<Self> {
+    ) -> DatabaseResult<Self> {
         let single_pool = DatabasePool::create(conn_string, 1)
             .context("Could not build database connection pool")?;
         let conn = single_pool
@@ -182,8 +250,10 @@ impl Database {
         Ok(conn)
     }
 
-    async fn from_managed_object(client: Object) -> anyhow::Result<Self> {
-        let prepared = PreparedStatements::new(&client).await.context("Failed to prepare statements with client")?;
+    async fn from_managed_object(client: Object) -> DatabaseResult<Self> {
+        let prepared = PreparedStatements::new(&client)
+            .await
+            .context("Failed to prepare statements with client")?;
         let db_conn = Self { client, prepared };
 
         Ok(db_conn)
@@ -196,7 +266,7 @@ pub struct DatabasePool {
 }
 
 impl DatabasePool {
-    pub fn create(db_config: tokio_postgres::Config, pool_size: usize) -> Result<Self, BuildError> {
+    pub fn create(db_config: tokio_postgres::Config, pool_size: usize) -> DatabaseResult<Self> {
         let manager_config = deadpool_postgres::ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Verified,
         };
@@ -208,12 +278,13 @@ impl DatabasePool {
             .wait_timeout(Some(std::time::Duration::from_secs(5)))
             .max_size(pool_size)
             .runtime(deadpool_postgres::Runtime::Tokio1)
-            .build()?;
+            .build()
+            .context("Failed to build database pool")?;
         Ok(Self { pool })
     }
 
-    pub async fn get(&self) -> anyhow::Result<Database> {
-        let client = self.pool.get().await?;
+    pub async fn get(&self) -> DatabaseResult<Database> {
+        let client = self.pool.get().await.context("Failed to get connection from pool")?;
         let conn = Database::from_managed_object(client).await?;
         Ok(conn)
     }

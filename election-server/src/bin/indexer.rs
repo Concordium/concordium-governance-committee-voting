@@ -132,12 +132,11 @@ async fn run_db_process(
         .await
         .context("Could not create database connection")?;
     db.prepared
-        .init_settings(&db.client, contract_address)
+        .init_settings(db.as_ref(),contract_address)
         .await
         .context("Could not init settings in DB")?;
-    let settings = db
-        .prepared
-        .get_settings(&db.client)
+    let settings = db.prepared
+        .get_settings(db.as_ref())
         .await
         .context("Could not get best height from database")?;
 
@@ -189,7 +188,7 @@ async fn run_db_process(
                     );
                     tokio::time::sleep(delay).await;
 
-                    let new_db = match Database::create(db_connection.clone(), false).await {
+                    let new_db = match Database::create(db_connection.clone(), false).await.context("Failed to create database") {
                         Ok(db) => db,
                         Err(e) => {
                             block_receiver.close();
@@ -229,15 +228,13 @@ async fn db_insert_block<'a>(
         .context("Failed to build DB transaction")?;
 
     let tx_ref = &db_tx;
-    let prepared_ref = &db.prepared;
 
-    prepared_ref
-        .set_latest_height(tx_ref, block_data.height)
+    db.prepared.set_latest_height(tx_ref, block_data.height)
         .await?;
 
     let ballots: Vec<_> = block_data.try_into()?;
     for ballot in ballots.iter() {
-        prepared_ref.insert_ballot(tx_ref, ballot).await?;
+        db.prepared.insert_ballot(tx_ref, ballot).await?;
     }
 
     let now = tokio::time::Instant::now();
@@ -468,8 +465,7 @@ async fn main() -> anyhow::Result<()> {
     {
         use tracing_subscriber::prelude::*;
         let log_filter = tracing_subscriber::filter::Targets::new()
-            .with_target(module_path!(), args.log_level)
-            .with_target("tower_http", args.log_level);
+            .with_target(module_path!(), args.log_level);
 
         tracing_subscriber::registry()
             .with(tracing_subscriber::fmt::layer())
