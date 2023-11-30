@@ -12,7 +12,7 @@ description = "A smart contract for facilitating Concordium goverance committee 
 default = ["std"]
 std = ["concordium-std/std"]
 wee_alloc = ["concordium-std/wee_alloc"]
-serde = ["dep:serde"]
+full = ["dep:serde"]
 
 [dependencies]
 concordium-std = { version = "8.1", default-features = false }

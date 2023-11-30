@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use anyhow::{anyhow, Context};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::RegisterVotesParameter;
 use concordium_rust_sdk::{
@@ -16,15 +16,14 @@ use concordium_rust_sdk::{
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
+use election_server::db::{DBConn, StoredBallotSubmission};
 use futures::{future, TryStreamExt};
 use serde::Serialize;
-use tokio::task::JoinHandle;
-use tokio_postgres::types::{Json, ToSql};
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 
 /// Command line configuration of the application.
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, Clone)]
 struct Args {
     /// The node used for querying
     #[arg(
@@ -34,7 +33,7 @@ struct Args {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints: Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -44,20 +43,20 @@ struct Args {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:    tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address: ContractAddress,
     /// The absolute block height to start indexing ballot submissions from
     #[arg(long = "from-height", env = "CCD_ELECTION_FROM_HEIGHT")]
-    from_height:      Option<AbsoluteBlockHeight>,
+    from_height: Option<AbsoluteBlockHeight>,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:        tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -65,198 +64,58 @@ struct Args {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s:     u32,
+    max_behind_s: u32,
 }
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
-struct BallotSubmission {
+pub struct BallotSubmission {
     /// The account which submitted the ballot
-    account:          contracts_common::AccountAddress,
+    pub account: contracts_common::AccountAddress,
     /// The ballot submitted
-    ballot:           RegisterVotesParameter,
+    pub ballot: RegisterVotesParameter,
     /// The transaction hash of the ballot submission
-    transaction_hash: TransactionHash,
+    pub transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    verified:         bool,
+    pub verified: bool,
 }
 
 /// The data collected for each block.
 #[derive(Debug)]
-struct BlockData {
+pub struct BlockData {
     /// The hash of the block
-    block_hash: BlockHash,
+    pub block_hash: BlockHash,
     /// The height of the block
-    height:     AbsoluteBlockHeight,
+    pub height: AbsoluteBlockHeight,
     /// The block time of the block
-    timestamp:  DateTime<Utc>,
+    pub timestamp: DateTime<Utc>,
     /// The ballots submitted in the block
-    ballots:    Vec<BallotSubmission>,
+    pub ballots: Vec<BallotSubmission>,
 }
 
-struct DBSettings {
-    latest_height:    Option<AbsoluteBlockHeight>,
-    contract_address: ContractAddress,
-}
+#[derive(thiserror::Error, Debug)]
+#[error("Could not construct datetime from timestamp due to being out of range.")]
+pub struct TimestampOutOfRangeError;
 
-impl TryFrom<tokio_postgres::Row> for DBSettings {
-    type Error = tokio_postgres::Error;
+impl TryFrom<&BlockData> for Vec<StoredBallotSubmission> {
+    type Error = TimestampOutOfRangeError;
 
-    fn try_from(value: tokio_postgres::Row) -> Result<Self, Self::Error> {
-        let raw_latest_height: Option<i64> = value.try_get(0)?;
-        let raw_contract_index: i64 = value.try_get(1)?;
-        let raw_contract_subindex: i64 = value.try_get(2)?;
-        let contract_address =
-            ContractAddress::new(raw_contract_index as u64, raw_contract_subindex as u64);
-        let settings = Self {
-            latest_height: raw_latest_height.map(|v| (v as u64).into()),
-            contract_address,
-        };
-        Ok(settings)
-    }
-}
+    fn try_from(value: &BlockData) -> Result<Self, Self::Error> {
+        let timestamp = NaiveDateTime::from_timestamp_millis(value.timestamp.timestamp_millis())
+            .ok_or(TimestampOutOfRangeError)?;
+        let ballot_submissions = value
+            .ballots
+            .iter()
+            .map(|bs| StoredBallotSubmission {
+                timestamp,
+                account: bs.account,
+                ballot: bs.ballot.clone(),
+                verified: bs.verified,
+                transaction_hash: bs.transaction_hash,
+            })
+            .collect();
 
-/// The set of queries used to communicate with the postgres DB.
-struct PreparedStatements {
-    /// Insert block into DB
-    insert_ballot:     tokio_postgres::Statement,
-    /// Init the settings table
-    init_settings:     tokio_postgres::Statement,
-    /// Get the settings stored in the settings table of the DB
-    get_settings:      tokio_postgres::Statement,
-    /// Get the latest recorded block height from the DB
-    set_latest_height: tokio_postgres::Statement,
-}
-
-impl PreparedStatements {
-    /// Construct `PreparedStatements` using the supplied
-    /// `tokio_postgres::Client`
-    async fn new(client: &tokio_postgres::Client) -> Result<Self, tokio_postgres::Error> {
-        let insert_ballot = client
-            .prepare(
-                "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) \
-                 VALUES ($1, $2, $3, $4, $5)",
-            )
-            .await?;
-        let init_settings = client
-            .prepare(
-                "INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON \
-                 CONFLICT DO NOTHING",
-            )
-            .await?;
-        let get_settings = client
-            .prepare("SELECT latest_height, contract_index, contract_subindex FROM settings")
-            .await?;
-        let set_latest_height = client
-            .prepare("UPDATE settings SET latest_height = $1 WHERE id = true")
-            .await?;
-        Ok(Self {
-            insert_ballot,
-            init_settings,
-            get_settings,
-            set_latest_height,
-        })
-    }
-
-    /// Inserts a row in the settings table holding the application
-    /// configuration. The table is constrained to only hold a single row.
-    async fn init_settings(
-        &self,
-        db: &tokio_postgres::Client,
-        contract_address: &ContractAddress,
-    ) -> Result<(), tokio_postgres::Error> {
-        let params: [&(dyn ToSql + Sync); 2] = [
-            &(contract_address.index as i64),
-            &(contract_address.subindex as i64),
-        ];
-        db.execute(&self.init_settings, &params).await?;
-        Ok(())
-    }
-
-    /// Get the latest block height recorded in the DB.
-    async fn get_settings(
-        &self,
-        db: &tokio_postgres::Client,
-    ) -> Result<DBSettings, tokio_postgres::Error> {
-        db.query_one(&self.get_settings, &[]).await?.try_into()
-    }
-
-    /// Set the latest height in the DB.
-    async fn set_latest_height<'a, 'b>(
-        &'a self,
-        db_tx: &tokio_postgres::Transaction<'b>,
-        height: AbsoluteBlockHeight,
-    ) -> Result<(), tokio_postgres::Error> {
-        let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
-        db_tx.execute(&self.set_latest_height, &params).await?;
-        Ok(())
-    }
-
-    /// Insert a ballot submission into the DB.
-    async fn insert_ballot<'a, 'b>(
-        &'a self,
-        db_tx: &tokio_postgres::Transaction<'b>,
-        timestamp: DateTime<Utc>,
-        ballot: &BallotSubmission,
-    ) -> anyhow::Result<()> {
-        let timestamp = chrono::NaiveDateTime::from_timestamp_millis(timestamp.timestamp_millis())
-            .context("Expect timestamp to be in range of u64")?;
-        let params: [&(dyn ToSql + Sync); 5] = [
-            &ballot.transaction_hash.as_ref(),
-            &timestamp,
-            &Json(&ballot.ballot),
-            &ballot.account.0.as_ref(),
-            &false,
-        ];
-        db_tx.execute(&self.insert_ballot, &params).await?;
-        Ok(())
-    }
-}
-
-/// Holds [`tokio_postgres::Client`] to query the database and
-/// [`PreparedStatements`] which can be executed with the client.
-struct DBConn {
-    client:            tokio_postgres::Client,
-    prepared:          PreparedStatements,
-    connection_handle: JoinHandle<()>,
-}
-
-impl DBConn {
-    /// Create new `DBConn` from `tokio_postgres::config::Config`. If
-    /// `try_create_tables` is true, database tables are created using
-    /// `/resources/schema.sql`.
-    #[tracing::instrument]
-    async fn create(
-        conn_string: tokio_postgres::config::Config,
-        try_create_tables: bool,
-    ) -> anyhow::Result<Self> {
-        let (client, connection) = conn_string
-            .connect(tokio_postgres::NoTls)
-            .await
-            .context("Could not create database connection")?;
-
-        let connection_handle = tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                tracing::error!("Connection error: {}", e);
-            }
-        });
-
-        if try_create_tables {
-            let create_statements = include_str!("../resources/schema.sql");
-            client
-                .batch_execute(create_statements)
-                .await
-                .context("Failed to execute create statements")?;
-        }
-
-        let prepared = PreparedStatements::new(&client).await?;
-        let db_conn = DBConn {
-            client,
-            prepared,
-            connection_handle,
-        };
-
-        Ok(db_conn)
+        Ok(ballot_submissions)
     }
 }
 
@@ -379,10 +238,9 @@ async fn db_insert_block<'a>(
         .set_latest_height(tx_ref, block_data.height)
         .await?;
 
-    for ballot in block_data.ballots.iter() {
-        prepared_ref
-            .insert_ballot(tx_ref, block_data.timestamp, ballot)
-            .await?;
+    let ballots: Vec<_> = block_data.try_into()?;
+    for ballot in ballots.iter() {
+        prepared_ref.insert_ballot(tx_ref, ballot).await?;
     }
 
     let now = tokio::time::Instant::now();
@@ -527,18 +385,18 @@ async fn verify_contract(
 }
 
 /// Config spanning accross all `node_pcocess invocatoins.`
-struct NodeProcessConfig {
+struct NodeProcessState {
     /// Whether the contract has been verified to be an election contract.
     contract_verified: bool,
     /// The latest processed height.
-    processed_height:  Option<AbsoluteBlockHeight>,
+    processed_height: Option<AbsoluteBlockHeight>,
 }
 
-impl From<Option<AbsoluteBlockHeight>> for NodeProcessConfig {
+impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
     fn from(value: Option<AbsoluteBlockHeight>) -> Self {
         Self {
             contract_verified: Default::default(),
-            processed_height:  value,
+            processed_height: value,
         }
     }
 }
@@ -550,7 +408,7 @@ impl From<Option<AbsoluteBlockHeight>> for NodeProcessConfig {
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
-    config: &mut NodeProcessConfig,
+    config: &mut NodeProcessState,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
@@ -659,7 +517,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|v| (v.height.saturating_sub(1)).into()));
 
     let mut latest_successful_node: u64 = 0;
-    let mut node_process_config: NodeProcessConfig = latest_height.into();
+    let mut node_process_config: NodeProcessState = latest_height.into();
     let num_nodes = args.node_endpoints.len() as u64;
     for (node, i) in args.node_endpoints.into_iter().cycle().zip(0u64..) {
         let start_height = latest_height;
