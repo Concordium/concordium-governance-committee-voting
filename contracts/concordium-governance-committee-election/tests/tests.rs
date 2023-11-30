@@ -285,9 +285,7 @@ fn post_election_result_update(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "ccd_gc_election.postElectionResult".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("election.postElectionResult".to_string()),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
@@ -302,9 +300,7 @@ fn view_election_result(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked(
-            "ccd_gc_election.viewElectionResult".to_string(),
-        ),
+        receive_name: OwnedReceiveName::new_unchecked("election.viewElectionResult".to_string()),
         message:      OwnedParameter::empty(),
     };
 
@@ -321,7 +317,7 @@ fn register_votes_update(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.registerVotes".to_string()),
+        receive_name: OwnedReceiveName::new_unchecked("election.registerVotes".to_string()),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
@@ -336,7 +332,7 @@ fn view_config(
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
-        receive_name: OwnedReceiveName::new_unchecked("ccd_gc_election.viewConfig".to_string()),
+        receive_name: OwnedReceiveName::new_unchecked("election.viewConfig".to_string()),
         message:      OwnedParameter::empty(),
     };
 
@@ -411,7 +407,7 @@ fn initialize(
     let payload = InitContractPayload {
         amount:    Amount::zero(),
         mod_ref:   *module_ref,
-        init_name: OwnedContractName::new_unchecked("init_ccd_gc_election".to_string()),
+        init_name: OwnedContractName::new_unchecked("init_election".to_string()),
         param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.

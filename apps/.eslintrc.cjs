@@ -13,7 +13,7 @@ module.exports = {
         'plugin:jsx-a11y/recommended',
         'prettier',
     ],
-    ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn'],
+    ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn', '__generated__'],
     parser: '@typescript-eslint/parser',
     plugins: ['react'],
     rules: {
@@ -29,7 +29,7 @@ module.exports = {
         'import/no-extraneous-dependencies': [
             'error',
             {
-                devDependencies: ['**/test/*', '**/*.config.*'],
+                devDependencies: ['**/test/*', '**/*.config.*', '**/scripts/*'],
             },
         ],
     },

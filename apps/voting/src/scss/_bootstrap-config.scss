@@ -1,13 +1,8 @@
-// Bootstrap config
-@import 'bootstrap/scss/variables';
-@import 'bootstrap/scss/variables-dark';
-@import 'bootstrap/scss/maps';
-@import 'bootstrap/scss/mixins';
-@import 'bootstrap/scss/utilities';
+@use 'sass:map';
 
-// Bootstrap layout & components - add components as needed
-@import 'bootstrap/scss/close';
+$grid-columns: 24;
+$enable-negative-margins: true;
 
-// Bootstrap helpers
-@import 'bootstrap/scss/helpers';
-@import 'bootstrap/scss/utilities/api';
+@import 'bootstrap/scss/bootstrap.scss';
+
+$theme-colors: map.set($theme-colors, 'faded', $gray-300);

@@ -15,6 +15,25 @@ by executing the following:
 yarn install
 ```
 
+### Generate election contract client
+
+The application build relies on a generated contract, which is generated from the contract module source. As such, the
+contract module must first be built:
+
+_Requires [cargo-concordium](https://developer.concordium.software/en/mainnet/smart-contracts/guides/setup-tools.html#setup-tools) to be installed on the host machine_
+
+```bash
+yarn build-election-contract && yarn generate-contract-client
+```
+
+## Environment variables
+
+```bash
+CCD_ELECTION_NETWORK="testnet" # If not specified, defaults to "testnet"
+CCD_ELECTION_CONTRACT_ADDRESS="<7357,0>" # No default value
+CCD_ELECTION_NODE="https://grpc.testnet.concordium.com:20000" # No default value
+```
+
 ## Development workflow
 
 To run the project during development, the following will provide a workflow with hot module replacement:

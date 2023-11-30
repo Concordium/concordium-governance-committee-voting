@@ -1,104 +1,43 @@
-import { useCallback, useState } from 'react';
-import { Button, Modal } from 'react-bootstrap';
+import { Container } from 'react-bootstrap';
+import { useAtomValue } from 'jotai';
 
-import { useActiveWallet, useBrowserWallet, useWalletConnect } from '@shared/connection';
-import WalletConnectIcon from '@assets/walletconnect.svg';
-import ConcordiumIcon from '@assets/ccd.svg';
-import DisconnectIcon from '@assets/close.svg';
+import { electionConfigAtom } from '@shared/store';
+import Home from '@pages/Home';
+import { WalletConnection } from './WalletConnection';
+import { commonDateTimeFormat } from '@shared/util';
+import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
 
-function ConnectWalletConnect() {
-    const { isActive, isConnecting, connect: _connect } = useWalletConnect();
+const showDate = (date: Date) => date.toLocaleString(undefined, commonDateTimeFormat);
 
-    const connect = useCallback(() => {
-        if (isActive || isConnecting) {
-            return;
-        }
-
-        void _connect();
-    }, [_connect, isActive, isConnecting]);
-
-    return (
-        <button onClick={connect} className="clear connect-wallet__button">
-            <img className="connect-wallet__button-icon" src={WalletConnectIcon} alt="wallet connect icon" />
-            Concordium Mobile Wallet
-        </button>
-    );
-}
-
-function ConnectBrowser() {
-    const { isActive, isConnecting, connect: _connect } = useBrowserWallet();
-
-    const connect = useCallback(() => {
-        if (isActive || isConnecting) {
-            return;
-        }
-
-        void _connect();
-    }, [_connect, isActive, isConnecting]);
-
-    return (
-        <button onClick={connect} className="clear connect-wallet__button">
-            <img
-                className="connect-wallet__button-icon connect-wallet__button-icon--chrome"
-                src={ConcordiumIcon}
-                alt="wallet connect icon"
-            />
-            Concordium Wallet for Web
-        </button>
-    );
-}
-
-function SelectConnection() {
-    const [showModal, setShowModal] = useState(false);
-
-    return (
-        <>
-            <Button variant="primary" onClick={() => setShowModal(true)}>
-                Connect
-            </Button>
-            <Modal show={showModal} onHide={() => setShowModal(false)} animation={false}>
-                <Modal.Header closeButton>Select wallet</Modal.Header>
-                <Modal.Body className="select-connection__wallets">
-                    <ConnectBrowser />
-                    <ConnectWalletConnect />
-                </Modal.Body>
-            </Modal>
-        </>
-    );
-}
-
-function ActiveConnection() {
-    const { account, connection } = useActiveWallet();
-
-    if (!connection) {
-        throw new Error('Connection must be available');
-    }
-
-    const accountShow = `${account?.substring(0, 4)}...${account?.substring(account.length - 5)}`;
-
-    return (
-        <Button className="active-connection__disconnect" variant="danger" onClick={() => connection.disconnect()}>
-            {accountShow}
-            <img src={DisconnectIcon} alt="disconnect icon" />
-        </Button>
-    );
-}
-
-function WalletConnection() {
-    const { connection } = useActiveWallet();
-
-    if (connection) {
-        return <ActiveConnection />;
-    }
-
-    return <SelectConnection />;
-}
-
+/**
+ * The application root layout.
+ */
 function App() {
+    const electionConfig = useAtomValue(electionConfigAtom);
+    const openState = useIsElectionOpen();
+
     return (
-        <div className="float-end">
-            <WalletConnection />
-        </div>
+        <Container>
+            <header className="d-flex flex-wrap justify-content-between mb-4">
+                {electionConfig !== undefined && (
+                    <div className="mb-2">
+                        <h2 className="mb-0">{electionConfig.election_description}</h2>
+                        <div className={openState === ElectionOpenState.Open ? 'text-success' : 'text-danger'}>
+                            {openState === ElectionOpenState.Open && `Open until ${showDate(electionConfig.end)}`}
+                            {openState === ElectionOpenState.NotStarted &&
+                                `Opening at ${showDate(electionConfig.start)}`}
+                            {openState === ElectionOpenState.Concluded && `Closed at ${showDate(electionConfig.end)}`}
+                        </div>
+                    </div>
+                )}
+                <div className="mb-2">
+                    <WalletConnection />
+                </div>
+            </header>
+            <main>
+                <Home />
+            </main>
+        </Container>
     );
 }
 

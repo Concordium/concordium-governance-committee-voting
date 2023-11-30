@@ -185,11 +185,7 @@ impl From<&State> for ElectionConfig {
 
 /// Init function that creates a new smart contract with an initial [`State`]
 /// derived from the supplied [`InitParameter`]
-#[init(
-    contract = "ccd_gc_election",
-    parameter = "ElectionConfig",
-    error = "Error"
-)]
+#[init(contract = "election", parameter = "ElectionConfig", error = "Error")]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
     let parameter: ElectionConfig = ctx.parameter_cursor().get()?;
     let initial_state = parameter.into_state(ctx, state_builder)?;
@@ -211,7 +207,7 @@ pub type RegisterVoteParameter = Vec<Vote>;
 /// the encrypted votes should be read by traversing the transactions sent to
 /// the contract.
 #[receive(
-    contract = "ccd_gc_election",
+    contract = "election",
     name = "registerVotes",
     parameter = "RegisterVoteParameter",
     error = "Error"
@@ -234,7 +230,7 @@ pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 /// Receive the election result and update the contract state with the supplied
 /// result from the parameter
 #[receive(
-    contract = "ccd_gc_election",
+    contract = "election",
     name = "postElectionResult",
     parameter = "PostResultParameter",
     error = "Error",
@@ -265,7 +261,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
 
 /// View function that returns the contract configuration
 #[receive(
-    contract = "ccd_gc_election",
+    contract = "election",
     name = "viewConfig",
     return_value = "ElectionConfig"
 )]
@@ -285,7 +281,7 @@ pub type ViewElectionResultQueryResponse = Option<Vec<CandidateResult>>;
 
 /// View function that returns the content of the state.
 #[receive(
-    contract = "ccd_gc_election",
+    contract = "election",
     name = "viewElectionResult",
     return_value = "ViewElectionResultQueryResponse",
     error = "Error"

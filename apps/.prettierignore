@@ -2,3 +2,5 @@
 
 *.md
 *.yml
+
+voting/src/__generated__
