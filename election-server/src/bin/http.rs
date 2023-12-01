@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
-use concordium_rust_sdk::types::hashes::TransactionHash;
+use concordium_rust_sdk::{types::hashes::TransactionHash, smart_contracts::common::AccountAddress};
 use election_server::db::{DatabasePool, StoredBallotSubmission};
 
 /// Command line configuration of the application.
@@ -66,13 +66,22 @@ struct AppState {
 }
 
 #[tracing::instrument(skip(state))]
-async fn get_ballot_submission(
+async fn get_ballot_submissions_by_account(
+    State(state): State<AppState>,
+    Path(account_address): Path<AccountAddress>,
+) -> Result<Json<Vec<StoredBallotSubmission>>, StatusCode> {
+    let db = state.db_pool.get().await?;
+    let ballot_submissions = db.prepared.get_ballot_submissions(db.as_ref(), account_address).await?;
+    Ok(Json(ballot_submissions))
+}
+
+#[tracing::instrument(skip(state))]
+async fn get_ballot_submission_by_transaction(
     State(state): State<AppState>,
     Path(transaction_hash): Path<TransactionHash>,
 ) -> Result<Json<Option<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await?;
     let ballot_submission = db.prepared.get_ballot_submission(db.as_ref(), transaction_hash).await?;
-
     Ok(Json(ballot_submission))
 }
 
@@ -101,7 +110,8 @@ async fn main() -> anyhow::Result<()> {
 
     let timeout = args.request_timeout;
     let router = Router::new()
-        .route("/submission-status/:transaction", get(get_ballot_submission))
+        .route("/submission-status/:transaction", get(get_ballot_submission_by_transaction))
+        .route("/submissions/:account", get(get_ballot_submissions_by_account))
         .with_state(state)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()

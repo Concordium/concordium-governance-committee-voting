@@ -108,10 +108,12 @@ pub struct PreparedStatements {
     pub init_settings: tokio_postgres::Statement,
     /// Get the settings stored in the settings table of the DB
     pub get_settings: tokio_postgres::Statement,
-    /// Get the latest recorded block height from the DB
+    /// Set the latest recorded block height from the DB
     pub set_latest_height: tokio_postgres::Statement,
-    /// Get the latest recorded block height from the DB
+    /// Get ballot submission by transaction hash
     pub get_ballot_submission: tokio_postgres::Statement,
+    /// Get ballot submissions by account address
+    pub get_ballot_submissions: tokio_postgres::Statement,
 }
 
 impl PreparedStatements {
@@ -139,12 +141,16 @@ impl PreparedStatements {
         let get_ballot_submission = client
             .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE transaction_hash = $1")
             .await?;
+        let get_ballot_submissions = client
+            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE account = $1")
+            .await?;
         Ok(Self {
             insert_ballot,
             init_settings,
             get_settings,
             set_latest_height,
             get_ballot_submission,
+            get_ballot_submissions,
         })
     }
 
@@ -209,6 +215,19 @@ impl PreparedStatements {
             .query_opt(&self.get_ballot_submission, &params)
             .await?;
         row.map(StoredBallotSubmission::try_from).transpose()
+    }
+
+    /// Get ballot submission by transaction hash
+    pub async fn get_ballot_submissions(
+        &self,
+        db: &Object,
+        account_address: AccountAddress,
+    ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
+        let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
+        let rows = db
+            .query(&self.get_ballot_submissions, &params)
+            .await?;
+        rows.into_iter().map(StoredBallotSubmission::try_from).collect()
     }
 }
 
