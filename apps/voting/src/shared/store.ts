@@ -15,7 +15,7 @@ import { atomEffect } from 'jotai-effect';
 
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
 import { expectValue, isDefined } from './util';
-import { NETWORK } from './constants';
+import { BACKEND_API, NETWORK } from './constants';
 
 /**
  * Representation of an election candidate.
@@ -278,7 +278,8 @@ async function monitorAccountSubmission(
     abortSignal: AbortSignal,
     setStatus: (status: BallotSubmissionStatus) => void,
 ) {
-    if (submission.status === BallotSubmissionStatus.Committed) {
+    let status = submission.status;
+    if (status === BallotSubmissionStatus.Committed) {
         const outcome = await grpc.waitForTransactionFinalization(submission.transaction);
         if (outcome.summary.type !== TransactionSummaryType.AccountTransaction) {
             throw new Error('Expected account transaction');
@@ -286,11 +287,28 @@ async function monitorAccountSubmission(
 
         if (!abortSignal.aborted) {
             const success = outcome.summary.transactionType !== TransactionKindString.Failed;
-            setStatus(success ? BallotSubmissionStatus.Approved : BallotSubmissionStatus.Rejected);
+            status = success ? BallotSubmissionStatus.Approved : BallotSubmissionStatus.Rejected;
+            setStatus(status);
         }
     }
-    if (submission.status === BallotSubmissionStatus.Approved) {
-        // TODO: Poll the election server
+    if (status === BallotSubmissionStatus.Approved) {
+        // TODO: recurring poll until non-null status
+        const earlyRes = await fetch(
+            `${BACKEND_API}/submission-status/${TransactionHash.toHexString(submission.transaction)}`,
+        );
+        console.log('early', await earlyRes.json());
+        await new Promise((res) => setTimeout(res, 10000));
+        const res = await fetch(
+            `${BACKEND_API}/submission-status/${TransactionHash.toHexString(submission.transaction)}`,
+        );
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const response = await res.json();
+        console.log('res', response);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        status = response.verified ? BallotSubmissionStatus.Verified : BallotSubmissionStatus.Discarded;
+
+        setStatus(status);
     }
 }
 

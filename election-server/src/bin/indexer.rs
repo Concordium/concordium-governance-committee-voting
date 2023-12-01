@@ -299,7 +299,7 @@ fn get_ballot_submission(
     let ballot = contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref()).ok()?;
     let ballot_submission = BallotSubmission {
         ballot,
-        verified: false, // TODO: verify with election guard
+        verified: true, // TODO: verify with election guard
         account,
         transaction_hash,
     };

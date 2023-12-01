@@ -1,13 +1,16 @@
 use anyhow::Context;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{Method, StatusCode},
     routing::get,
     Json, Router,
 };
 use clap::Parser;
-use concordium_rust_sdk::{types::hashes::TransactionHash, smart_contracts::common::AccountAddress};
+use concordium_rust_sdk::{
+    smart_contracts::common::AccountAddress, types::hashes::TransactionHash,
+};
 use election_server::db::{DatabasePool, StoredBallotSubmission};
+use tower_http::cors::{Any, CorsLayer};
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
@@ -71,7 +74,10 @@ async fn get_ballot_submissions_by_account(
     Path(account_address): Path<AccountAddress>,
 ) -> Result<Json<Vec<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await?;
-    let ballot_submissions = db.prepared.get_ballot_submissions(db.as_ref(), account_address).await?;
+    let ballot_submissions = db
+        .prepared
+        .get_ballot_submissions(db.as_ref(), account_address)
+        .await?;
     Ok(Json(ballot_submissions))
 }
 
@@ -81,7 +87,10 @@ async fn get_ballot_submission_by_transaction(
     Path(transaction_hash): Path<TransactionHash>,
 ) -> Result<Json<Option<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await?;
-    let ballot_submission = db.prepared.get_ballot_submission(db.as_ref(), transaction_hash).await?;
+    let ballot_submission = db
+        .prepared
+        .get_ballot_submission(db.as_ref(), transaction_hash)
+        .await?;
     Ok(Json(ballot_submission))
 }
 
@@ -107,12 +116,20 @@ async fn main() -> anyhow::Result<()> {
         db_pool: DatabasePool::create(args.db_connection, args.pool_size)
             .context("Failed to connect to the database")?,
     };
-
+    let cors = CorsLayer::new().allow_methods([Method::GET, Method::POST]).allow_origin(Any);
     let timeout = args.request_timeout;
+
     let router = Router::new()
-        .route("/submission-status/:transaction", get(get_ballot_submission_by_transaction))
-        .route("/submissions/:account", get(get_ballot_submissions_by_account))
+        .route(
+            "/submission-status/:transaction",
+            get(get_ballot_submission_by_transaction),
+        )
+        .route(
+            "/submissions/:account",
+            get(get_ballot_submissions_by_account),
+        )
         .with_state(state)
+        .layer(cors)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
                 .make_span_with(tower_http::trace::DefaultMakeSpan::new())

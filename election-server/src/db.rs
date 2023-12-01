@@ -198,7 +198,7 @@ impl PreparedStatements {
             &ballot.timestamp,
             &Json(&ballot.ballot),
             &ballot.account.0.as_ref(),
-            &false,
+            &ballot.verified,
         ];
         db_tx.execute(&self.insert_ballot, &params).await?;
         Ok(())
