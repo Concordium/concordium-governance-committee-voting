@@ -6,7 +6,8 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import 'dotenv/config';
 
 const DEFAULT_NETWORK = 'testnet';
-const DEFAULT_BACKEND_API = 'localhost:8080';
+const DEFAULT_NODE = 'http://localhost:20001';
+const DEFAULT_BACKEND_API = 'http://localhost:8080';
 
 function validateURL(envField: string, allowUndefined = false): void {
     const urlCandidate = process.env[envField];
@@ -37,7 +38,7 @@ if (!process.env.CCD_ELECTION_CONTRACT_ADDRESS?.match(/<\d*,\d*>/)) {
 }
 
 // Validate node URL
-validateURL('CCD_ELECTION_NODE');
+validateURL('CCD_ELECTION_NODE', true);
 
 // Validate backend API URL
 validateURL('CCD_ELECTION_BACKEND_API', true);
@@ -53,7 +54,7 @@ export default defineConfig({
     define: {
         'process.env': {
             CCD_ELECTION_NETWORK: process.env.CCD_ELECTION_NETWORK ?? DEFAULT_NETWORK,
-            CCD_ELECTION_NODE: process.env.CCD_ELECTION_NODE,
+            CCD_ELECTION_NODE: process.env.CCD_ELECTION_NODE ?? DEFAULT_NODE,
             CCD_ELECTION_CONTRACT_ADDRESS: process.env.CCD_ELECTION_CONTRACT_ADDRESS,
             CCD_ELECTION_BACKEND_API: process.env.CCD_ELECTION_BACKEND_API ?? DEFAULT_BACKEND_API,
         },
