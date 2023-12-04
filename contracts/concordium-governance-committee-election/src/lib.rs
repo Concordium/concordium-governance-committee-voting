@@ -215,7 +215,7 @@ pub type RegisterVotesParameter = Vec<Vote>;
 #[receive(
     contract = "election",
     name = "registerVotes",
-    parameter = "RegisterVoteParameter",
+    parameter = "RegisterVotesParameter",
     error = "Error"
 )]
 fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error> {

@@ -1,10 +1,8 @@
 // @ts-nocheck
-import * as SDK from '@concordium/web-sdk';
+import * as SDK from "@concordium/web-sdk";
 
 /** The reference of the smart contract module supported by the provided client. */
-export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString(
-    '26454bd1454a99cdf18a280c3ba2af3a954380c9e25595605607e0bf3529f5de',
-);
+export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('571e81543a24293da395eaa356bdd713114aab09a75926a6fad60a1e38b08db7');
 /** Name of the smart contract supported by this client. */
 export const contractName: SDK.ContractName.Type = /*#__PURE__*/ SDK.ContractName.fromStringUnchecked('election');
 
@@ -19,11 +17,7 @@ class ElectionContract {
     /** Generic contract client used internally. */
     public readonly genericContract: SDK.Contract;
 
-    constructor(
-        grpcClient: SDK.ConcordiumGRPCClient,
-        contractAddress: SDK.ContractAddress.Type,
-        genericContract: SDK.Contract,
-    ) {
+    constructor(grpcClient: SDK.ConcordiumGRPCClient, contractAddress: SDK.ContractAddress.Type, genericContract: SDK.Contract) {
         this.grpcClient = grpcClient;
         this.contractAddress = contractAddress;
         this.genericContract = genericContract;
@@ -42,14 +36,14 @@ export type Type = ElectionContract;
  * @throws If failing to communicate with the concordium node or if any of the checks fails.
  * @returns {ElectionContract}
  */
-export async function create(
-    grpcClient: SDK.ConcordiumGRPCClient,
-    contractAddress: SDK.ContractAddress.Type,
-    blockHash?: SDK.BlockHash.Type,
-): Promise<ElectionContract> {
+export async function create(grpcClient: SDK.ConcordiumGRPCClient, contractAddress: SDK.ContractAddress.Type, blockHash?: SDK.BlockHash.Type): Promise<ElectionContract> {
     const genericContract = new SDK.Contract(grpcClient, contractAddress, contractName);
     await genericContract.checkOnChain({ moduleReference: moduleReference, blockHash: blockHash });
-    return new ElectionContract(grpcClient, contractAddress, genericContract);
+    return new ElectionContract(
+        grpcClient,
+        contractAddress,
+        genericContract
+    );
 }
 
 /**
@@ -59,12 +53,13 @@ export async function create(
  * @param {SDK.ContractAddress.Type} contractAddress - Address of the contract instance.
  * @returns {ElectionContract}
  */
-export function createUnchecked(
-    grpcClient: SDK.ConcordiumGRPCClient,
-    contractAddress: SDK.ContractAddress.Type,
-): ElectionContract {
+export function createUnchecked(grpcClient: SDK.ConcordiumGRPCClient, contractAddress: SDK.ContractAddress.Type): ElectionContract {
     const genericContract = new SDK.Contract(grpcClient, contractAddress, contractName);
-    return new ElectionContract(grpcClient, contractAddress, genericContract);
+    return new ElectionContract(
+        grpcClient,
+        contractAddress,
+        genericContract,
+    );
 }
 
 /**
@@ -74,14 +69,14 @@ export function createUnchecked(
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or if any of the checks fails.
  */
 export function checkOnChain(contractClient: ElectionContract, blockHash?: SDK.BlockHash.Type): Promise<void> {
-    return contractClient.genericContract.checkOnChain({ moduleReference: moduleReference, blockHash: blockHash });
+    return contractClient.genericContract.checkOnChain({moduleReference: moduleReference, blockHash: blockHash });
 }
 
 /** Parameter type for update transaction for 'registerVotes' entrypoint of the 'election' contract. */
 export type RegisterVotesParameter = Array<{
-    candidate_index: number;
-    has_vote: boolean;
-}>;
+    candidate_index: number,
+    has_vote: boolean,
+    }>;
 
 /**
  * Construct Parameter for update transactions for 'registerVotes' entrypoint of the 'election' contract.
@@ -90,13 +85,13 @@ export type RegisterVotesParameter = Array<{
  */
 export function createRegisterVotesParameter(parameter: RegisterVotesParameter): SDK.Parameter.Type {
     const list22 = parameter.map((item23) => {
-        const field25 = item23.candidate_index;
-        const field26 = item23.has_vote;
-        const named24 = {
-            candidate_index: field25,
-            has_vote: field26,
-        };
-        return named24;
+    const field25 = item23.candidate_index;
+    const field26 = item23.has_vote;
+    const named24 = {
+    candidate_index: field25,
+    has_vote: field26,
+    };
+    return named24;
     });
     const out = SDK.Parameter.fromBase64SchemaType('EAIUAAIAAAAPAAAAY2FuZGlkYXRlX2luZGV4AggAAABoYXNfdm90ZQE=', list22);
     return out;
@@ -111,18 +106,13 @@ export function createRegisterVotesParameter(parameter: RegisterVotesParameter):
  * @throws If the entrypoint is not successfully invoked.
  * @returns {SDK.TransactionHash.Type} Hash of the transaction.
  */
-export function sendRegisterVotes(
-    contractClient: ElectionContract,
-    transactionMetadata: SDK.ContractTransactionMetadata,
-    parameter: RegisterVotesParameter,
-    signer: SDK.AccountSigner,
-): Promise<SDK.TransactionHash.Type> {
+export function sendRegisterVotes(contractClient: ElectionContract, transactionMetadata: SDK.ContractTransactionMetadata, parameter: RegisterVotesParameter, signer: SDK.AccountSigner): Promise<SDK.TransactionHash.Type> {
     return contractClient.genericContract.createAndSendUpdateTransaction(
         SDK.EntrypointName.fromStringUnchecked('registerVotes'),
         SDK.Parameter.toBuffer,
         transactionMetadata,
         createRegisterVotesParameter(parameter),
-        signer,
+        signer
     );
 }
 
@@ -135,29 +125,18 @@ export function sendRegisterVotes(
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or if any of the checks fails.
  * @returns {SDK.InvokeContractResult} The result of invoking the smart contract instance.
  */
-export function dryRunRegisterVotes(
-    contractClient: ElectionContract,
-    parameter: RegisterVotesParameter,
-    invokeMetadata: SDK.ContractInvokeMetadata = {},
-    blockHash?: SDK.BlockHash.Type,
-): Promise<SDK.InvokeContractResult> {
+export function dryRunRegisterVotes(contractClient: ElectionContract, parameter: RegisterVotesParameter, invokeMetadata: SDK.ContractInvokeMetadata = {}, blockHash?: SDK.BlockHash.Type): Promise<SDK.InvokeContractResult> {
     return contractClient.genericContract.dryRun.invokeMethod(
         SDK.EntrypointName.fromStringUnchecked('registerVotes'),
         invokeMetadata,
         SDK.Parameter.toBuffer,
         createRegisterVotesParameter(parameter),
-        blockHash,
+        blockHash
     );
 }
 
 /** Error message for dry-running update transaction for 'registerVotes' entrypoint of the 'election' contract. */
-export type ErrorMessageRegisterVotes =
-    | { type: 'ParseParams' }
-    | { type: 'Unauthorized' }
-    | { type: 'MalformedConfig' }
-    | { type: 'MalformedElectionResult' }
-    | { type: 'ElectionClosed' }
-    | { type: 'Inconclusive' };
+export type ErrorMessageRegisterVotes = { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
 
 /**
  * Get and parse the error message from dry-running update transaction for 'registerVotes' entrypoint of the 'election' contract.
@@ -165,63 +144,44 @@ export type ErrorMessageRegisterVotes =
  * @param {SDK.InvokeContractResult} invokeResult The result from dry-running the transaction.
  * @returns {ErrorMessageRegisterVotes | undefined} The structured error message or undefined if result was not a failure or failed for other reason than contract rejectedReceive.
  */
-export function parseErrorMessageRegisterVotes(
-    invokeResult: SDK.InvokeContractResult,
-): ErrorMessageRegisterVotes | undefined {
+export function parseErrorMessageRegisterVotes(invokeResult: SDK.InvokeContractResult): ErrorMessageRegisterVotes | undefined {
     if (invokeResult.tag !== 'failure' || invokeResult.reason.tag !== 'RejectedReceive') {
         return undefined;
     }
     if (invokeResult.returnValue === undefined) {
-        throw new Error(
-            "Unexpected missing 'returnValue' in result of invocation. Client expected a V1 smart contract.",
-        );
+        throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
-    const schemaJson = <
-        | { ParseParams: [] }
-        | { Unauthorized: [] }
-        | { MalformedConfig: [] }
-        | { MalformedElectionResult: [] }
-        | { ElectionClosed: [] }
-        | { Inconclusive: [] }
-    >SDK.ReturnValue.parseWithSchemaTypeBase64(
-        invokeResult.returnValue,
-        'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=',
-    );
-    let match27:
-        | { type: 'ParseParams' }
-        | { type: 'Unauthorized' }
-        | { type: 'MalformedConfig' }
-        | { type: 'MalformedElectionResult' }
-        | { type: 'ElectionClosed' }
-        | { type: 'Inconclusive' };
+    const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'MalformedConfig' : [] } | {'MalformedElectionResult' : [] } | {'ElectionClosed' : [] } | {'Inconclusive' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=');
+    let match27: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
     if ('ParseParams' in schemaJson) {
-        match27 = {
-            type: 'ParseParams',
-        };
+       match27 = {
+           type: 'ParseParams',
+       };
     } else if ('Unauthorized' in schemaJson) {
-        match27 = {
-            type: 'Unauthorized',
-        };
+       match27 = {
+           type: 'Unauthorized',
+       };
     } else if ('MalformedConfig' in schemaJson) {
-        match27 = {
-            type: 'MalformedConfig',
-        };
+       match27 = {
+           type: 'MalformedConfig',
+       };
     } else if ('MalformedElectionResult' in schemaJson) {
-        match27 = {
-            type: 'MalformedElectionResult',
-        };
+       match27 = {
+           type: 'MalformedElectionResult',
+       };
     } else if ('ElectionClosed' in schemaJson) {
-        match27 = {
-            type: 'ElectionClosed',
-        };
+       match27 = {
+           type: 'ElectionClosed',
+       };
     } else if ('Inconclusive' in schemaJson) {
-        match27 = {
-            type: 'Inconclusive',
-        };
-    } else {
-        throw new Error('Unexpected enum variant');
+       match27 = {
+           type: 'Inconclusive',
+       };
     }
-    return match27;
+     else {
+       throw new Error("Unexpected enum variant");
+    }
+    return match27
 }
 
 /** Parameter type for update transaction for 'postElectionResult' entrypoint of the 'election' contract. */
@@ -234,8 +194,8 @@ export type PostElectionResultParameter = Array<number | bigint>;
  */
 export function createPostElectionResultParameter(parameter: PostElectionResultParameter): SDK.Parameter.Type {
     const list34 = parameter.map((item35) => {
-        const number36 = BigInt(item35);
-        return number36;
+    const number36 = BigInt(item35);
+    return number36;
     });
     const out = SDK.Parameter.fromBase64SchemaType('EAIF', list34);
     return out;
@@ -250,18 +210,13 @@ export function createPostElectionResultParameter(parameter: PostElectionResultP
  * @throws If the entrypoint is not successfully invoked.
  * @returns {SDK.TransactionHash.Type} Hash of the transaction.
  */
-export function sendPostElectionResult(
-    contractClient: ElectionContract,
-    transactionMetadata: SDK.ContractTransactionMetadata,
-    parameter: PostElectionResultParameter,
-    signer: SDK.AccountSigner,
-): Promise<SDK.TransactionHash.Type> {
+export function sendPostElectionResult(contractClient: ElectionContract, transactionMetadata: SDK.ContractTransactionMetadata, parameter: PostElectionResultParameter, signer: SDK.AccountSigner): Promise<SDK.TransactionHash.Type> {
     return contractClient.genericContract.createAndSendUpdateTransaction(
         SDK.EntrypointName.fromStringUnchecked('postElectionResult'),
         SDK.Parameter.toBuffer,
         transactionMetadata,
         createPostElectionResultParameter(parameter),
-        signer,
+        signer
     );
 }
 
@@ -274,29 +229,18 @@ export function sendPostElectionResult(
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or if any of the checks fails.
  * @returns {SDK.InvokeContractResult} The result of invoking the smart contract instance.
  */
-export function dryRunPostElectionResult(
-    contractClient: ElectionContract,
-    parameter: PostElectionResultParameter,
-    invokeMetadata: SDK.ContractInvokeMetadata = {},
-    blockHash?: SDK.BlockHash.Type,
-): Promise<SDK.InvokeContractResult> {
+export function dryRunPostElectionResult(contractClient: ElectionContract, parameter: PostElectionResultParameter, invokeMetadata: SDK.ContractInvokeMetadata = {}, blockHash?: SDK.BlockHash.Type): Promise<SDK.InvokeContractResult> {
     return contractClient.genericContract.dryRun.invokeMethod(
         SDK.EntrypointName.fromStringUnchecked('postElectionResult'),
         invokeMetadata,
         SDK.Parameter.toBuffer,
         createPostElectionResultParameter(parameter),
-        blockHash,
+        blockHash
     );
 }
 
 /** Error message for dry-running update transaction for 'postElectionResult' entrypoint of the 'election' contract. */
-export type ErrorMessagePostElectionResult =
-    | { type: 'ParseParams' }
-    | { type: 'Unauthorized' }
-    | { type: 'MalformedConfig' }
-    | { type: 'MalformedElectionResult' }
-    | { type: 'ElectionClosed' }
-    | { type: 'Inconclusive' };
+export type ErrorMessagePostElectionResult = { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
 
 /**
  * Get and parse the error message from dry-running update transaction for 'postElectionResult' entrypoint of the 'election' contract.
@@ -304,63 +248,44 @@ export type ErrorMessagePostElectionResult =
  * @param {SDK.InvokeContractResult} invokeResult The result from dry-running the transaction.
  * @returns {ErrorMessagePostElectionResult | undefined} The structured error message or undefined if result was not a failure or failed for other reason than contract rejectedReceive.
  */
-export function parseErrorMessagePostElectionResult(
-    invokeResult: SDK.InvokeContractResult,
-): ErrorMessagePostElectionResult | undefined {
+export function parseErrorMessagePostElectionResult(invokeResult: SDK.InvokeContractResult): ErrorMessagePostElectionResult | undefined {
     if (invokeResult.tag !== 'failure' || invokeResult.reason.tag !== 'RejectedReceive') {
         return undefined;
     }
     if (invokeResult.returnValue === undefined) {
-        throw new Error(
-            "Unexpected missing 'returnValue' in result of invocation. Client expected a V1 smart contract.",
-        );
+        throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
-    const schemaJson = <
-        | { ParseParams: [] }
-        | { Unauthorized: [] }
-        | { MalformedConfig: [] }
-        | { MalformedElectionResult: [] }
-        | { ElectionClosed: [] }
-        | { Inconclusive: [] }
-    >SDK.ReturnValue.parseWithSchemaTypeBase64(
-        invokeResult.returnValue,
-        'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=',
-    );
-    let match37:
-        | { type: 'ParseParams' }
-        | { type: 'Unauthorized' }
-        | { type: 'MalformedConfig' }
-        | { type: 'MalformedElectionResult' }
-        | { type: 'ElectionClosed' }
-        | { type: 'Inconclusive' };
+    const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'MalformedConfig' : [] } | {'MalformedElectionResult' : [] } | {'ElectionClosed' : [] } | {'Inconclusive' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=');
+    let match37: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
     if ('ParseParams' in schemaJson) {
-        match37 = {
-            type: 'ParseParams',
-        };
+       match37 = {
+           type: 'ParseParams',
+       };
     } else if ('Unauthorized' in schemaJson) {
-        match37 = {
-            type: 'Unauthorized',
-        };
+       match37 = {
+           type: 'Unauthorized',
+       };
     } else if ('MalformedConfig' in schemaJson) {
-        match37 = {
-            type: 'MalformedConfig',
-        };
+       match37 = {
+           type: 'MalformedConfig',
+       };
     } else if ('MalformedElectionResult' in schemaJson) {
-        match37 = {
-            type: 'MalformedElectionResult',
-        };
+       match37 = {
+           type: 'MalformedElectionResult',
+       };
     } else if ('ElectionClosed' in schemaJson) {
-        match37 = {
-            type: 'ElectionClosed',
-        };
+       match37 = {
+           type: 'ElectionClosed',
+       };
     } else if ('Inconclusive' in schemaJson) {
-        match37 = {
-            type: 'Inconclusive',
-        };
-    } else {
-        throw new Error('Unexpected enum variant');
+       match37 = {
+           type: 'Inconclusive',
+       };
     }
-    return match37;
+     else {
+       throw new Error("Unexpected enum variant");
+    }
+    return match37
 }
 
 /** Parameter type for update transaction for 'viewConfig' entrypoint of the 'election' contract. */
@@ -384,18 +309,13 @@ export function createViewConfigParameter(parameter: ViewConfigParameter): SDK.P
  * @throws If the entrypoint is not successfully invoked.
  * @returns {SDK.TransactionHash.Type} Hash of the transaction.
  */
-export function sendViewConfig(
-    contractClient: ElectionContract,
-    transactionMetadata: SDK.ContractTransactionMetadata,
-    parameter: ViewConfigParameter,
-    signer: SDK.AccountSigner,
-): Promise<SDK.TransactionHash.Type> {
+export function sendViewConfig(contractClient: ElectionContract, transactionMetadata: SDK.ContractTransactionMetadata, parameter: ViewConfigParameter, signer: SDK.AccountSigner): Promise<SDK.TransactionHash.Type> {
     return contractClient.genericContract.createAndSendUpdateTransaction(
         SDK.EntrypointName.fromStringUnchecked('viewConfig'),
         SDK.Parameter.toBuffer,
         transactionMetadata,
         createViewConfigParameter(parameter),
-        signer,
+        signer
     );
 }
 
@@ -408,37 +328,32 @@ export function sendViewConfig(
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or if any of the checks fails.
  * @returns {SDK.InvokeContractResult} The result of invoking the smart contract instance.
  */
-export function dryRunViewConfig(
-    contractClient: ElectionContract,
-    parameter: ViewConfigParameter,
-    invokeMetadata: SDK.ContractInvokeMetadata = {},
-    blockHash?: SDK.BlockHash.Type,
-): Promise<SDK.InvokeContractResult> {
+export function dryRunViewConfig(contractClient: ElectionContract, parameter: ViewConfigParameter, invokeMetadata: SDK.ContractInvokeMetadata = {}, blockHash?: SDK.BlockHash.Type): Promise<SDK.InvokeContractResult> {
     return contractClient.genericContract.dryRun.invokeMethod(
         SDK.EntrypointName.fromStringUnchecked('viewConfig'),
         invokeMetadata,
         SDK.Parameter.toBuffer,
         createViewConfigParameter(parameter),
-        blockHash,
+        blockHash
     );
 }
 
 /** Return value for dry-running update transaction for 'viewConfig' entrypoint of the 'election' contract. */
 export type ReturnValueViewConfig = {
-    admin_account: SDK.AccountAddress.Type;
+    admin_account: SDK.AccountAddress.Type,
     candidates: Array<{
-        url: string;
-        hash: SDK.HexString;
-    }>;
-    guardians: Array<SDK.AccountAddress.Type>;
+    url: string,
+    hash: SDK.HexString,
+    }>,
+    guardians: Array<SDK.AccountAddress.Type>,
     eligible_voters: {
-        url: string;
-        hash: SDK.HexString;
+    url: string,
+    hash: SDK.HexString,
+    },
+    election_description: string,
+    election_start: SDK.Timestamp.Type,
+    election_end: SDK.Timestamp.Type,
     };
-    election_description: string;
-    election_start: SDK.Timestamp.Type;
-    election_end: SDK.Timestamp.Type;
-};
 
 /**
  * Get and parse the return value from dry-running update transaction for 'viewConfig' entrypoint of the 'election' contract.
@@ -451,50 +366,46 @@ export function parseReturnValueViewConfig(invokeResult: SDK.InvokeContractResul
         return undefined;
     }
     if (invokeResult.returnValue === undefined) {
-        throw new Error(
-            "Unexpected missing 'returnValue' in result of invocation. Client expected a V1 smart contract.",
-        );
+        throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
-    const schemaJson = <
-        {
-            admin_account: SDK.AccountAddress.SchemaValue;
-            candidates: Array<{
-                url: string;
-                hash: string;
-            }>;
-            guardians: Array<SDK.AccountAddress.SchemaValue>;
-            eligible_voters: {
-                url: string;
-                hash: string;
-            };
-            election_description: string;
-            election_start: SDK.Timestamp.SchemaValue;
-            election_end: SDK.Timestamp.SchemaValue;
-        }
-    >SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FAAHAAAADQAAAGFkbWluX2FjY291bnQLCgAAAGNhbmRpZGF0ZXMQAhQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAJAAAAZ3VhcmRpYW5zEAILDwAAAGVsaWdpYmxlX3ZvdGVycxQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAUAAAAZWxlY3Rpb25fZGVzY3JpcHRpb24WAg4AAABlbGVjdGlvbl9zdGFydA0MAAAAZWxlY3Rpb25fZW5kDQ==');
+    const schemaJson = <{
+    admin_account: SDK.AccountAddress.SchemaValue,
+    candidates: Array<{
+    url: string,
+    hash: string,
+    }>,
+    guardians: Array<SDK.AccountAddress.SchemaValue>,
+    eligible_voters: {
+    url: string,
+    hash: string,
+    },
+    election_description: string,
+    election_start: SDK.Timestamp.SchemaValue,
+    election_end: SDK.Timestamp.SchemaValue,
+    }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FAAHAAAADQAAAGFkbWluX2FjY291bnQLCgAAAGNhbmRpZGF0ZXMQAhQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAJAAAAZ3VhcmRpYW5zEAILDwAAAGVsaWdpYmxlX3ZvdGVycxQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAUAAAAZWxlY3Rpb25fZGVzY3JpcHRpb24WAg4AAABlbGVjdGlvbl9zdGFydA0MAAAAZWxlY3Rpb25fZW5kDQ==');
     const field44 = schemaJson.admin_account;
     const accountAddress45 = SDK.AccountAddress.fromSchemaValue(field44);
     const field46 = schemaJson.candidates;
     const list47 = field46.map((item48) => {
-        const field49 = item48.url;
-        const field50 = item48.hash;
-        const named51 = {
-            url: field49,
-            hash: field50,
-        };
-        return named51;
+    const field49 = item48.url;
+    const field50 = item48.hash;
+    const named51 = {
+    url: field49,
+    hash: field50,
+    };
+    return named51;
     });
     const field52 = schemaJson.guardians;
     const list53 = field52.map((item54) => {
-        const accountAddress55 = SDK.AccountAddress.fromSchemaValue(item54);
-        return accountAddress55;
+    const accountAddress55 = SDK.AccountAddress.fromSchemaValue(item54);
+    return accountAddress55;
     });
     const field56 = schemaJson.eligible_voters;
     const field57 = field56.url;
     const field58 = field56.hash;
     const named59 = {
-        url: field57,
-        hash: field58,
+    url: field57,
+    hash: field58,
     };
     const field60 = schemaJson.election_description;
     const field61 = schemaJson.election_start;
@@ -502,13 +413,13 @@ export function parseReturnValueViewConfig(invokeResult: SDK.InvokeContractResul
     const field63 = schemaJson.election_end;
     const timestamp64 = SDK.Timestamp.fromSchemaValue(field63);
     const named65 = {
-        admin_account: accountAddress45,
-        candidates: list47,
-        guardians: list53,
-        eligible_voters: named59,
-        election_description: field60,
-        election_start: timestamp62,
-        election_end: timestamp64,
+    admin_account: accountAddress45,
+    candidates: list47,
+    guardians: list53,
+    eligible_voters: named59,
+    election_description: field60,
+    election_start: timestamp62,
+    election_end: timestamp64,
     };
     return named65;
 }
@@ -534,18 +445,13 @@ export function createViewElectionResultParameter(parameter: ViewElectionResultP
  * @throws If the entrypoint is not successfully invoked.
  * @returns {SDK.TransactionHash.Type} Hash of the transaction.
  */
-export function sendViewElectionResult(
-    contractClient: ElectionContract,
-    transactionMetadata: SDK.ContractTransactionMetadata,
-    parameter: ViewElectionResultParameter,
-    signer: SDK.AccountSigner,
-): Promise<SDK.TransactionHash.Type> {
+export function sendViewElectionResult(contractClient: ElectionContract, transactionMetadata: SDK.ContractTransactionMetadata, parameter: ViewElectionResultParameter, signer: SDK.AccountSigner): Promise<SDK.TransactionHash.Type> {
     return contractClient.genericContract.createAndSendUpdateTransaction(
         SDK.EntrypointName.fromStringUnchecked('viewElectionResult'),
         SDK.Parameter.toBuffer,
         transactionMetadata,
         createViewElectionResultParameter(parameter),
-        signer,
+        signer
     );
 }
 
@@ -558,34 +464,24 @@ export function sendViewElectionResult(
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or if any of the checks fails.
  * @returns {SDK.InvokeContractResult} The result of invoking the smart contract instance.
  */
-export function dryRunViewElectionResult(
-    contractClient: ElectionContract,
-    parameter: ViewElectionResultParameter,
-    invokeMetadata: SDK.ContractInvokeMetadata = {},
-    blockHash?: SDK.BlockHash.Type,
-): Promise<SDK.InvokeContractResult> {
+export function dryRunViewElectionResult(contractClient: ElectionContract, parameter: ViewElectionResultParameter, invokeMetadata: SDK.ContractInvokeMetadata = {}, blockHash?: SDK.BlockHash.Type): Promise<SDK.InvokeContractResult> {
     return contractClient.genericContract.dryRun.invokeMethod(
         SDK.EntrypointName.fromStringUnchecked('viewElectionResult'),
         invokeMetadata,
         SDK.Parameter.toBuffer,
         createViewElectionResultParameter(parameter),
-        blockHash,
+        blockHash
     );
 }
 
 /** Return value for dry-running update transaction for 'viewElectionResult' entrypoint of the 'election' contract. */
-export type ReturnValueViewElectionResult =
-    | { type: 'None' }
-    | {
-          type: 'Some';
-          content: Array<{
-              candidate: {
-                  url: string;
-                  hash: SDK.HexString;
-              };
-              cummulative_votes: number | bigint;
-          }>;
-      };
+export type ReturnValueViewElectionResult = { type: 'None'} | { type: 'Some', content: Array<{
+    candidate: {
+    url: string,
+    hash: SDK.HexString,
+    },
+    cummulative_votes: number | bigint,
+    }> };
 
 /**
  * Get and parse the return value from dry-running update transaction for 'viewElectionResult' entrypoint of the 'election' contract.
@@ -593,82 +489,61 @@ export type ReturnValueViewElectionResult =
  * @param {SDK.InvokeContractResult} invokeResult The result from dry-running the transaction.
  * @returns {ReturnValueViewElectionResult | undefined} The structured return value or undefined if result was not a success.
  */
-export function parseReturnValueViewElectionResult(
-    invokeResult: SDK.InvokeContractResult,
-): ReturnValueViewElectionResult | undefined {
+export function parseReturnValueViewElectionResult(invokeResult: SDK.InvokeContractResult): ReturnValueViewElectionResult | undefined {
     if (invokeResult.tag !== 'success') {
         return undefined;
     }
     if (invokeResult.returnValue === undefined) {
-        throw new Error(
-            "Unexpected missing 'returnValue' in result of invocation. Client expected a V1 smart contract.",
-        );
+        throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
-    const schemaJson = <
-        | { None: [] }
-        | {
-              Some: [
-                  Array<{
-                      candidate: {
-                          url: string;
-                          hash: string;
-                      };
-                      cummulative_votes: bigint;
-                  }>,
-              ];
-          }
-    >SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAIUAAIAAAAJAAAAY2FuZGlkYXRlFAACAAAAAwAAAHVybBYCBAAAAGhhc2geIAAAABEAAABjdW1tdWxhdGl2ZV92b3RlcwU=');
-    let match66:
-        | { type: 'None' }
-        | {
-              type: 'Some';
-              content: Array<{
-                  candidate: {
-                      url: string;
-                      hash: SDK.HexString;
-                  };
-                  cummulative_votes: number | bigint;
-              }>;
-          };
+    const schemaJson = <{'None' : [] } | {'Some' : [Array<{
+    candidate: {
+    url: string,
+    hash: string,
+    },
+    cummulative_votes: bigint,
+    }>] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAIUAAIAAAAJAAAAY2FuZGlkYXRlFAACAAAAAwAAAHVybBYCBAAAAGhhc2geIAAAABEAAABjdW1tdWxhdGl2ZV92b3RlcwU=');
+    let match66: { type: 'None'} | { type: 'Some', content: Array<{
+    candidate: {
+    url: string,
+    hash: SDK.HexString,
+    },
+    cummulative_votes: number | bigint,
+    }> };
     if ('None' in schemaJson) {
-        match66 = {
-            type: 'None',
-        };
+       match66 = {
+           type: 'None',
+       };
     } else if ('Some' in schemaJson) {
-        const variant68 = schemaJson.Some;
-        const list69 = variant68[0].map((item70) => {
-            const field71 = item70.candidate;
-            const field72 = field71.url;
-            const field73 = field71.hash;
-            const named74 = {
-                url: field72,
-                hash: field73,
-            };
-            const field75 = item70.cummulative_votes;
-            const named76 = {
-                candidate: named74,
-                cummulative_votes: field75,
-            };
-            return named76;
-        });
-        match66 = {
-            type: 'Some',
-            content: list69,
-        };
-    } else {
-        throw new Error('Unexpected enum variant');
+       const variant68 = schemaJson.Some;
+    const list69 = variant68[0].map((item70) => {
+    const field71 = item70.candidate;
+    const field72 = field71.url;
+    const field73 = field71.hash;
+    const named74 = {
+    url: field72,
+    hash: field73,
+    };
+    const field75 = item70.cummulative_votes;
+    const named76 = {
+    candidate: named74,
+    cummulative_votes: field75,
+    };
+    return named76;
+    });
+       match66 = {
+           type: 'Some',
+           content: list69,
+       };
+    }
+     else {
+       throw new Error("Unexpected enum variant");
     }
     return match66;
 }
 
 /** Error message for dry-running update transaction for 'viewElectionResult' entrypoint of the 'election' contract. */
-export type ErrorMessageViewElectionResult =
-    | { type: 'ParseParams' }
-    | { type: 'Unauthorized' }
-    | { type: 'MalformedConfig' }
-    | { type: 'MalformedElectionResult' }
-    | { type: 'ElectionClosed' }
-    | { type: 'Inconclusive' };
+export type ErrorMessageViewElectionResult = { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
 
 /**
  * Get and parse the error message from dry-running update transaction for 'viewElectionResult' entrypoint of the 'election' contract.
@@ -676,61 +551,42 @@ export type ErrorMessageViewElectionResult =
  * @param {SDK.InvokeContractResult} invokeResult The result from dry-running the transaction.
  * @returns {ErrorMessageViewElectionResult | undefined} The structured error message or undefined if result was not a failure or failed for other reason than contract rejectedReceive.
  */
-export function parseErrorMessageViewElectionResult(
-    invokeResult: SDK.InvokeContractResult,
-): ErrorMessageViewElectionResult | undefined {
+export function parseErrorMessageViewElectionResult(invokeResult: SDK.InvokeContractResult): ErrorMessageViewElectionResult | undefined {
     if (invokeResult.tag !== 'failure' || invokeResult.reason.tag !== 'RejectedReceive') {
         return undefined;
     }
     if (invokeResult.returnValue === undefined) {
-        throw new Error(
-            "Unexpected missing 'returnValue' in result of invocation. Client expected a V1 smart contract.",
-        );
+        throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
-    const schemaJson = <
-        | { ParseParams: [] }
-        | { Unauthorized: [] }
-        | { MalformedConfig: [] }
-        | { MalformedElectionResult: [] }
-        | { ElectionClosed: [] }
-        | { Inconclusive: [] }
-    >SDK.ReturnValue.parseWithSchemaTypeBase64(
-        invokeResult.returnValue,
-        'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=',
-    );
-    let match77:
-        | { type: 'ParseParams' }
-        | { type: 'Unauthorized' }
-        | { type: 'MalformedConfig' }
-        | { type: 'MalformedElectionResult' }
-        | { type: 'ElectionClosed' }
-        | { type: 'Inconclusive' };
+    const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'MalformedConfig' : [] } | {'MalformedElectionResult' : [] } | {'ElectionClosed' : [] } | {'Inconclusive' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQYAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIPAAAATWFsZm9ybWVkQ29uZmlnAhcAAABNYWxmb3JtZWRFbGVjdGlvblJlc3VsdAIOAAAARWxlY3Rpb25DbG9zZWQCDAAAAEluY29uY2x1c2l2ZQI=');
+    let match77: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'MalformedConfig'} | { type: 'MalformedElectionResult'} | { type: 'ElectionClosed'} | { type: 'Inconclusive'};
     if ('ParseParams' in schemaJson) {
-        match77 = {
-            type: 'ParseParams',
-        };
+       match77 = {
+           type: 'ParseParams',
+       };
     } else if ('Unauthorized' in schemaJson) {
-        match77 = {
-            type: 'Unauthorized',
-        };
+       match77 = {
+           type: 'Unauthorized',
+       };
     } else if ('MalformedConfig' in schemaJson) {
-        match77 = {
-            type: 'MalformedConfig',
-        };
+       match77 = {
+           type: 'MalformedConfig',
+       };
     } else if ('MalformedElectionResult' in schemaJson) {
-        match77 = {
-            type: 'MalformedElectionResult',
-        };
+       match77 = {
+           type: 'MalformedElectionResult',
+       };
     } else if ('ElectionClosed' in schemaJson) {
-        match77 = {
-            type: 'ElectionClosed',
-        };
+       match77 = {
+           type: 'ElectionClosed',
+       };
     } else if ('Inconclusive' in schemaJson) {
-        match77 = {
-            type: 'Inconclusive',
-        };
-    } else {
-        throw new Error('Unexpected enum variant');
+       match77 = {
+           type: 'Inconclusive',
+       };
     }
-    return match77;
+     else {
+       throw new Error("Unexpected enum variant");
+    }
+    return match77
 }
