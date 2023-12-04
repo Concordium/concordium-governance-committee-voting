@@ -10,7 +10,10 @@ use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress, types::hashes::TransactionHash,
 };
 use election_server::db::{DatabasePool, StoredBallotSubmission};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    services::ServeFile,
+};
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
@@ -22,7 +25,7 @@ struct AppConfig {
         default_value = "http://localhost:20001",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint: concordium_rust_sdk::v2::Endpoint,
+    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -30,44 +33,54 @@ struct AppConfig {
                          port=5432",
         help = "A connection string detailing the connection to the database used by the \
                 application.",
-    env = "CCD_ELECTION_DB_CONNECTION"
+        env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection: tokio_postgres::config::Config,
+    db_connection:        tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value = "16",
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size: usize,
+    pool_size:            usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level: tracing_subscriber::filter::LevelFilter,
+    log_level:            tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server
     #[clap(
         long = "request-timeout",
         default_value = "5000",
         env = "CCD_ELECTION_REQUEST_TIMEOUT"
     )]
-    request_timeout: u64,
+    request_timeout:      u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address: std::net::SocketAddr,
+    listen_address:       std::net::SocketAddr,
+    /// Address the http server will listen on
+    #[clap(
+        long = "eligible-voters-file",
+        env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
+    )]
+    eligible_voters_file: String,
 }
 
+/// The app state shared across http requests made to the server.
 #[derive(Clone, Debug)]
 struct AppState {
+    /// The DB connection pool from.
     db_pool: DatabasePool,
 }
 
+/// Get ballot submissions registered for `account_address`. Returns
+/// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
@@ -81,6 +94,8 @@ async fn get_ballot_submissions_by_account(
     Ok(Json(ballot_submissions))
 }
 
+/// Get ballot submission (if any) registered for `transaction_hash`. Returns
+/// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_ballot_submission_by_transaction(
     State(state): State<AppState>,
@@ -96,13 +111,13 @@ async fn get_ballot_submission_by_transaction(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = AppConfig::parse();
+    let config = AppConfig::parse();
 
     {
         use tracing_subscriber::prelude::*;
         let log_filter = tracing_subscriber::filter::Targets::new()
-            .with_target(module_path!(), args.log_level)
-            .with_target("tower_http", args.log_level);
+            .with_target(module_path!(), config.log_level)
+            .with_target("tower_http", config.log_level);
 
         tracing_subscriber::registry()
             .with(tracing_subscriber::fmt::layer())
@@ -110,17 +125,17 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    tracing::info!("Service started with configuration: {:?}", args);
+    tracing::info!("Service started with configuration: {:?}", config);
 
     let state = AppState {
-        db_pool: DatabasePool::create(args.db_connection, args.pool_size, true)
+        db_pool: DatabasePool::create(config.db_connection, config.pool_size, true)
             .await
             .context("Failed to connect to the database")?,
     };
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
         .allow_origin(Any);
-    let timeout = args.request_timeout;
+    let timeout = config.request_timeout;
 
     let router = Router::new()
         .route(
@@ -132,6 +147,10 @@ async fn main() -> anyhow::Result<()> {
             get(get_ballot_submissions_by_account),
         )
         .with_state(state)
+        .route_service(
+            "/static/eligible-voters.json",
+            ServeFile::new(config.eligible_voters_file),
+        )
         .layer(cors)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
@@ -143,12 +162,12 @@ async fn main() -> anyhow::Result<()> {
         ))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(1_000_000)); // at most 1000kB of data.
 
-    let listener = tokio::net::TcpListener::bind(args.listen_address)
+    let listener = tokio::net::TcpListener::bind(config.listen_address)
         .await
         .with_context(|| {
             format!(
                 "Could not create tcp listener on address: {}",
-                &args.listen_address
+                &config.listen_address
             )
         })?;
     axum::serve(listener, router)

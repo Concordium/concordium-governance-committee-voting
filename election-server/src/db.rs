@@ -24,9 +24,7 @@ pub enum DatabaseError {
 }
 
 impl From<DatabaseError> for StatusCode {
-    fn from(_: DatabaseError) -> Self {
-        Self::INTERNAL_SERVER_ERROR
-    }
+    fn from(_: DatabaseError) -> Self { Self::INTERNAL_SERVER_ERROR }
 }
 
 type DatabaseResult<T = ()> = Result<T, DatabaseError>;
@@ -35,7 +33,7 @@ type DatabaseResult<T = ()> = Result<T, DatabaseError>;
 #[derive(Debug, Serialize)]
 pub struct StoredConfiguration {
     /// The latest recorded block height.
-    pub latest_height: Option<AbsoluteBlockHeight>,
+    pub latest_height:    Option<AbsoluteBlockHeight>,
     /// The contract address of the election contract monitored.
     pub contract_address: ContractAddress,
 }
@@ -61,16 +59,16 @@ impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
 #[derive(Serialize)]
 pub struct StoredBallotSubmission {
     /// The account which submitted the ballot
-    pub account: AccountAddress,
+    pub account:          AccountAddress,
     /// The ballot submitted
-    pub ballot: RegisterVotesParameter,
+    pub ballot:           RegisterVotesParameter,
     /// The transaction hash of the ballot submission
     #[serde(rename = "transactionHash")]
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
-    pub timestamp: NaiveDateTime,
+    pub timestamp:        NaiveDateTime,
     /// Whether the ballot proof could be verified.
-    pub verified: bool,
+    pub verified:         bool,
 }
 
 impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
@@ -104,15 +102,15 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
 /// The set of queries used to communicate with the postgres DB.
 pub struct PreparedStatements {
     /// Insert block into DB
-    pub insert_ballot: tokio_postgres::Statement,
+    pub insert_ballot:          tokio_postgres::Statement,
     /// Init the settings table
-    pub init_settings: tokio_postgres::Statement,
+    pub init_settings:          tokio_postgres::Statement,
     /// Get the settings stored in the settings table of the DB
-    pub get_settings: tokio_postgres::Statement,
+    pub get_settings:           tokio_postgres::Statement,
     /// Set the latest recorded block height from the DB
-    pub set_latest_height: tokio_postgres::Statement,
+    pub set_latest_height:      tokio_postgres::Statement,
     /// Get ballot submission by transaction hash
-    pub get_ballot_submission: tokio_postgres::Statement,
+    pub get_ballot_submission:  tokio_postgres::Statement,
     /// Get ballot submissions by account address
     pub get_ballot_submissions: tokio_postgres::Statement,
 }
@@ -140,10 +138,16 @@ impl PreparedStatements {
             .prepare("UPDATE settings SET latest_height = $1 WHERE id = true")
             .await?;
         let get_ballot_submission = client
-            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE transaction_hash = $1")
+            .prepare(
+                "SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE \
+                 transaction_hash = $1",
+            )
             .await?;
         let get_ballot_submissions = client
-            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE account = $1 ORDER BY timestamp ASC")
+            .prepare(
+                "SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE \
+                 account = $1 ORDER BY timestamp ASC",
+            )
             .await?;
         Ok(Self {
             insert_ballot,
@@ -231,14 +235,12 @@ impl PreparedStatements {
 /// Holds [`tokio_postgres::Client`] to query the database and
 /// [`PreparedStatements`] which can be executed with the client.
 pub struct Database {
-    pub client: Object,
+    pub client:   Object,
     pub prepared: PreparedStatements,
 }
 
 impl AsRef<Object> for Database {
-    fn as_ref(&self) -> &Object {
-        &self.client
-    }
+    fn as_ref(&self) -> &Object { &self.client }
 }
 
 impl Database {

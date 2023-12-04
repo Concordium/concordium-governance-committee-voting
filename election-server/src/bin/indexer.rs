@@ -24,7 +24,7 @@ const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
-struct Args {
+struct AppConfig {
     /// The node used for querying
     #[arg(
         long = "node",
@@ -33,7 +33,7 @@ struct Args {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints: Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -43,20 +43,20 @@ struct Args {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection: tokio_postgres::config::Config,
+    db_connection:    tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address: ContractAddress,
     /// The absolute block height to start indexing ballot submissions from
     #[arg(long = "from-height", env = "CCD_ELECTION_FROM_HEIGHT")]
-    from_height: Option<AbsoluteBlockHeight>,
+    from_height:      Option<AbsoluteBlockHeight>,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level: tracing_subscriber::filter::LevelFilter,
+    log_level:        tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -64,20 +64,20 @@ struct Args {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s: u32,
+    max_behind_s:     u32,
 }
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
 pub struct BallotSubmission {
     /// The account which submitted the ballot
-    pub account: contracts_common::AccountAddress,
+    pub account:          contracts_common::AccountAddress,
     /// The ballot submitted
-    pub ballot: RegisterVotesParameter,
+    pub ballot:           RegisterVotesParameter,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    pub verified: bool,
+    pub verified:         bool,
 }
 
 /// The data collected for each block.
@@ -86,11 +86,11 @@ pub struct BlockData {
     /// The hash of the block
     pub block_hash: BlockHash,
     /// The height of the block
-    pub height: AbsoluteBlockHeight,
+    pub height:     AbsoluteBlockHeight,
     /// The block time of the block
-    pub timestamp: DateTime<Utc>,
+    pub timestamp:  DateTime<Utc>,
     /// The ballots submitted in the block
-    pub ballots: Vec<BallotSubmission>,
+    pub ballots:    Vec<BallotSubmission>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -132,10 +132,11 @@ async fn run_db_process(
         .await
         .context("Could not create database connection")?;
     db.prepared
-        .init_settings(db.as_ref(),contract_address)
+        .init_settings(db.as_ref(), contract_address)
         .await
         .context("Could not init settings in DB")?;
-    let settings = db.prepared
+    let settings = db
+        .prepared
         .get_settings(db.as_ref())
         .await
         .context("Could not get best height from database")?;
@@ -188,7 +189,10 @@ async fn run_db_process(
                     );
                     tokio::time::sleep(delay).await;
 
-                    let new_db = match Database::create(db_connection.clone(), false).await.context("Failed to create database") {
+                    let new_db = match Database::create(db_connection.clone(), false)
+                        .await
+                        .context("Failed to create database")
+                    {
                         Ok(db) => db,
                         Err(e) => {
                             block_receiver.close();
@@ -229,7 +233,8 @@ async fn db_insert_block<'a>(
 
     let tx_ref = &db_tx;
 
-    db.prepared.set_latest_height(tx_ref, block_data.height)
+    db.prepared
+        .set_latest_height(tx_ref, block_data.height)
         .await?;
 
     let ballots: Vec<_> = block_data.try_into()?;
@@ -383,14 +388,14 @@ struct NodeProcessState {
     /// Whether the contract has been verified to be an election contract.
     contract_verified: bool,
     /// The latest processed height.
-    processed_height: Option<AbsoluteBlockHeight>,
+    processed_height:  Option<AbsoluteBlockHeight>,
 }
 
 impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
     fn from(value: Option<AbsoluteBlockHeight>) -> Self {
         Self {
             contract_verified: Default::default(),
-            processed_height: value,
+            processed_height:  value,
         }
     }
 }
@@ -460,12 +465,12 @@ async fn node_process(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let config = AppConfig::parse();
 
     {
         use tracing_subscriber::prelude::*;
         let log_filter = tracing_subscriber::filter::Targets::new()
-            .with_target(module_path!(), args.log_level);
+            .with_target(module_path!(), config.log_level);
 
         tracing_subscriber::registry()
             .with(tracing_subscriber::fmt::layer())
@@ -473,7 +478,7 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    tracing::info!("Service started with configuration: {:?}", args);
+    tracing::info!("Service started with configuration: {:?}", config);
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
@@ -490,8 +495,8 @@ async fn main() -> anyhow::Result<()> {
     let db_stop = stop_flag.clone();
     let db_handle = tokio::spawn(async move {
         let result = run_db_process(
-            args.db_connection,
-            &args.contract_address,
+            config.db_connection,
+            &config.contract_address,
             block_receiver,
             height_sender,
             db_stop,
@@ -505,14 +510,14 @@ async fn main() -> anyhow::Result<()> {
     let latest_height = height_receiver
         .await
         .context("Did not receive height of most recent block recorded in database")?;
-    let latest_height = latest_height.or(args
+    let latest_height = latest_height.or(config
         .from_height
         .map(|v| (v.height.saturating_sub(1)).into()));
 
     let mut latest_successful_node: u64 = 0;
     let mut node_process_config: NodeProcessState = latest_height.into();
-    let num_nodes = args.node_endpoints.len() as u64;
-    for (node, i) in args.node_endpoints.into_iter().cycle().zip(0u64..) {
+    let num_nodes = config.node_endpoints.len() as u64;
+    for (node, i) in config.node_endpoints.into_iter().cycle().zip(0u64..) {
         let start_height = latest_height;
 
         if stop_flag.load(Ordering::Acquire) {
@@ -534,10 +539,10 @@ async fn main() -> anyhow::Result<()> {
         // The process keeps running until stopped manually, or an error happens.
         let node_result = node_process(
             node.clone(),
-            &args.contract_address,
+            &config.contract_address,
             &mut node_process_config,
             &block_sender,
-            args.max_behind_s,
+            config.max_behind_s,
             stop_flag.as_ref(),
         )
         .await;
