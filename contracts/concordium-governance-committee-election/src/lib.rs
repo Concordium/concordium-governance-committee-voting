@@ -9,7 +9,7 @@ use concordium_std::*;
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct ChecksumUrl {
     /// The url of the data.
-    pub url:  String,
+    pub url: String,
     /// The hash of the data found at `url`.
     pub hash: HashSha2256,
 }
@@ -49,26 +49,26 @@ pub struct GuardianState;
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        StateBox<AccountAddress, S>,
+    pub admin_account: StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:           StateSet<ChecksumUrl, S>,
+    pub candidates: StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:            StateMap<AccountAddress, GuardianState, S>,
+    pub guardians: StateMap<AccountAddress, GuardianState, S>,
     /// The list of eligible voters, represented by a url and a hash of the
     /// list.
-    pub eligible_voters:      StateBox<ChecksumUrl, S>,
+    pub eligible_voters: StateBox<ChecksumUrl, S>,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: StateBox<String, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:       Timestamp,
+    pub election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:         Timestamp,
+    pub election_end: Timestamp,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result:      StateBox<Option<ElectionResult>, S>,
+    pub election_result: StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -126,22 +126,22 @@ impl State {
 pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        AccountAddress,
+    pub admin_account: AccountAddress,
     /// A list of candidates that voters can vote for in the election.
-    pub candidates:           Vec<ChecksumUrl>,
+    pub candidates: Vec<ChecksumUrl>,
     /// The list of guardians for the election.
-    pub guardians:            Vec<AccountAddress>,
+    pub guardians: Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      ChecksumUrl,
+    pub eligible_voters: ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:       Timestamp,
+    pub election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:         Timestamp,
+    pub election_end: Timestamp,
 }
 
 impl ElectionConfig {
@@ -171,14 +171,14 @@ impl ElectionConfig {
 impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
         Self {
-            admin_account:        *value.admin_account.get(),
+            admin_account: *value.admin_account.get(),
             election_description: value.election_description.get().clone(),
-            election_start:       value.election_start,
-            election_end:         value.election_end,
-            eligible_voters:      value.eligible_voters.get().clone(),
-            candidates:           value.candidates.iter().map(|c| c.clone()).collect(),
+            election_start: value.election_start,
+            election_end: value.election_end,
+            eligible_voters: value.eligible_voters.get().clone(),
+            candidates: value.candidates.iter().map(|c| c.clone()).collect(),
             // FIXME: Ignores associated `GuardianState` until we know more..
-            guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
+            guardians: value.guardians.iter().map(|(ga, _)| *ga).collect(),
         }
     }
 }
@@ -194,10 +194,21 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 
 /// Temporary until election guard has an encrypted ballot.
 #[derive(Serialize, SchemaType, Debug)]
-#[cfg_attr(feature = "full", derive(serde::Serialize, serde::Deserialize, Clone, Copy))]
+#[cfg_attr(
+    feature = "full",
+    derive(serde::Serialize, serde::Deserialize, Clone, Copy)
+)]
 pub struct Vote {
+    #[cfg_attr(
+        feature = "full",
+        serde(rename = "candidateIndex")
+    )]
     pub candidate_index: u8,
-    pub has_vote:        bool,
+    #[cfg_attr(
+        feature = "full",
+        serde(rename = "hasVote")
+    )]
+    pub has_vote: bool,
 }
 
 /// The parameter supplied to the [`register_votes`] entrypoint.
@@ -273,7 +284,7 @@ fn view_config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResul
 /// Describes the election result for a single candidate.
 #[derive(Serialize, SchemaType, Debug, PartialEq)]
 pub struct CandidateResult {
-    pub candidate:         ChecksumUrl,
+    pub candidate: ChecksumUrl,
     pub cummulative_votes: CandidateWeightedVotes,
 }
 

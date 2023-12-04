@@ -65,6 +65,7 @@ pub struct StoredBallotSubmission {
     /// The ballot submitted
     pub ballot: RegisterVotesParameter,
     /// The transaction hash of the ballot submission
+    #[serde(rename = "transactionHash")]
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
     pub timestamp: NaiveDateTime,
@@ -156,22 +157,22 @@ impl PreparedStatements {
 
     /// Inserts a row in the settings table holding the application
     /// configuration. The table is constrained to only hold a single row.
-    pub async fn init_settings(&self, db: &Object, contract_address: &ContractAddress) -> DatabaseResult<()> {
+    pub async fn init_settings(
+        &self,
+        db: &Object,
+        contract_address: &ContractAddress,
+    ) -> DatabaseResult<()> {
         let params: [&(dyn ToSql + Sync); 2] = [
             &(contract_address.index as i64),
             &(contract_address.subindex as i64),
         ];
-        db.execute(&self.init_settings, &params)
-            .await?;
+        db.execute(&self.init_settings, &params).await?;
         Ok(())
     }
 
     /// Get the latest block height recorded in the DB.
     pub async fn get_settings(&self, db: &Object) -> DatabaseResult<StoredConfiguration> {
-        db
-            .query_one(&self.get_settings, &[])
-            .await?
-            .try_into()
+        db.query_one(&self.get_settings, &[]).await?.try_into()
     }
 
     /// Set the latest height in the DB.
@@ -181,9 +182,7 @@ impl PreparedStatements {
         height: AbsoluteBlockHeight,
     ) -> DatabaseResult<()> {
         let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
-        db_tx
-            .execute(&self.set_latest_height, &params)
-            .await?;
+        db_tx.execute(&self.set_latest_height, &params).await?;
         Ok(())
     }
 
@@ -211,9 +210,7 @@ impl PreparedStatements {
         transaction_hash: TransactionHash,
     ) -> DatabaseResult<Option<StoredBallotSubmission>> {
         let params: [&(dyn ToSql + Sync); 1] = [&transaction_hash.as_ref()];
-        let row = db
-            .query_opt(&self.get_ballot_submission, &params)
-            .await?;
+        let row = db.query_opt(&self.get_ballot_submission, &params).await?;
         row.map(StoredBallotSubmission::try_from).transpose()
     }
 
@@ -224,10 +221,10 @@ impl PreparedStatements {
         account_address: AccountAddress,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
         let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
-        let rows = db
-            .query(&self.get_ballot_submissions, &params)
-            .await?;
-        rows.into_iter().map(StoredBallotSubmission::try_from).collect()
+        let rows = db.query(&self.get_ballot_submissions, &params).await?;
+        rows.into_iter()
+            .map(StoredBallotSubmission::try_from)
+            .collect()
     }
 }
 
@@ -252,20 +249,13 @@ impl Database {
         conn_string: tokio_postgres::config::Config,
         try_create_tables: bool,
     ) -> DatabaseResult<Self> {
-        let single_pool = DatabasePool::create(conn_string, 1)
+        let single_pool = DatabasePool::create(conn_string, 1, try_create_tables)
+            .await
             .context("Could not build database connection pool")?;
         let conn = single_pool
             .get()
             .await
             .context("Could not get database connection from pool")?;
-
-        if try_create_tables {
-            let create_statements = include_str!("../resources/schema.sql");
-            conn.client
-                .batch_execute(create_statements)
-                .await
-                .context("Failed to execute create statements")?;
-        }
         Ok(conn)
     }
 
@@ -285,7 +275,11 @@ pub struct DatabasePool {
 }
 
 impl DatabasePool {
-    pub fn create(db_config: tokio_postgres::Config, pool_size: usize) -> DatabaseResult<Self> {
+    pub async fn create(
+        db_config: tokio_postgres::Config,
+        pool_size: usize,
+        try_create_tables: bool,
+    ) -> DatabaseResult<Self> {
         let manager_config = deadpool_postgres::ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Verified,
         };
@@ -299,11 +293,28 @@ impl DatabasePool {
             .runtime(deadpool_postgres::Runtime::Tokio1)
             .build()
             .context("Failed to build database pool")?;
+
+        let client = pool
+            .get()
+            .await
+            .context("Could not get database connection from pool")?;
+
+        if try_create_tables {
+            let create_statements = include_str!("../resources/schema.sql");
+            client
+                .batch_execute(create_statements)
+                .await
+                .context("Failed to execute create statements")?;
+        }
         Ok(Self { pool })
     }
 
     pub async fn get(&self) -> DatabaseResult<Database> {
-        let client = self.pool.get().await.context("Failed to get connection from pool")?;
+        let client = self
+            .pool
+            .get()
+            .await
+            .context("Failed to get connection from pool")?;
         let conn = Database::from_managed_object(client).await?;
         Ok(conn)
     }

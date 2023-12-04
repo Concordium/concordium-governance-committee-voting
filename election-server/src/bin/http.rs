@@ -30,7 +30,7 @@ struct AppConfig {
                          port=5432",
         help = "A connection string detailing the connection to the database used by the \
                 application.",
-        env = "CCD_ELECTION_DB_CONNECTION"
+    env = "CCD_ELECTION_DB_CONNECTION"
     )]
     db_connection: tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
@@ -113,10 +113,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Service started with configuration: {:?}", args);
 
     let state = AppState {
-        db_pool: DatabasePool::create(args.db_connection, args.pool_size)
+        db_pool: DatabasePool::create(args.db_connection, args.pool_size, true)
+            .await
             .context("Failed to connect to the database")?,
     };
-    let cors = CorsLayer::new().allow_methods([Method::GET, Method::POST]).allow_origin(Any);
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST])
+        .allow_origin(Any);
     let timeout = args.request_timeout;
 
     let router = Router::new()
