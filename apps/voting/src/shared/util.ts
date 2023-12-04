@@ -124,7 +124,7 @@ export async function pollUntil<T>(
         if (abortSignal?.aborted) {
             throw new Error('Aborted through abort signal');
         }
-    }
+    };
 
     let retries = 0;
 

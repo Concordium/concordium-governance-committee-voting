@@ -43,7 +43,7 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
         );
     }
 
-    const json = await res.json() as DatabaseBallotSubmissionJson | null ;
+    const json = (await res.json()) as DatabaseBallotSubmissionJson | null;
     return json !== undefined && json !== null ? reviveBallotSubmission(json) : null;
 }
 
@@ -58,6 +58,6 @@ export async function getAccountSubmissions(accountAddress: AccountAddress.Type)
         );
     }
 
-    const json = await res.json() as DatabaseBallotSubmissionJson[];
+    const json = (await res.json()) as DatabaseBallotSubmissionJson[];
     return json.map(reviveBallotSubmission);
 }

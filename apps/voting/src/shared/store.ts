@@ -197,7 +197,7 @@ export class BallotSubmission {
         public readonly transaction: TransactionHash.Type,
         public readonly status: BallotSubmissionStatus,
         public readonly submitted: Date = new Date(),
-    ) { }
+    ) {}
 
     /** Construct ballot submission from {@linkcode TransactionHash.Type} with "Committed" status */
     public static fromTransaction(transaction: TransactionHash.Type) {
@@ -325,7 +325,7 @@ const updateActiveAccountBallots = atomEffect((get, set) => {
     const account = wallet.account;
     void (async () => {
         const ballots = await getAccountSubmissions(account);
-        const mapped = ballots.map(b => BallotSubmission.fromDatabaseItem(b).toJSON());
+        const mapped = ballots.map((b) => BallotSubmission.fromDatabaseItem(b).toJSON());
 
         const existingAtom = submittedBallotsAtomFamily(account);
         const existing = get(existingAtom).filter((e) => !mapped.some((b) => b.transaction === e.transaction));

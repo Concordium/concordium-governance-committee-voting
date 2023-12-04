@@ -12,7 +12,7 @@ function validateURL(envField: string, allowUndefined = false): void {
     const urlCandidate = process.env[envField];
 
     if (!urlCandidate && !allowUndefined) {
-        throw new Error(`Environment variable "${envField}" is required`)
+        throw new Error(`Environment variable "${envField}" is required`);
     }
     try {
         if (urlCandidate && !new URL(urlCandidate).hostname) {
