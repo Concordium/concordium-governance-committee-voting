@@ -32,6 +32,7 @@ yarn build-election-contract && yarn generate-contract-client
 CCD_ELECTION_NETWORK="testnet" # If not specified, defaults to "testnet"
 CCD_ELECTION_CONTRACT_ADDRESS="<7357,0>" # No default value
 CCD_ELECTION_NODE="https://grpc.testnet.concordium.com:20000" # No default value
+CCD_ELECTION_BACKEND_API="http://localhost:8080" # If not specified, defaults to "http://localhost:8080"
 ```
 
 ## Development workflow
