@@ -143,7 +143,7 @@ impl PreparedStatements {
             .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE transaction_hash = $1")
             .await?;
         let get_ballot_submissions = client
-            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE account = $1")
+            .prepare("SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE account = $1 ORDER BY timestamp ASC")
             .await?;
         Ok(Self {
             insert_ballot,

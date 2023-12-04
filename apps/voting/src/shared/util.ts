@@ -86,11 +86,13 @@ export function sleep(ms: number): Promise<void> {
  */
 export type PollUntilOptions = {
     /** The number of times to retry polls before failing defaults to `10` */
-    numRetry?: number;
+    numRetry: number;
     /** The amount of time between polls. Defaults to `2000` */
-    intervalMS?: number;
+    intervalMS: number;
+    /** Abort signal to stop polling. */
+    abortSignal?: AbortSignal;
 };
-const poolUntilOptsDefault: Required<PollUntilOptions> = {
+const poolUntilOptsDefault: PollUntilOptions = {
     numRetry: 10,
     intervalMS: 2000,
 };
@@ -111,17 +113,24 @@ const poolUntilOptsDefault: Required<PollUntilOptions> = {
 export async function pollUntil<T>(
     fun: () => Promise<T>,
     predicate: (value: T) => boolean = () => true,
-    opts: PollUntilOptions = {},
+    opts: Partial<PollUntilOptions> = {},
 ): Promise<T> {
-    const { numRetry, intervalMS } = {
+    const { numRetry, intervalMS, abortSignal } = {
         ...poolUntilOptsDefault,
         ...opts,
     };
+
+    const checkAborted = () => {
+        if (abortSignal?.aborted) {
+            throw new Error('Aborted through abort signal');
+        }
+    }
 
     let retries = 0;
 
     return new Promise((resolve, reject) => {
         const run = async () => {
+            checkAborted();
             const v = await fun();
 
             if (predicate(v)) {

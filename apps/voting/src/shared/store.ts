@@ -16,7 +16,7 @@ import { atomEffect } from 'jotai-effect';
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
-import { getSubmission } from './election-server';
+import { DatabaseBallotSubmission, getAccountSubmissions, getSubmission } from './election-server';
 
 /**
  * Representation of an election candidate.
@@ -197,7 +197,7 @@ export class BallotSubmission {
         public readonly transaction: TransactionHash.Type,
         public readonly status: BallotSubmissionStatus,
         public readonly submitted: Date = new Date(),
-    ) {}
+    ) { }
 
     /** Construct ballot submission from {@linkcode TransactionHash.Type} with "Committed" status */
     public static fromTransaction(transaction: TransactionHash.Type) {
@@ -205,12 +205,18 @@ export class BallotSubmission {
     }
 
     /** Construct ballot submission from {@linkcode SerializableBallotSubmission} */
-    public static fromSerializable(value: SerializableBallotSubmission) {
+    public static fromSerializable(value: SerializableBallotSubmission): BallotSubmission {
         return new BallotSubmission(
             TransactionHash.fromHexString(value.transaction),
             value.status,
             new Date(value.submitted),
         );
+    }
+
+    /** Construct ballot submission from {@linkcode DatabaseBallotSubmission} */
+    public static fromDatabaseItem(value: DatabaseBallotSubmission): BallotSubmission {
+        const status = value.verified ? BallotSubmissionStatus.Verified : BallotSubmissionStatus.Discarded;
+        return new BallotSubmission(value.transactionHash, status, value.timestamp);
     }
 
     /** Represent ballot submission as {@linkcode SerializableBallotSubmission} */
@@ -296,6 +302,7 @@ async function monitorAccountSubmission(
         const response = await pollUntil(
             () => getSubmission(submission.transaction),
             (s) => s !== null,
+            { abortSignal },
         );
         if (response === null) {
             throw new Error('Unreachable'); // Unreachable due to predicate in `pollUntil`.
@@ -307,11 +314,32 @@ async function monitorAccountSubmission(
 }
 
 /**
+ * Responsible for fetching the submitted ballots for the active account when it changes.
+ */
+const updateActiveAccountBallots = atomEffect((get, set) => {
+    const wallet = get(activeWalletAtom);
+    if (wallet?.account === undefined) {
+        return;
+    }
+
+    const account = wallet.account;
+    void (async () => {
+        const ballots = await getAccountSubmissions(account);
+        const mapped = ballots.map(b => BallotSubmission.fromDatabaseItem(b).toJSON());
+
+        const existingAtom = submittedBallotsAtomFamily(account);
+        const existing = get(existingAtom).filter((e) => !mapped.some((b) => b.transaction === e.transaction));
+
+        set(existingAtom, [...mapped, ...existing]);
+    })();
+});
+
+/**
  * An effect which is triggered when the submitted ballots of the currently active account changes, which results in
  * monitoring the submission status for each submitted ballot. Monitoring of submitted ballots is restarted when changes
  * occur, and aborted completely when the atom is unmounted.
  */
-const ballotMonitorAtom = atomEffect((get, set) => {
+const monitorBallots = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
     const ballots = get(currentAccountSubmittedBallotsAtom) ?? [];
     if (wallet === undefined || ballots.length === 0) {
@@ -347,7 +375,8 @@ const ballotMonitorAtom = atomEffect((get, set) => {
  * Holds the ballots submitted for the currently selected account (if any).
  */
 export const submittedBallotsAtom = atom((get) => {
-    get(ballotMonitorAtom); // Subscribe to status updates
+    get(updateActiveAccountBallots);
+    get(monitorBallots); // Subscribe to status updates
     return get(currentAccountSubmittedBallotsAtom);
 });
 
