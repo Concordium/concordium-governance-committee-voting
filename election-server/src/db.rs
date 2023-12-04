@@ -13,12 +13,17 @@ use tokio_postgres::{
     NoTls,
 };
 
+/// Represents possible errors returned from [`Database`] or [`DatabasePool`]
+/// functions
 #[derive(thiserror::Error, Debug)]
 pub enum DatabaseError {
+    /// An error happened while interacting with the postgres DB.
     #[error("{0}")]
     Postgres(#[from] tokio_postgres::Error),
+    /// Failed to perform conversion from DB representation of type.
     #[error("Failed to convert type")]
     TypeConversion,
+    /// Failed to configure database
     #[error("Could not configure database: {0}")]
     Configuration(#[from] anyhow::Error),
 }
@@ -27,6 +32,7 @@ impl From<DatabaseError> for StatusCode {
     fn from(_: DatabaseError) -> Self { Self::INTERNAL_SERVER_ERROR }
 }
 
+/// Alias for returning results with [`DatabaseError`]s as the `Err` variant.
 type DatabaseResult<T = ()> = Result<T, DatabaseError>;
 
 /// The server configuration stored in the DB.
@@ -244,7 +250,7 @@ impl AsRef<Object> for Database {
 }
 
 impl Database {
-    /// Create new `DBConn` from `tokio_postgres::config::Config`. If
+    /// Create new [`Database`] from [`tokio_postgres::config::Config`]. If
     /// `try_create_tables` is true, database tables are created using
     /// `/resources/schema.sql`.
     pub async fn create(
@@ -261,6 +267,7 @@ impl Database {
         Ok(conn)
     }
 
+    /// Create a [`Database`] from an [`Object`].
     async fn from_managed_object(client: Object) -> DatabaseResult<Self> {
         let prepared = PreparedStatements::new(&client)
             .await
@@ -271,12 +278,17 @@ impl Database {
     }
 }
 
+/// Representation of a database pool
 #[derive(Debug, Clone)]
 pub struct DatabasePool {
+    /// The inner pool value.
     pool: deadpool_postgres::Pool,
 }
 
 impl DatabasePool {
+    /// Create a new [`DatabasePool`] from [`tokio_postgres::Config`] of size
+    /// `pool_size`. If `try_create_tables` is true, database tables are
+    /// created using `/resources/schema.sql`.
     pub async fn create(
         db_config: tokio_postgres::Config,
         pool_size: usize,
@@ -311,6 +323,7 @@ impl DatabasePool {
         Ok(Self { pool })
     }
 
+    /// Get a [`Database`] connection from the pool.
     pub async fn get(&self) -> DatabaseResult<Database> {
         let client = self
             .pool

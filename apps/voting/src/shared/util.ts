@@ -75,6 +75,12 @@ export const commonDateTimeFormat: Intl.DateTimeFormatOptions = {
     minute: '2-digit',
 };
 
+/**
+ * Helper function for waiting a number of milliseconds.
+ *
+ * @param ms - The amount of time (in milliseconds) to wait.
+ * @returns A promise which resolves with `void` after `ms`.
+ */
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
