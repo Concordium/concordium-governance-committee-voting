@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - main
+    # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - contracts/**/*
 
