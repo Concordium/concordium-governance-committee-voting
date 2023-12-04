@@ -14,8 +14,9 @@ import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-con
 import { atomEffect } from 'jotai-effect';
 
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
-import { expectValue, isDefined } from './util';
-import { BACKEND_API, NETWORK } from './constants';
+import { expectValue, isDefined, pollUntil } from './util';
+import { NETWORK } from './constants';
+import { getSubmission } from './election-server';
 
 /**
  * Representation of an election candidate.
@@ -292,22 +293,15 @@ async function monitorAccountSubmission(
         }
     }
     if (status === BallotSubmissionStatus.Approved) {
-        // TODO: recurring poll until non-null status
-        const earlyRes = await fetch(
-            `${BACKEND_API}/submission-status/${TransactionHash.toHexString(submission.transaction)}`,
+        const response = await pollUntil(
+            () => getSubmission(submission.transaction),
+            (s) => s !== null,
         );
-        console.log('early', await earlyRes.json());
-        await new Promise((res) => setTimeout(res, 10000));
-        const res = await fetch(
-            `${BACKEND_API}/submission-status/${TransactionHash.toHexString(submission.transaction)}`,
-        );
+        if (response === null) {
+            throw new Error('Unreachable'); // Unreachable due to predicate in `pollUntil`.
+        }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const response = await res.json();
-        console.log('res', response);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         status = response.verified ? BallotSubmissionStatus.Verified : BallotSubmissionStatus.Discarded;
-
         setStatus(status);
     }
 }

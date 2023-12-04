@@ -74,3 +74,72 @@ export const commonDateTimeFormat: Intl.DateTimeFormatOptions = {
     hour: '2-digit',
     minute: '2-digit',
 };
+
+export function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+/**
+ * Options supplied to {@link pollUntil}
+ */
+export type PollUntilOptions = {
+    /** The number of times to retry polls before failing defaults to `10` */
+    numRetry?: number;
+    /** The amount of time between polls. Defaults to `2000` */
+    intervalMS?: number;
+};
+const poolUntilOptsDefault: Required<PollUntilOptions> = {
+    numRetry: 10,
+    intervalMS: 2000,
+};
+
+/**
+ * Poll async function `fun` until predicate is met.
+ *
+ * @template T - The value returned by the supplied async function
+ *
+ * @param fun - The function recurringly poll
+ * @param predicate - The predicate function to run, determining if a result is adequate
+ * @param [opts.numRetry] - The number of retries to attempt before failing
+ * @param [opts.intervalMS] - The time between invocations of `fun`
+ *
+ * @throws if predicate is not met within specified number of retries attempted or if `fun` throws
+ * @returns value of type T on invocation of `fun` which meets `predicate`.
+ */
+export async function pollUntil<T>(
+    fun: () => Promise<T>,
+    predicate: (value: T) => boolean = () => true,
+    opts: PollUntilOptions = {},
+): Promise<T> {
+    const { numRetry, intervalMS } = {
+        ...poolUntilOptsDefault,
+        ...opts,
+    };
+
+    let retries = 0;
+
+    return new Promise((resolve, reject) => {
+        const run = async () => {
+            const v = await fun();
+
+            if (predicate(v)) {
+                resolve(v);
+                return;
+            }
+
+            if (retries >= numRetry) {
+                reject(`Predicate not met within ${numRetry} attempts`);
+                return;
+            }
+
+            retries++;
+
+            await sleep(intervalMS);
+            await run();
+        };
+
+        void run();
+    });
+}
