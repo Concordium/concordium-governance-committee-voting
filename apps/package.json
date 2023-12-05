@@ -12,7 +12,8 @@
         "url": "https://concordium.com"
     },
     "workspaces": [
-        "./voting"
+        "./voting",
+        "./electionguard-bindings/pkg"
     ],
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^6.9.0",
@@ -25,15 +26,17 @@
         "eslint-plugin-react": "^7.33.2",
         "eslint-plugin-react-hooks": "^4.6.0",
         "prettier": "^3.0.3",
-        "typescript": "^5.2.2"
+        "typescript": "^5.2.2",
+        "wasm-pack": "^0.12.1"
     },
     "packageManager": "yarn@4.0.1",
     "scripts": {
-        "build:all": "yarn workspaces foreach --all -pt run build",
+        "build:all": "yarn build-eg && yarn workspaces foreach --all -pt run build",
         "lint:all": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint-fix:all": "yarn lint --fix",
         "prettier": "prettier ./.*.* ./*.* -u",
         "fmt:all": "yarn prettier --write && yarn workspaces foreach --all run fmt",
-        "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all run fmt-check"
+        "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all run fmt-check",
+        "build-eg": "wasm-pack build ./electionguard-bindings"
     }
 }
