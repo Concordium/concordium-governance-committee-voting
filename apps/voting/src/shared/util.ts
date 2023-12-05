@@ -112,13 +112,14 @@ const poolUntilOptsDefault: PollUntilOptions = {
  * @param predicate - The predicate function to run, determining if a result is adequate
  * @param [opts.numRetry] - The number of retries to attempt before failing
  * @param [opts.intervalMS] - The time between invocations of `fun`
+ * @param [opts.abortSignal] - An abort signal, which will stop ongoing polling.
  *
  * @throws if predicate is not met within specified number of retries attempted or if `fun` throws
  * @returns value of type T on invocation of `fun` which meets `predicate`.
  */
 export async function pollUntil<T>(
     fun: () => Promise<T>,
-    predicate: (value: T) => boolean = () => true,
+    predicate: (value: T) => boolean,
     opts: Partial<PollUntilOptions> = {},
 ): Promise<T> {
     const { numRetry, intervalMS, abortSignal } = {
