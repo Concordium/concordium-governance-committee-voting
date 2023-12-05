@@ -1,0 +1,3 @@
+[submodule "deps/electionguard-rust"]
+	path = deps/electionguard-rust
+	url = ../electionguard-rust
