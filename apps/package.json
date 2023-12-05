@@ -37,6 +37,6 @@
         "prettier": "prettier ./.*.* ./*.* -u",
         "fmt:all": "yarn prettier --write && yarn workspaces foreach --all run fmt",
         "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all run fmt-check",
-        "build-eg": "wasm-pack build ./electionguard-bindings"
+        "build:eg": "wasm-pack build ./electionguard-bindings"
     }
 }
