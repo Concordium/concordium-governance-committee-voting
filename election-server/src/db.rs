@@ -100,124 +100,7 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
     }
 }
 
-/// The set of queries used to communicate with the postgres DB.
-pub struct PreparedStatements {
-    /// Insert block into DB
-    pub insert_ballot:          tokio_postgres::Statement,
-    /// Init the settings table
-    pub init_settings:          tokio_postgres::Statement,
-    /// Get the settings stored in the settings table of the DB
-    pub get_settings:           tokio_postgres::Statement,
-    /// Set the latest recorded block height from the DB
-    pub set_latest_height:      tokio_postgres::Statement,
-    /// Get ballot submission by transaction hash
-    pub get_ballot_submission:  tokio_postgres::Statement,
-    /// Get ballot submissions by account address
-    pub get_ballot_submissions: tokio_postgres::Statement,
-}
-
-impl PreparedStatements {
-    /// Inserts a row in the settings table holding the application
-    /// configuration. The table is constrained to only hold a single row.
-    pub async fn init_settings(
-        db: &Object,
-        contract_address: &ContractAddress,
-    ) -> DatabaseResult<()> {
-        let init_settings = db
-            .prepare_cached(
-                "INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON \
-                 CONFLICT DO NOTHING",
-            )
-            .await?;
-        let params: [&(dyn ToSql + Sync); 2] = [
-            &(contract_address.index as i64),
-            &(contract_address.subindex as i64),
-        ];
-        db.execute(&init_settings, &params).await?;
-        Ok(())
-    }
-
-    /// Get the latest block height recorded in the DB.
-    pub async fn get_settings(db: &Object) -> DatabaseResult<StoredConfiguration> {
-        let get_settings = db
-            .prepare_cached("SELECT latest_height, contract_index, contract_subindex FROM settings")
-            .await?;
-        db.query_one(&get_settings, &[]).await?.try_into()
-    }
-
-    /// Set the latest height in the DB.
-    pub async fn set_latest_height<'a, 'b>(
-        db_tx: &deadpool_postgres::Transaction<'b>,
-        height: AbsoluteBlockHeight,
-    ) -> DatabaseResult<()> {
-        let set_latest_height = db_tx
-            .prepare_cached("UPDATE settings SET latest_height = $1 WHERE id = true")
-            .await?;
-        let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
-        db_tx.execute(&set_latest_height, &params).await?;
-        Ok(())
-    }
-
-    /// Insert a ballot submission into the DB.
-    pub async fn insert_ballot<'a, 'b>(
-        db_tx: &deadpool_postgres::Transaction<'b>,
-        ballot: &StoredBallotSubmission,
-    ) -> DatabaseResult<()> {
-        let insert_ballot = db_tx
-            .prepare_cached(
-                "INSERT INTO ballots (transaction_hash, block_time, ballot, account, verified) \
-                 VALUES ($1, $2, $3, $4, $5)",
-            )
-            .await?;
-
-        let params: [&(dyn ToSql + Sync); 5] = [
-            &ballot.transaction_hash.as_ref(),
-            &ballot.block_time,
-            &Json(&ballot.ballot),
-            &ballot.account.0.as_ref(),
-            &ballot.verified,
-        ];
-        db_tx.execute(&insert_ballot, &params).await?;
-        Ok(())
-    }
-
-    /// Get ballot submission by transaction hash
-    pub async fn get_ballot_submission(
-        db: &Object,
-        transaction_hash: TransactionHash,
-    ) -> DatabaseResult<Option<StoredBallotSubmission>> {
-        let get_ballot_submission = db
-            .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
-                 WHERE transaction_hash = $1",
-            )
-            .await?;
-        let params: [&(dyn ToSql + Sync); 1] = [&transaction_hash.as_ref()];
-        let row = db.query_opt(&get_ballot_submission, &params).await?;
-        row.map(StoredBallotSubmission::try_from).transpose()
-    }
-
-    /// Get ballot submission by transaction hash
-    pub async fn get_ballot_submissions(
-        db: &Object,
-        account_address: AccountAddress,
-    ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
-        let get_ballot_submissions = db
-            .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
-                 WHERE account = $1 ORDER BY timestamp ASC",
-            )
-            .await?;
-        let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
-        let rows = db.query(&get_ballot_submissions, &params).await?;
-        rows.into_iter()
-            .map(StoredBallotSubmission::try_from)
-            .collect()
-    }
-}
-
-/// Holds [`tokio_postgres::Client`] to query the database and
-/// [`PreparedStatements`] which can be executed with the client.
+/// Database client wrapper
 pub struct Database {
     /// The database client
     pub client: Object,
@@ -299,7 +182,9 @@ impl Database {
     }
 }
 
+/// Wrapper around a database transaction
 pub struct Transaction<'a> {
+    /// The inner transaction
     inner: &'a deadpool_postgres::Transaction<'a>,
 }
 
