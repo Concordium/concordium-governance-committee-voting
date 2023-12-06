@@ -6,12 +6,12 @@ use std::sync::{
 use anyhow::{anyhow, Context};
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use concordium_governance_committee_election::RegisterVotesParameter;
+use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
 use concordium_rust_sdk::{
-    smart_contracts::common as contracts_common,
+    smart_contracts::common::{self as contracts_common},
     types::{
         hashes::{BlockHash, TransactionHash},
-        smart_contracts::InstanceInfo,
+        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult, OwnedReceiveName},
         AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
     v2::{BlockIdentifier, Client, Endpoint},
@@ -19,8 +19,10 @@ use concordium_rust_sdk::{
 use election_server::db::{Database, DatabasePool, StoredBallotSubmission, Transaction};
 use futures::{future, TryStreamExt};
 use serde::Serialize;
+use tokio::time::sleep;
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
+const CONFIG_VIEW: &str = "election.viewConfig";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
@@ -94,10 +96,8 @@ pub struct BlockData {
 #[error("Could not construct datetime from timestamp due to being out of range.")]
 pub struct TimestampOutOfRangeError;
 
-impl TryFrom<&BlockData> for Vec<StoredBallotSubmission> {
-    type Error = TimestampOutOfRangeError;
-
-    fn try_from(value: &BlockData) -> Result<Self, Self::Error> {
+impl From<&BlockData> for Vec<StoredBallotSubmission> {
+    fn from(value: &BlockData) -> Self {
         let ballot_submissions = value
             .ballots
             .iter()
@@ -110,7 +110,7 @@ impl TryFrom<&BlockData> for Vec<StoredBallotSubmission> {
             })
             .collect();
 
-        Ok(ballot_submissions)
+        ballot_submissions
     }
 }
 
@@ -383,21 +383,65 @@ async fn verify_contract(
     Ok(())
 }
 
-/// Config spanning across all `node_pcocess invocations.`
-struct NodeProcessState {
-    /// Whether the contract has been verified to be an election contract.
-    contract_verified: bool,
-    /// The latest processed height.
-    processed_height:  Option<AbsoluteBlockHeight>,
-}
+/// Find the block height corresponding to the start time of the election. If
+/// the election start time is in the future, this function will pause the
+/// thread until the election has started, after which it will return the block
+/// height corresponding to the latest finalized block.
+async fn find_election_start_height(
+    client: &mut Client,
+    contract_address: &ContractAddress,
+) -> anyhow::Result<AbsoluteBlockHeight> {
+    let context = ContractContext::new(
+        *contract_address,
+        OwnedReceiveName::new_unchecked(CONFIG_VIEW.to_string()),
+    );
+    let InvokeContractResult::Success {
+        return_value: Some(election_config),
+        ..
+    } = client
+        .invoke_instance(BlockIdentifier::LastFinal, &context)
+        .await?
+        .response
+    else {
+        return Err(anyhow!("Expected to be able to query election config"));
+    };
+    let election_config: ElectionConfig =
+        contracts_common::from_bytes(election_config.value.as_ref())
+            .context("Failed to parse election config from contract invocation result")?;
+    let election_start: DateTime<Utc> = election_config.election_start.try_into()?;
 
-impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
-    fn from(value: Option<AbsoluteBlockHeight>) -> Self {
-        Self {
-            contract_verified: Default::default(),
-            processed_height:  value,
-        }
+    let now = Utc::now();
+    if election_start > now {
+        tracing::info!(
+            "Election has not started yet. Resuming execution at {}",
+            election_start
+        );
+
+        // As there is nothing to do until the election starts, wait until then.
+        sleep(election_start.signed_duration_since(now).to_std()?).await;
+    } else {
     }
+    let (creation_height, ..) = client
+        .find_instance_creation(.., *contract_address)
+        .await
+        .context("Could not find contract instance creation block")?;
+
+    let result = client
+        .find_first_finalized_block_no_later_than(creation_height.., election_start)
+        .await;
+
+    let block_info = if let Ok(block_info) = result {
+        block_info
+    } else {
+        // Fall back to height of last finalized block
+        client
+            .get_block_info(BlockIdentifier::LastFinal)
+            .await
+            .context("Could not get block info for latest finalized block")?
+            .response
+    };
+
+    Ok(block_info.block_height)
 }
 
 /// Queries the node available at `node_endpoint` from `latest_height` until
@@ -407,7 +451,7 @@ impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
-    config: &mut NodeProcessState,
+    processed_height: &mut Option<AbsoluteBlockHeight>,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
@@ -416,26 +460,13 @@ async fn node_process(
         .await
         .context("Could not connect to node.")?;
 
-    if !config.contract_verified {
-        verify_contract(&mut node, contract_address).await?;
-        config.contract_verified = true;
-    }
-
-    let from_height = if let Some(height) = config.processed_height {
+    let from_height = if let Some(height) = processed_height {
         height.next()
     } else {
-        let (height, ..) = node
-            .find_instance_creation(.., *contract_address)
-            .await
-            .context("Could not find contract instance creation block")?;
-        height
+        find_election_start_height(&mut node, contract_address).await?
     };
 
-    tracing::info!(
-        "Processing blocks from height {} using node {}",
-        from_height,
-        node_endpoint.uri()
-    );
+    tracing::info!("Processing blocks using node {}", node_endpoint.uri());
 
     let mut blocks_stream = node
         .get_finalized_blocks_from(from_height)
@@ -456,7 +487,7 @@ async fn node_process(
             return Ok(());
         }
 
-        config.processed_height = Some(block.height);
+        *processed_height = Some(block.height);
     }
 
     tracing::info!("Service stopped gracefully from exit signal.");
@@ -477,6 +508,15 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    let ep = config
+        .node_endpoints
+        .get(0)
+        .context("Expected endpoint to be defined")?;
+    let mut client = Client::new(ep.clone())
+        .await
+        .context("Could not create node client")?;
+    verify_contract(&mut client, &config.contract_address).await?;
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
@@ -505,12 +545,11 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let latest_height = height_receiver
+    let mut latest_height = height_receiver
         .await
         .context("Did not receive height of most recent block recorded in database")?;
 
     let mut latest_successful_node: u64 = 0;
-    let mut node_process_config: NodeProcessState = latest_height.into();
     let num_nodes = config.node_endpoints.len() as u64;
     for (node, i) in config.node_endpoints.into_iter().cycle().zip(0u64..) {
         let start_height = latest_height;
@@ -535,7 +574,7 @@ async fn main() -> anyhow::Result<()> {
         let node_result = node_process(
             node.clone(),
             &config.contract_address,
-            &mut node_process_config,
+            &mut latest_height,
             &block_sender,
             config.max_behind_s,
             stop_flag.as_ref(),
