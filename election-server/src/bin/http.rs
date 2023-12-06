@@ -64,7 +64,7 @@ struct AppConfig {
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
     listen_address:       std::net::SocketAddr,
-    /// Address the http server will listen on
+    /// A json file consisting of the list of eligible voters and their respective voting weights
     #[clap(
         long = "eligible-voters-file",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"

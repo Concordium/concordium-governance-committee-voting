@@ -9,12 +9,14 @@ const DEFAULT_NETWORK = 'testnet';
 const DEFAULT_NODE = 'http://localhost:20001';
 const DEFAULT_BACKEND_API = 'http://localhost:8080';
 
-function validateURL(envField: string, allowUndefined = false): void {
+/**
+    * Validates environment variable present at `envField` as a URL.
+    *
+    * @param envField - The name of the environment variable to validate
+    * @throws If environment variable is deemed an invalid URL.
+    */
+function validateURL(envField: string): void {
     const urlCandidate = process.env[envField];
-
-    if (!urlCandidate && !allowUndefined) {
-        throw new Error(`Environment variable "${envField}" is required`);
-    }
     try {
         if (urlCandidate && !new URL(urlCandidate).hostname) {
             throw new Error(`Could not parse URL from ${urlCandidate}`);
@@ -38,10 +40,10 @@ if (!process.env.CCD_ELECTION_CONTRACT_ADDRESS?.match(/<\d*,\d*>/)) {
 }
 
 // Validate node URL
-validateURL('CCD_ELECTION_NODE', true);
+validateURL('CCD_ELECTION_NODE');
 
 // Validate backend API URL
-validateURL('CCD_ELECTION_BACKEND_API', true);
+validateURL('CCD_ELECTION_BACKEND_API');
 
 // https://vitejs.dev/config/
 export default defineConfig({

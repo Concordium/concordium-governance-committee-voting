@@ -11,9 +11,9 @@ export interface DatabaseCandidateVote {
     candidateIndex: number;
 }
 /**
- * A ballot submission as stored in the backend database
+ * A ballot submission as stored in the backend database.
  */
-interface DatabaseBallotSubmissionJson {
+interface DatabaseBallotSubmissionSerializable {
     /** The submitting account address */
     account: Base58String;
     /** The transaction hash corresponding to the submission */
@@ -42,9 +42,9 @@ export interface DatabaseBallotSubmission {
 }
 
 /**
- * Converts {@linkcode DatabaseBallotSubmissionJson} to {@linkcode DatabaseBallotSubmission}
+ * Converts {@linkcode DatabaseBallotSubmissionSerializable} to {@linkcode DatabaseBallotSubmission}
  */
-function reviveBallotSubmission(value: DatabaseBallotSubmissionJson): DatabaseBallotSubmission {
+function reviveBallotSubmission(value: DatabaseBallotSubmissionSerializable): DatabaseBallotSubmission {
     const account = AccountAddress.fromBase58(value.account);
     const transactionHash = TransactionHash.fromHexString(value.transactionHash);
     const timestamp = new Date(value.timestamp);
@@ -75,7 +75,7 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
         );
     }
 
-    const json = (await res.json()) as DatabaseBallotSubmissionJson | null;
+    const json = (await res.json()) as DatabaseBallotSubmissionSerializable | null;
     return json !== undefined && json !== null ? reviveBallotSubmission(json) : null;
 }
 
@@ -98,6 +98,6 @@ export async function getAccountSubmissions(accountAddress: AccountAddress.Type)
         );
     }
 
-    const json = (await res.json()) as DatabaseBallotSubmissionJson[];
+    const json = (await res.json()) as DatabaseBallotSubmissionSerializable[];
     return json.map(reviveBallotSubmission);
 }

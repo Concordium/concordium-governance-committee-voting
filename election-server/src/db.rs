@@ -33,7 +33,7 @@ impl From<DatabaseError> for StatusCode {
 }
 
 /// Alias for returning results with [`DatabaseError`]s as the `Err` variant.
-type DatabaseResult<T = ()> = Result<T, DatabaseError>;
+type DatabaseResult<T> = Result<T, DatabaseError>;
 
 /// The server configuration stored in the DB.
 #[derive(Debug, Serialize)]
@@ -63,13 +63,13 @@ impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
 
 /// Describes an election ballot submission as it is stored in the database
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StoredBallotSubmission {
     /// The account which submitted the ballot
     pub account:          AccountAddress,
     /// The ballot submitted
     pub ballot:           RegisterVotesParameter,
     /// The transaction hash of the ballot submission
-    #[serde(rename = "transactionHash")]
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
     pub timestamp:        NaiveDateTime,
@@ -127,7 +127,7 @@ impl PreparedStatements {
     async fn new(client: &Object) -> DatabaseResult<Self> {
         let insert_ballot = client
             .prepare(
-                "INSERT INTO ballots (transaction_hash, timestamp, ballot, account, verified) \
+                "INSERT INTO ballots (transaction_hash, block_time, ballot, account, verified) \
                  VALUES ($1, $2, $3, $4, $5)",
             )
             .await?;
@@ -145,13 +145,13 @@ impl PreparedStatements {
             .await?;
         let get_ballot_submission = client
             .prepare(
-                "SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE \
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
                  transaction_hash = $1",
             )
             .await?;
         let get_ballot_submissions = client
             .prepare(
-                "SELECT transaction_hash, timestamp, ballot, account, verified from ballots WHERE \
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
                  account = $1 ORDER BY timestamp ASC",
             )
             .await?;

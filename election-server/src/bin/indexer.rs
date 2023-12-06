@@ -33,7 +33,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints: Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -43,20 +43,17 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:    tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address: ContractAddress,
-    /// The absolute block height to start indexing ballot submissions from
-    #[arg(long = "from-height", env = "CCD_ELECTION_FROM_HEIGHT")]
-    from_height:      Option<AbsoluteBlockHeight>,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:        tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -64,20 +61,20 @@ struct AppConfig {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s:     u32,
+    max_behind_s: u32,
 }
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
 pub struct BallotSubmission {
     /// The account which submitted the ballot
-    pub account:          contracts_common::AccountAddress,
+    pub account: contracts_common::AccountAddress,
     /// The ballot submitted
-    pub ballot:           RegisterVotesParameter,
+    pub ballot: RegisterVotesParameter,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    pub verified:         bool,
+    pub verified: bool,
 }
 
 /// The data collected for each block.
@@ -86,11 +83,11 @@ pub struct BlockData {
     /// The hash of the block
     pub block_hash: BlockHash,
     /// The height of the block
-    pub height:     AbsoluteBlockHeight,
+    pub height: AbsoluteBlockHeight,
     /// The block time of the block
-    pub timestamp:  DateTime<Utc>,
+    pub timestamp: DateTime<Utc>,
     /// The ballots submitted in the block
-    pub ballots:    Vec<BallotSubmission>,
+    pub ballots: Vec<BallotSubmission>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -281,6 +278,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
 }
 
 /// Extracts the ballot submission (if any) from `transaction`.
+#[tracing::instrument]
 fn get_ballot_submission(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
@@ -301,7 +299,13 @@ fn get_ballot_submission(
         return None;
     };
 
-    let ballot = contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref()).ok()?;
+    let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref()) {
+        Ok(ballot) => ballot,
+        Err(err) => {
+            tracing::warn!("Could not parse ballot from transaction message: {}", err);
+            return None;
+        }
+    };
     let ballot_submission = BallotSubmission {
         ballot,
         verified: true, // TODO: verify with election guard
@@ -368,34 +372,32 @@ async fn verify_contract(
         .context("Could not get instance info for election contract")?
         .response;
     let methods = match instance_info {
-        InstanceInfo::V0 { methods, .. } => methods,
+        InstanceInfo::V0 {..} => return Err(anyhow!("Expected V1 contract")),
         InstanceInfo::V1 { methods, .. } => methods,
     };
 
     anyhow::ensure!(
         methods.iter().any(|m| m == REGISTER_VOTES_RECEIVE),
-        format!(
-            "Expected method with receive name \"{}\" to be available on contract",
-            REGISTER_VOTES_RECEIVE
-        )
+        "Expected method with receive name \"{}\" to be available on contract",
+        REGISTER_VOTES_RECEIVE
     );
 
     Ok(())
 }
 
-/// Config spanning accross all `node_pcocess invocatoins.`
+/// Config spanning across all `node_pcocess invocations.`
 struct NodeProcessState {
     /// Whether the contract has been verified to be an election contract.
     contract_verified: bool,
     /// The latest processed height.
-    processed_height:  Option<AbsoluteBlockHeight>,
+    processed_height: Option<AbsoluteBlockHeight>,
 }
 
 impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
     fn from(value: Option<AbsoluteBlockHeight>) -> Self {
         Self {
             contract_verified: Default::default(),
-            processed_height:  value,
+            processed_height: value,
         }
     }
 }
@@ -478,8 +480,6 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    tracing::info!("Service started with configuration: {:?}", config);
-
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
     // background database task is started which then sends the height over this
@@ -510,9 +510,6 @@ async fn main() -> anyhow::Result<()> {
     let latest_height = height_receiver
         .await
         .context("Did not receive height of most recent block recorded in database")?;
-    let latest_height = latest_height.or(config
-        .from_height
-        .map(|v| (v.height.saturating_sub(1)).into()));
 
     let mut latest_successful_node: u64 = 0;
     let mut node_process_config: NodeProcessState = latest_height.into();
