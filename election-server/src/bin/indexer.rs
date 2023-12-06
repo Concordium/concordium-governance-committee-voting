@@ -33,7 +33,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints: Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -43,7 +43,7 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection: tokio_postgres::config::Config,
+    db_connection:    tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address: ContractAddress,
@@ -53,7 +53,7 @@ struct AppConfig {
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level: tracing_subscriber::filter::LevelFilter,
+    log_level:        tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -61,20 +61,20 @@ struct AppConfig {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s: u32,
+    max_behind_s:     u32,
 }
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
 pub struct BallotSubmission {
     /// The account which submitted the ballot
-    pub account: contracts_common::AccountAddress,
+    pub account:          contracts_common::AccountAddress,
     /// The ballot submitted
-    pub ballot: RegisterVotesParameter,
+    pub ballot:           RegisterVotesParameter,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    pub verified: bool,
+    pub verified:         bool,
 }
 
 /// The data collected for each block.
@@ -83,11 +83,11 @@ pub struct BlockData {
     /// The hash of the block
     pub block_hash: BlockHash,
     /// The height of the block
-    pub height: AbsoluteBlockHeight,
+    pub height:     AbsoluteBlockHeight,
     /// The block time of the block
     pub block_time: DateTime<Utc>,
     /// The ballots submitted in the block
-    pub ballots: Vec<BallotSubmission>,
+    pub ballots:    Vec<BallotSubmission>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -102,10 +102,10 @@ impl TryFrom<&BlockData> for Vec<StoredBallotSubmission> {
             .ballots
             .iter()
             .map(|bs| StoredBallotSubmission {
-                block_time: value.block_time,
-                account: bs.account,
-                ballot: bs.ballot.clone(),
-                verified: bs.verified,
+                block_time:       value.block_time,
+                account:          bs.account,
+                ballot:           bs.ballot.clone(),
+                verified:         bs.verified,
                 transaction_hash: bs.transaction_hash,
             })
             .collect();
@@ -388,14 +388,14 @@ struct NodeProcessState {
     /// Whether the contract has been verified to be an election contract.
     contract_verified: bool,
     /// The latest processed height.
-    processed_height: Option<AbsoluteBlockHeight>,
+    processed_height:  Option<AbsoluteBlockHeight>,
 }
 
 impl From<Option<AbsoluteBlockHeight>> for NodeProcessState {
     fn from(value: Option<AbsoluteBlockHeight>) -> Self {
         Self {
             contract_verified: Default::default(),
-            processed_height: value,
+            processed_height:  value,
         }
     }
 }

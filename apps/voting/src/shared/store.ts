@@ -216,7 +216,7 @@ export class BallotSubmission {
     /** Construct ballot submission from {@linkcode DatabaseBallotSubmission} */
     public static fromDatabaseItem(value: DatabaseBallotSubmission): BallotSubmission {
         const status = value.verified ? BallotSubmissionStatus.Verified : BallotSubmissionStatus.Discarded;
-        return new BallotSubmission(value.transactionHash, status, value.timestamp);
+        return new BallotSubmission(value.transactionHash, status, value.blockTime);
     }
 
     /** Represent ballot submission as {@linkcode SerializableBallotSubmission} */

@@ -25,7 +25,7 @@ struct AppConfig {
         default_value = "http://localhost:20001",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint: concordium_rust_sdk::v2::Endpoint,
+    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -35,36 +35,37 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection: tokio_postgres::config::Config,
+    db_connection:        tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value = "16",
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size: usize,
+    pool_size:            usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level: tracing_subscriber::filter::LevelFilter,
+    log_level:            tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server
     #[clap(
         long = "request-timeout",
         default_value = "5000",
         env = "CCD_ELECTION_REQUEST_TIMEOUT"
     )]
-    request_timeout: u64,
+    request_timeout:      u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address: std::net::SocketAddr,
-    /// A json file consisting of the list of eligible voters and their respective voting weights
+    listen_address:       std::net::SocketAddr,
+    /// A json file consisting of the list of eligible voters and their
+    /// respective voting weights
     #[clap(
         long = "eligible-voters-file",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"

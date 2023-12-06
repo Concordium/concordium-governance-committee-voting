@@ -10,11 +10,11 @@ const DEFAULT_NODE = 'http://localhost:20001';
 const DEFAULT_BACKEND_API = 'http://localhost:8080';
 
 /**
-    * Validates environment variable present at `envField` as a URL.
-    *
-    * @param envField - The name of the environment variable to validate
-    * @throws If environment variable is deemed an invalid URL.
-    */
+ * Validates environment variable present at `envField` as a URL.
+ *
+ * @param envField - The name of the environment variable to validate
+ * @throws If environment variable is deemed an invalid URL.
+ */
 function validateURL(envField: string): void {
     const urlCandidate = process.env[envField];
     try {

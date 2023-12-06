@@ -5,7 +5,7 @@ use concordium_rust_sdk::{
     smart_contracts::common::{AccountAddress, ACCOUNT_ADDRESS_SIZE},
     types::{hashes::TransactionHash, AbsoluteBlockHeight, ContractAddress},
 };
-use deadpool_postgres::{Object, GenericClient};
+use deadpool_postgres::{GenericClient, Object};
 use serde::Serialize;
 use tokio_postgres::{
     types::{Json, ToSql},
@@ -67,7 +67,7 @@ pub struct StoredBallotSubmission {
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
-    pub block_time:        DateTime<Utc>,
+    pub block_time:       DateTime<Utc>,
     /// Whether the ballot proof could be verified.
     pub verified:         bool,
 }
@@ -188,8 +188,8 @@ impl PreparedStatements {
     ) -> DatabaseResult<Option<StoredBallotSubmission>> {
         let get_ballot_submission = db
             .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
-                 transaction_hash = $1",
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
+                 WHERE transaction_hash = $1",
             )
             .await?;
         let params: [&(dyn ToSql + Sync); 1] = [&transaction_hash.as_ref()];
@@ -204,8 +204,8 @@ impl PreparedStatements {
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
         let get_ballot_submissions = db
             .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
-                 account = $1 ORDER BY timestamp ASC",
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
+                 WHERE account = $1 ORDER BY timestamp ASC",
             )
             .await?;
         let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
@@ -220,13 +220,11 @@ impl PreparedStatements {
 /// [`PreparedStatements`] which can be executed with the client.
 pub struct Database {
     /// The database client
-    pub client:   Object,
+    pub client: Object,
 }
 
 impl From<Object> for Database {
-    fn from(client: Object) -> Self {
-        Self { client }
-    }
+    fn from(client: Object) -> Self { Self { client } }
 }
 
 impl AsRef<Object> for Database {
@@ -236,11 +234,9 @@ impl AsRef<Object> for Database {
 impl Database {
     /// Inserts a row in the settings table holding the application
     /// configuration. The table is constrained to only hold a single row.
-    pub async fn init_settings(
-        &self,
-        contract_address: &ContractAddress,
-    ) -> DatabaseResult<()> {
-        let init_settings = self.client
+    pub async fn init_settings(&self, contract_address: &ContractAddress) -> DatabaseResult<()> {
+        let init_settings = self
+            .client
             .prepare_cached(
                 "INSERT INTO settings (contract_index, contract_subindex) VALUES ($1, $2) ON \
                  CONFLICT DO NOTHING",
@@ -256,7 +252,8 @@ impl Database {
 
     /// Get the latest block height recorded in the DB.
     pub async fn get_settings(&self) -> DatabaseResult<StoredConfiguration> {
-        let get_settings = self.client
+        let get_settings = self
+            .client
             .prepare_cached("SELECT latest_height, contract_index, contract_subindex FROM settings")
             .await?;
         self.client.query_one(&get_settings, &[]).await?.try_into()
@@ -267,14 +264,18 @@ impl Database {
         &self,
         transaction_hash: TransactionHash,
     ) -> DatabaseResult<Option<StoredBallotSubmission>> {
-        let get_ballot_submission = self.client
+        let get_ballot_submission = self
+            .client
             .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
-                 transaction_hash = $1",
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
+                 WHERE transaction_hash = $1",
             )
             .await?;
         let params: [&(dyn ToSql + Sync); 1] = [&transaction_hash.as_ref()];
-        let row = self.client.query_opt(&get_ballot_submission, &params).await?;
+        let row = self
+            .client
+            .query_opt(&get_ballot_submission, &params)
+            .await?;
         row.map(StoredBallotSubmission::try_from).transpose()
     }
 
@@ -283,10 +284,11 @@ impl Database {
         &self,
         account_address: AccountAddress,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
-        let get_ballot_submissions = self.client
+        let get_ballot_submissions = self
+            .client
             .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots WHERE \
-                 account = $1 ORDER BY block_time ASC",
+                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
+                 WHERE account = $1 ORDER BY block_time ASC",
             )
             .await?;
         let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
@@ -298,22 +300,18 @@ impl Database {
 }
 
 pub struct Transaction<'a> {
-    inner: &'a deadpool_postgres::Transaction<'a>
+    inner: &'a deadpool_postgres::Transaction<'a>,
 }
 
 impl<'a> From<&'a deadpool_postgres::Transaction<'a>> for Transaction<'a> {
-    fn from(inner: &'a deadpool_postgres::Transaction<'a>) -> Self {
-        Self {inner}
-    }
+    fn from(inner: &'a deadpool_postgres::Transaction<'a>) -> Self { Self { inner } }
 }
 
 impl<'a> Transaction<'a> {
     /// Set the latest height in the DB.
-    pub async fn set_latest_height(
-        &self,
-        height: AbsoluteBlockHeight,
-    ) -> DatabaseResult<()> {
-        let set_latest_height = self.inner
+    pub async fn set_latest_height(&self, height: AbsoluteBlockHeight) -> DatabaseResult<()> {
+        let set_latest_height = self
+            .inner
             .prepare_cached("UPDATE settings SET latest_height = $1 WHERE id = true")
             .await?;
         let params: [&(dyn ToSql + Sync); 1] = [&(height.height as i64)];
@@ -322,11 +320,9 @@ impl<'a> Transaction<'a> {
     }
 
     /// Insert a ballot submission into the DB.
-    pub async fn insert_ballot(
-        &self,
-        ballot: &StoredBallotSubmission,
-    ) -> DatabaseResult<()> {
-        let insert_ballot = self.inner
+    pub async fn insert_ballot(&self, ballot: &StoredBallotSubmission) -> DatabaseResult<()> {
+        let insert_ballot = self
+            .inner
             .prepare_cached(
                 "INSERT INTO ballots (transaction_hash, block_time, ballot, account, verified) \
                  VALUES ($1, $2, $3, $4, $5)",
@@ -343,7 +339,6 @@ impl<'a> Transaction<'a> {
         self.inner.execute(&insert_ballot, &params).await?;
         Ok(())
     }
-
 }
 
 /// Representation of a database pool
