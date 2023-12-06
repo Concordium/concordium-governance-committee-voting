@@ -25,7 +25,7 @@ struct AppConfig {
         default_value = "http://localhost:20001",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
+    node_endpoint: concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -35,35 +35,35 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:        tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value = "16",
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size:            usize,
+    pool_size: usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:            tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server
     #[clap(
         long = "request-timeout",
         default_value = "5000",
         env = "CCD_ELECTION_REQUEST_TIMEOUT"
     )]
-    request_timeout:      u64,
+    request_timeout: u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address:       std::net::SocketAddr,
+    listen_address: std::net::SocketAddr,
     /// A json file consisting of the list of eligible voters and their respective voting weights
     #[clap(
         long = "eligible-voters-file",
@@ -86,11 +86,17 @@ async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
 ) -> Result<Json<Vec<StoredBallotSubmission>>, StatusCode> {
-    let db = state.db_pool.get().await?;
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let ballot_submissions = db
-        .prepared
-        .get_ballot_submissions(db.as_ref(), account_address)
-        .await?;
+        .get_ballot_submissions(account_address)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get ballot submissions for account: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     Ok(Json(ballot_submissions))
 }
 
@@ -101,11 +107,17 @@ async fn get_ballot_submission_by_transaction(
     State(state): State<AppState>,
     Path(transaction_hash): Path<TransactionHash>,
 ) -> Result<Json<Option<StoredBallotSubmission>>, StatusCode> {
-    let db = state.db_pool.get().await?;
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let ballot_submission = db
-        .prepared
-        .get_ballot_submission(db.as_ref(), transaction_hash)
-        .await?;
+        .get_ballot_submission(transaction_hash)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get ballot submission: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     Ok(Json(ballot_submission))
 }
 
@@ -124,8 +136,6 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
-
-    tracing::info!("Service started with configuration: {:?}", config);
 
     let state = AppState {
         db_pool: DatabasePool::create(config.db_connection, config.pool_size, true)
@@ -170,6 +180,8 @@ async fn main() -> anyhow::Result<()> {
                 &config.listen_address
             )
         })?;
+
+    tracing::info!("Listening for requests at {}", config.listen_address);
     axum::serve(listener, router)
         .await
         .context("HTTP server has shut down")?;

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Table containing ballots successfully submitted to the contract monitored.
 CREATE TABLE IF NOT EXISTS ballots (
   transaction_hash BYTEA PRIMARY KEY,
-  block_time TIMESTAMP NOT NULL,
+  block_time TIMESTAMP WITH TIME ZONE NOT NULL,
   ballot JSONB NOT NULL,
   account BYTEA NOT NULL,
   verified BOOL NOT NULL

@@ -19,7 +19,7 @@ interface DatabaseBallotSubmissionSerializable {
     /** The transaction hash corresponding to the submission */
     transactionHash: HexString;
     /** The slot time of the block the submission is included in */
-    timestamp: string;
+    blockTime: string;
     /** Whether the ballot could be verified */
     verified: boolean;
     /** The contents of the ballot */
@@ -34,7 +34,7 @@ export interface DatabaseBallotSubmission {
     /** The transaction hash corresponding to the submission */
     transactionHash: TransactionHash.Type;
     /** The slot time of the block the submission is included in */
-    timestamp: Date;
+    blockTime: Date;
     /** Whether the ballot could be verified */
     verified: boolean;
     /** The contents of the ballot */
@@ -47,12 +47,12 @@ export interface DatabaseBallotSubmission {
 function reviveBallotSubmission(value: DatabaseBallotSubmissionSerializable): DatabaseBallotSubmission {
     const account = AccountAddress.fromBase58(value.account);
     const transactionHash = TransactionHash.fromHexString(value.transactionHash);
-    const timestamp = new Date(value.timestamp);
+    const blockTime = new Date(value.blockTime);
     return {
         ...value,
         account,
         transactionHash,
-        timestamp,
+        blockTime,
     };
 }
 

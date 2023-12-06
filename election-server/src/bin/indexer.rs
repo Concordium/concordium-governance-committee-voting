@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use anyhow::{anyhow, Context};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::RegisterVotesParameter;
 use concordium_rust_sdk::{
@@ -16,7 +16,7 @@ use concordium_rust_sdk::{
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
-use election_server::db::{Database, StoredBallotSubmission};
+use election_server::db::{Database, DatabasePool, StoredBallotSubmission, Transaction};
 use futures::{future, TryStreamExt};
 use serde::Serialize;
 
@@ -85,7 +85,7 @@ pub struct BlockData {
     /// The height of the block
     pub height: AbsoluteBlockHeight,
     /// The block time of the block
-    pub timestamp: DateTime<Utc>,
+    pub block_time: DateTime<Utc>,
     /// The ballots submitted in the block
     pub ballots: Vec<BallotSubmission>,
 }
@@ -98,13 +98,11 @@ impl TryFrom<&BlockData> for Vec<StoredBallotSubmission> {
     type Error = TimestampOutOfRangeError;
 
     fn try_from(value: &BlockData) -> Result<Self, Self::Error> {
-        let timestamp = NaiveDateTime::from_timestamp_millis(value.timestamp.timestamp_millis())
-            .ok_or(TimestampOutOfRangeError)?;
         let ballot_submissions = value
             .ballots
             .iter()
             .map(|bs| StoredBallotSubmission {
-                timestamp,
+                block_time: value.block_time,
                 account: bs.account,
                 ballot: bs.ballot.clone(),
                 verified: bs.verified,
@@ -125,16 +123,18 @@ async fn run_db_process(
     height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
     stop_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    let mut db = Database::create(db_connection.clone(), true)
+    let db_pool = DatabasePool::create(db_connection.clone(), 2, true)
         .await
-        .context("Could not create database connection")?;
-    db.prepared
-        .init_settings(db.as_ref(), contract_address)
+        .context("Could not create database pool")?;
+    let mut db = db_pool
+        .get()
+        .await
+        .context("Could not get database connection from pool")?;
+    db.init_settings(contract_address)
         .await
         .context("Could not init settings in DB")?;
     let settings = db
-        .prepared
-        .get_settings(db.as_ref())
+        .get_settings()
         .await
         .context("Could not get best height from database")?;
 
@@ -186,9 +186,11 @@ async fn run_db_process(
                     );
                     tokio::time::sleep(delay).await;
 
-                    let new_db = match Database::create(db_connection.clone(), false)
+                    // Get new db connection from the pool
+                    db = match db_pool
+                        .get()
                         .await
-                        .context("Failed to create database")
+                        .context("Failed to get new database connection from pool")
                     {
                         Ok(db) => db,
                         Err(e) => {
@@ -196,9 +198,6 @@ async fn run_db_process(
                             return Err(e);
                         }
                     };
-
-                    // and drop the old database connection.
-                    db = new_db;
                     retry_block_data = Some(block_data);
                 }
             }
@@ -222,25 +221,24 @@ async fn db_insert_block<'a>(
     block_data: &'a BlockData,
 ) -> anyhow::Result<chrono::Duration> {
     let start = chrono::Utc::now();
-    let db_tx = db
+    let transaction = db
         .client
         .transaction()
         .await
         .context("Failed to build DB transaction")?;
 
-    let tx_ref = &db_tx;
+    {
+        let transaction = Transaction::from(&transaction);
+        transaction.set_latest_height(block_data.height).await?;
 
-    db.prepared
-        .set_latest_height(tx_ref, block_data.height)
-        .await?;
-
-    let ballots: Vec<_> = block_data.try_into()?;
-    for ballot in ballots.iter() {
-        db.prepared.insert_ballot(tx_ref, ballot).await?;
+        let ballots: Vec<_> = block_data.try_into()?;
+        for ballot in ballots.iter() {
+            transaction.insert_ballot(ballot).await?;
+        }
     }
 
     let now = tokio::time::Instant::now();
-    db_tx
+    transaction
         .commit()
         .await
         .context("Failed to commit DB transaction.")?;
@@ -351,7 +349,7 @@ async fn process_block(
     let block_data = BlockData {
         block_hash,
         height: block_info.block_height,
-        timestamp: block_info.block_slot_time,
+        block_time: block_info.block_slot_time,
         ballots,
     };
 
@@ -372,7 +370,7 @@ async fn verify_contract(
         .context("Could not get instance info for election contract")?
         .response;
     let methods = match instance_info {
-        InstanceInfo::V0 {..} => return Err(anyhow!("Expected V1 contract")),
+        InstanceInfo::V0 { .. } => return Err(anyhow!("Expected V1 contract")),
         InstanceInfo::V1 { methods, .. } => methods,
     };
 
