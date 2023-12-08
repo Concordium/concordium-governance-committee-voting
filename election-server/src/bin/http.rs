@@ -5,6 +5,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use clap::Parser;
 use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress, types::hashes::TransactionHash,
@@ -158,10 +159,11 @@ async fn main() -> anyhow::Result<()> {
             .await
             .context("Failed to connect to the database")?,
     };
-    let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST])
-        .allow_origin(Any);
     let timeout = config.request_timeout;
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
+        .with_prefix("election-server")
+        .with_default_metrics()
+        .build_pair();
 
     let mut router = Router::new()
         .route_service("/", ServeFile::new(config.frontend_dir.join("index.html")))
@@ -178,8 +180,10 @@ async fn main() -> anyhow::Result<()> {
             "/static/eligible-voters.json",
             ServeFile::new(config.eligible_voters_file),
         )
+        .route("/metrics", get(|| async move { metric_handle.render() }))
          // Fall back to serving anything from the frontend dir
         .route_service("/*path", ServeDir::new(config.frontend_dir))
+        .layer(prometheus_layer)
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
                 .make_span_with(tower_http::trace::DefaultMakeSpan::new())
@@ -192,6 +196,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(tower_http::compression::CompressionLayer::new());
 
     if config.allow_cors {
+        let cors = CorsLayer::new()
+            .allow_methods([Method::GET, Method::POST])
+            .allow_origin(Any);
         router = router.layer(cors);
     }
 
