@@ -66,7 +66,7 @@ function reviveBallotSubmission(value: DatabaseBallotSubmissionSerializable): Da
  */
 export async function getSubmission(transaction: TransactionHash.Type): Promise<DatabaseBallotSubmission | null> {
     const transactionHex = TransactionHash.toHexString(transaction);
-    const url = `${BACKEND_API}/submission-status/${transactionHex}`;
+    const url = `${BACKEND_API}/api/submission-status/${transactionHex}`;
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -89,7 +89,7 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
  */
 export async function getAccountSubmissions(accountAddress: AccountAddress.Type): Promise<DatabaseBallotSubmission[]> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
-    const url = `${BACKEND_API}/submissions/${acccoutBase58}`;
+    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}`;
     const res = await fetch(url);
 
     if (!res.ok) {

@@ -12,7 +12,7 @@ use concordium_rust_sdk::{
 use election_server::db::{DatabasePool, StoredBallotSubmission};
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeFile,
+    services::{ServeDir, ServeFile},
 };
 
 /// Command line configuration of the application.
@@ -39,7 +39,7 @@ struct AppConfig {
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
-        default_value = "16",
+        default_value_t = 16,
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
     pool_size:            usize,
@@ -53,7 +53,7 @@ struct AppConfig {
     /// The request timeout of the http server
     #[clap(
         long = "request-timeout",
-        default_value = "5000",
+        default_value_t = 5000,
         env = "CCD_ELECTION_REQUEST_TIMEOUT"
     )]
     request_timeout:      u64,
@@ -71,6 +71,21 @@ struct AppConfig {
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
     )]
     eligible_voters_file: String,
+    /// Path to the directory where frontend assets are located
+    #[clap(
+        long = "frontend-dir",
+        default_value = "./frontend/dist",
+        env = "CCD_ELECTION_FRONTEND_DIR"
+    )]
+    frontend_dir:         std::path::PathBuf,
+    /// Allow requests from other origins. Useful for development where frontend
+    /// is not served from the server.
+    #[clap(
+        long = "allow-cors",
+        default_value_t = false,
+        env = "CCD_ELECTION_ALLOW_CORS"
+    )]
+    allow_cors:           bool,
 }
 
 /// The app state shared across http requests made to the server.
@@ -148,13 +163,14 @@ async fn main() -> anyhow::Result<()> {
         .allow_origin(Any);
     let timeout = config.request_timeout;
 
-    let router = Router::new()
+    let mut router = Router::new()
+        .route_service("/", ServeFile::new(config.frontend_dir.join("index.html")))
         .route(
-            "/submission-status/:transaction",
+            "/api/submission-status/:transaction",
             get(get_ballot_submission_by_transaction),
         )
         .route(
-            "/submissions/:account",
+            "/api/submissions/:account",
             get(get_ballot_submissions_by_account),
         )
         .with_state(state)
@@ -162,7 +178,8 @@ async fn main() -> anyhow::Result<()> {
             "/static/eligible-voters.json",
             ServeFile::new(config.eligible_voters_file),
         )
-        .layer(cors)
+         // Fall back to serving anything from the frontend dir
+        .route_service("/*path", ServeDir::new(config.frontend_dir))
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
                 .make_span_with(tower_http::trace::DefaultMakeSpan::new())
@@ -171,7 +188,12 @@ async fn main() -> anyhow::Result<()> {
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(timeout),
         ))
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(1_000_000)); // at most 1000kB of data.
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(1_000_000)) // at most 1000kB of data.
+        .layer(tower_http::compression::CompressionLayer::new());
+
+    if config.allow_cors {
+        router = router.layer(cors);
+    }
 
     let listener = tokio::net::TcpListener::bind(config.listen_address)
         .await
