@@ -501,7 +501,8 @@ async fn main() -> anyhow::Result<()> {
     {
         use tracing_subscriber::prelude::*;
         let log_filter = tracing_subscriber::filter::Targets::new()
-            .with_target(module_path!(), config.log_level);
+            .with_target(module_path!(), config.log_level)
+            .with_target("election_server", config.log_level);
 
         tracing_subscriber::registry()
             .with(tracing_subscriber::fmt::layer())

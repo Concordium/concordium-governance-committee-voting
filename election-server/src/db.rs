@@ -1,3 +1,5 @@
+use std::ops::{Bound, RangeBounds};
+
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use concordium_governance_committee_election::RegisterVotesParameter;
@@ -25,6 +27,9 @@ pub enum DatabaseError {
     /// Failed to configure database
     #[error("Could not configure database: {0}")]
     Configuration(#[from] anyhow::Error),
+    /// Any other error happening
+    #[error("{0}")]
+    Other(String),
 }
 
 /// Alias for returning results with [`DatabaseError`]s as the `Err` variant.
@@ -162,20 +167,41 @@ impl Database {
         row.map(StoredBallotSubmission::try_from).transpose()
     }
 
-    /// Get ballot submission by transaction hash
+    /// Get ballot submission by account address within the give range. If upper
+    /// bound of range is unbounded, [`DatanaseError`] is returned as this
+    /// is not supported.
     pub async fn get_ballot_submissions(
         &self,
         account_address: AccountAddress,
+        range: &impl RangeBounds<usize>,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
-        let get_ballot_submissions = self
-            .client
-            .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
-                 WHERE account = $1 ORDER BY block_time ASC",
-            )
-            .await?;
-        let params: [&(dyn ToSql + Sync); 1] = [&account_address.0.as_ref()];
-        let rows = self.client.query(&get_ballot_submissions, &params).await?;
+        let from = match range.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(&from) => from,
+            Bound::Excluded(&from) => from.saturating_add(1),
+        };
+        let to = match range.end_bound() {
+            Bound::Unbounded => None,
+            Bound::Included(&to) => Some(to),
+            Bound::Excluded(&to) => Some(to.saturating_sub(1)),
+        };
+
+        let mut statement = "SELECT transaction_hash, block_time, ballot, account, verified from \
+                             ballots WHERE account = $1 ORDER BY block_time DESC OFFSET $2"
+            .to_string();
+        let rows = if let Some(to) = to {
+            let size = to - from + 1;
+            statement.push_str(" LIMIT $3");
+            let get_ballot_submissions = self.client.prepare_cached(&statement).await?;
+            let params: [&(dyn ToSql + Sync); 3] =
+                [&account_address.0.as_ref(), &(from as i64), &(size as i64)];
+            self.client.query(&get_ballot_submissions, &params).await?
+        } else {
+            let get_ballot_submissions = self.client.prepare_cached(&statement).await?;
+            let params: [&(dyn ToSql + Sync); 2] = [&account_address.0.as_ref(), &(from as i64)];
+            self.client.query(&get_ballot_submissions, &params).await?
+        };
+
         rows.into_iter()
             .map(StoredBallotSubmission::try_from)
             .collect()

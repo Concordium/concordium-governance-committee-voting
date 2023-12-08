@@ -1,6 +1,8 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
 import { BACKEND_API } from './constants';
 
+const PAGINATION_SIZE = 10;
+
 /**
  * A candidate vote as stored in the backend database
  */
@@ -41,6 +43,15 @@ export interface DatabaseBallotSubmission {
     ballot: DatabaseCandidateVote[];
 }
 
+type Paginated<T> = {
+    /** Whether there are more results to load */
+    hasMore: boolean,
+    /** The list of results */
+    results: T[],
+};
+
+export type SubmissionsResponse = Paginated<DatabaseBallotSubmission>;
+
 /**
  * Converts {@linkcode DatabaseBallotSubmissionSerializable} to {@linkcode DatabaseBallotSubmission}
  */
@@ -80,16 +91,18 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
 }
 
 /**
- * Gets the ballot submissions submitted by an account
+ * Gets the ballot submissions submitted by an account wrapped in a paginated response
  *
  * @param account - The account address to query ballot submissions for
+ * @param page - The page of submissions to load.
  *
- * @returns A promise which resolves with a list of {@linkcode DatabaseBallotSubmission}.
+ * @returns A promise which resolves with a list of {@linkcode DatabaseBallotSubmission} wrapped in {@linkcode
+ * SubmissionsResponse}.
  * @throws On http errors.
  */
-export async function getAccountSubmissions(accountAddress: AccountAddress.Type): Promise<DatabaseBallotSubmission[]> {
+export async function getAccountSubmissions(accountAddress: AccountAddress.Type, page: number): Promise<SubmissionsResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
-    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}`;
+    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?page=${page}&page-size=${PAGINATION_SIZE}`;
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -98,6 +111,6 @@ export async function getAccountSubmissions(accountAddress: AccountAddress.Type)
         );
     }
 
-    const json = (await res.json()) as DatabaseBallotSubmissionSerializable[];
-    return json.map(reviveBallotSubmission);
+    const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
+    return {...json, results: json.results.map(reviveBallotSubmission)};
 }

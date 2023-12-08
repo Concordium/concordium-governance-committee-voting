@@ -11,6 +11,7 @@ import {
     Wallet,
     activeWalletAtom,
     connectionViewAtom,
+    loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
 } from '@shared/store';
 import { AccountAddress, TransactionHash } from '@concordium/web-sdk';
@@ -182,6 +183,18 @@ const showStatus: { [p in BallotSubmissionStatus]: string } = {
  */
 const ActiveConnectionBody = withActiveAccount(({ connection }) => {
     const submissions = useAtomValue(submittedBallotsAtom);
+    const loadMore = useSetAtom(loadMoreSubmittedBallotsAtom);
+    const [loading, setLoading] = useState(false);
+
+    const handleLoadMore = useCallback(async () => {
+        setLoading(true);
+
+        try {
+            await loadMore();
+        } finally {
+            setLoading(false);
+        }
+    }, [loadMore]);
 
     return (
         <>
@@ -193,16 +206,16 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
             </section>
             <section>
                 <h5>Ballot submissions</h5>
-                {submissions?.length === 0 && (
+                {submissions?.ballots.length === 0 && (
                     <span className="active-connection__no-submissions text-muted">
                         No ballot submissions registered for the selected account
                     </span>
                 )}
-                {submissions?.map(({ status, transaction, submitted }, i, arr) => {
+                {submissions?.ballots.map(({ status, transaction, submitted }, i, arr) => {
                     const transactionString = TransactionHash.toHexString(transaction);
-                    const isLatest = i === arr.length - 1;
+                    const isLatest = i === 0;
                     const activeSubmission =
-                        isLatest || arr.slice(i + 1).every((s) => s.status !== BallotSubmissionStatus.Verified);
+                        isLatest || arr.slice(0, i).every((s) => s.status !== BallotSubmissionStatus.Verified);
 
                     return (
                         <div
@@ -223,6 +236,11 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
                         </div>
                     );
                 })}
+                {submissions?.hasMore && (
+                    <div className='d-flex justify-content-center mt-4'>
+                        <Button variant="secondary" size='sm' onClick={handleLoadMore} disabled={loading}>Load more</Button>
+                    </div>
+                )}
             </section>
         </>
     );

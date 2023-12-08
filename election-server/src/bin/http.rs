@@ -1,6 +1,8 @@
+use std::{cmp, ops::RangeInclusive};
+
 use anyhow::Context;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{Method, StatusCode},
     routing::get,
     Json, Router,
@@ -11,6 +13,7 @@ use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress, types::hashes::TransactionHash,
 };
 use election_server::db::{DatabasePool, StoredBallotSubmission};
+use serde::{Deserialize, Serialize};
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -96,25 +99,77 @@ struct AppState {
     db_pool: DatabasePool,
 }
 
+const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
+
+fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
+
+/// query params passed to [`get_ballot_submissions_by_account`].
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+struct SubmissionsQueryParams {
+    /// The page of ballot submissions to get.
+    #[serde(default)]
+    page:      usize,
+    /// The pagination size used.
+    #[serde(default = "default_page_size")]
+    page_size: usize,
+}
+
+impl SubmissionsQueryParams {
+    /// Get the page size, where the max page size is capped by
+    /// [`MAX_SUBMISSIONS_PAGE_SIZE`]
+    fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
+
+    /// Returns a range from [`page`] to (and including) `page + page_size`.
+    /// This results in a range that corresponds to a resulting list size of
+    /// `page_size + 1` be able to determine if the DB has any results in the
+    /// next page, and as such the last result in the db query should be
+    /// discarded to match the number of results to match [`page_size`].
+    fn get_query_range(&self) -> RangeInclusive<usize> {
+        let size = self.page_size();
+        let from = self.page.saturating_mul(size);
+        let to = from.saturating_add(size);
+        from..=to
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SubmissionsResponse {
+    results: Vec<StoredBallotSubmission>,
+    has_more:    bool,
+}
+
 /// Get ballot submissions registered for `account_address`. Returns
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
-) -> Result<Json<Vec<StoredBallotSubmission>>, StatusCode> {
+    Query(query_params): Query<SubmissionsQueryParams>,
+) -> Result<Json<SubmissionsResponse>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    let ballot_submissions = db
-        .get_ballot_submissions(account_address)
+    let mut results = db
+        .get_ballot_submissions(account_address, &query_params.get_query_range())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get ballot submissions for account: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    Ok(Json(ballot_submissions))
+
+    let has_more = results.len() > query_params.page_size();
+    if has_more {
+        results.pop();
+    }
+
+    let response = SubmissionsResponse {
+        results,
+        has_more,
+    };
+    Ok(Json(response))
 }
 
 /// Get ballot submission (if any) registered for `transaction_hash`. Returns
@@ -146,6 +201,7 @@ async fn main() -> anyhow::Result<()> {
         use tracing_subscriber::prelude::*;
         let log_filter = tracing_subscriber::filter::Targets::new()
             .with_target(module_path!(), config.log_level)
+            .with_target("election_server", config.log_level)
             .with_target("tower_http", config.log_level);
 
         tracing_subscriber::registry()
@@ -153,6 +209,8 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    tracing::debug!("Module path: {}", module_path!());
 
     let state = AppState {
         db_pool: DatabasePool::create(config.db_connection, config.pool_size, true)
