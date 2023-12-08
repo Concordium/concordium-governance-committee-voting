@@ -237,8 +237,10 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
                     );
                 })}
                 {submissions?.hasMore && (
-                    <div className='d-flex justify-content-center mt-4'>
-                        <Button variant="secondary" size='sm' onClick={handleLoadMore} disabled={loading}>Load more</Button>
+                    <div className="d-flex justify-content-center mt-4">
+                        <Button variant="secondary" size="sm" onClick={handleLoadMore} disabled={loading}>
+                            Load more
+                        </Button>
                     </div>
                 )}
             </section>

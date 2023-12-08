@@ -136,8 +136,8 @@ impl SubmissionsQueryParams {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SubmissionsResponse {
-    results: Vec<StoredBallotSubmission>,
-    has_more:    bool,
+    results:  Vec<StoredBallotSubmission>,
+    has_more: bool,
 }
 
 /// Get ballot submissions registered for `account_address`. Returns
@@ -165,10 +165,7 @@ async fn get_ballot_submissions_by_account(
         results.pop();
     }
 
-    let response = SubmissionsResponse {
-        results,
-        has_more,
-    };
+    let response = SubmissionsResponse { results, has_more };
     Ok(Json(response))
 }
 

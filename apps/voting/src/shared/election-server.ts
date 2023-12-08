@@ -45,9 +45,9 @@ export interface DatabaseBallotSubmission {
 
 type Paginated<T> = {
     /** Whether there are more results to load */
-    hasMore: boolean,
+    hasMore: boolean;
     /** The list of results */
-    results: T[],
+    results: T[];
 };
 
 export type SubmissionsResponse = Paginated<DatabaseBallotSubmission>;
@@ -100,7 +100,10 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
  * SubmissionsResponse}.
  * @throws On http errors.
  */
-export async function getAccountSubmissions(accountAddress: AccountAddress.Type, page: number): Promise<SubmissionsResponse> {
+export async function getAccountSubmissions(
+    accountAddress: AccountAddress.Type,
+    page: number,
+): Promise<SubmissionsResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
     const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?page=${page}&page-size=${PAGINATION_SIZE}`;
     const res = await fetch(url);
@@ -112,5 +115,5 @@ export async function getAccountSubmissions(accountAddress: AccountAddress.Type,
     }
 
     const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
-    return {...json, results: json.results.map(reviveBallotSubmission)};
+    return { ...json, results: json.results.map(reviveBallotSubmission) };
 }
