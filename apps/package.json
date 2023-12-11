@@ -31,7 +31,7 @@
     },
     "packageManager": "yarn@4.0.1",
     "scripts": {
-        "build:all": "yarn build-eg && yarn workspaces foreach --all -pt run build",
+        "build:all": "yarn build:eg && yarn workspaces foreach --all -pt run build",
         "lint:all": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint-fix:all": "yarn lint --fix",
         "prettier": "prettier ./.*.* ./*.* -u",

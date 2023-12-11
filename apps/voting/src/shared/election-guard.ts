@@ -2,26 +2,14 @@
 import { useCallback, useMemo } from 'react';
 import * as eg from 'electionguard-bindings';
 
-declare const electionManifest: eg.ElectionManifest; // TODO: should be defined globally on build by reading from file on disk
-declare const electionParameters: eg.ElectionParameters; // TODO: how do we generate these?
-
-export function getEncryptedBallot(selection: eg.SingleContestSelection, guardianPublicKeys: eg.GuardianPublicKey[]) {
-    return eg.getEncryptedBallot(selection, {
-        election_manifest: electionManifest,
-        election_parameters: electionParameters,
-        guardian_public_keys: guardianPublicKeys,
-    });
-}
-
 export interface ElectionGuard {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getEncryptedBallot(selection: eg.SingleContestSelection): any;
 }
 
 export function useElectionGuard(): ElectionGuard {
-    const electionManifest: eg.ElectionManifest = undefined; // TODO: get from global store (lazily from election server).
-    const electionParameters: eg.ElectionParameters = undefined; // TODO: how do we generate these??
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const electionManifest: eg.ElectionManifest = undefined; // TODO: Should be built into the application
+    const electionParameters: eg.ElectionParameters = undefined; // TODO: Should be built into the application
     const guardianPublicKeys: eg.GuardianPublicKey[] = []; // TODO: get these from global store (lazily from contract).
 
     const getEncryptedBallot: ElectionGuard['getEncryptedBallot'] = useCallback(
@@ -32,7 +20,7 @@ export function useElectionGuard(): ElectionGuard {
                 guardian_public_keys: guardianPublicKeys,
             };
 
-            return eg.getEncryptedBallot(selection, context);
+            return eg.getEncryptedBallot(selection, context, DEVICE_NAME);
         },
         [electionManifest, electionParameters, guardianPublicKeys],
     );

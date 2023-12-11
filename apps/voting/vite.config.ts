@@ -3,11 +3,14 @@ import react from '@vitejs/plugin-react-swc';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import {v4 as uuid} from 'uuid';
 import 'dotenv/config';
 
 const DEFAULT_NETWORK = 'testnet';
 const DEFAULT_NODE = 'http://localhost:20001';
 const DEFAULT_BACKEND_API = 'http://localhost:8080';
+/** The device name passed to election guard when generating ballots */
+const DEVICE_NAME = `"${uuid()}"`;
 
 /**
  * Validates environment variable present at `envField` as a URL.
@@ -41,7 +44,6 @@ if (!process.env.CCD_ELECTION_CONTRACT_ADDRESS?.match(/<\d*,\d*>/)) {
 
 // Validate node URL
 validateURL('CCD_ELECTION_NODE');
-
 // Validate backend API URL
 validateURL('CCD_ELECTION_BACKEND_API');
 
@@ -60,6 +62,7 @@ export default defineConfig({
             CCD_ELECTION_CONTRACT_ADDRESS: process.env.CCD_ELECTION_CONTRACT_ADDRESS,
             CCD_ELECTION_BACKEND_API: process.env.CCD_ELECTION_BACKEND_API ?? DEFAULT_BACKEND_API,
         },
+        DEVICE_NAME
     },
     resolve: {
         alias: {

@@ -14,6 +14,7 @@ use eg::{
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
+use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use util::csprng::Csprng;
 use tsify::Tsify;
@@ -113,19 +114,20 @@ impl Into<BTreeMap<ContestIndex, ContestSelection>> for SingleContestSelection {
 /// Get an encrypted ballot from a selection of candidates. The value returned matches the ballot
 /// format expected by the election contract entrypoint for registering ballots.
 #[wasm_bindgen(js_name = "getEncryptedBallot")]
-pub fn get_encrypted_ballot(selections: SingleContestSelection, context: EncryptedBallotContext) -> Result<JsValue, JsError> {
-    set_panic_hook(); // for debugging
+pub fn get_encrypted_ballot(selections: SingleContestSelection, context: EncryptedBallotContext, device_uuid: String) -> Result<JsValue, JsError> {
+    set_panic_hook(); // TODO: used for debugging
 
     let pre_voting_data: PreVotingData = context.try_into()?;
-    let device = Device::new("Test", pre_voting_data);
+    let device = Device::new(&device_uuid, pre_voting_data);
 
-    let seed = vec![0, 1, 2, 3]; // TODO: what should we use for this?
+    let mut seed = [0u8; 128];
+    thread_rng().fill_bytes(&mut seed);
     let mut csprng = Csprng::new(&seed);
 
-    let mut primary_nonce = [0u8; 32];
     // Random is fine as we don't need to re-derive encryption of ballots
     // TODO: is the assumption above correct?
-    (0..32).for_each(|i| primary_nonce[i] = csprng.next_u8());
+    let mut primary_nonce = [0u8; 32];
+    thread_rng().fill_bytes(&mut primary_nonce);
 
     let ballot = BallotEncrypted::new_from_selections(
         &device,

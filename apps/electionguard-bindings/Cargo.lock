@@ -108,6 +108,7 @@ dependencies = [
  "console_error_panic_hook",
  "eg",
  "getrandom",
+ "rand",
  "serde",
  "serde-wasm-bindgen",
  "tsify",

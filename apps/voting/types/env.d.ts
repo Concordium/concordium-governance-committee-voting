@@ -14,3 +14,5 @@ declare namespace NodeJS {
         readonly CCD_ELECTION_BACKEND_API: string;
     }
 }
+
+declare const DEVICE_NAME: string;
