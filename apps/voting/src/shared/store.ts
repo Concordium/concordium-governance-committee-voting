@@ -216,7 +216,7 @@ export class BallotSubmission {
     /** Construct ballot submission from {@linkcode DatabaseBallotSubmission} */
     public static fromDatabaseItem(value: DatabaseBallotSubmission): BallotSubmission {
         const status = value.verified ? BallotSubmissionStatus.Verified : BallotSubmissionStatus.Discarded;
-        return new BallotSubmission(value.transactionHash, status, value.timestamp);
+        return new BallotSubmission(value.transactionHash, status, value.blockTime);
     }
 
     /** Represent ballot submission as {@linkcode SerializableBallotSubmission} */
@@ -239,6 +239,21 @@ export class BallotSubmission {
     }
 }
 
+type SubmittedBallotsState<T> = {
+    /** The actual results */
+    ballots: T[];
+    /** Whether more pages exist in the database */
+    hasMore: boolean;
+    /** Undefined means nothing has been loaded yet. */
+    activePage: number | undefined;
+};
+
+const initialSubmittedBallotsState: SubmittedBallotsState<SerializableBallotSubmission> = {
+    activePage: undefined,
+    hasMore: true,
+    ballots: [],
+};
+
 /**
  * Provides a list of {@linkcode SerializableBallotSubmission} items mapped by {@linkcode AccountAddress.Type}
  */
@@ -246,7 +261,7 @@ const submittedBallotsAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_: AccountAddress.Type) =>
         /** Base atom which handles storing the values both in memory and in localstorage */
-        atom<SerializableBallotSubmission[]>([]),
+        atom<SubmittedBallotsState<SerializableBallotSubmission>>(initialSubmittedBallotsState),
     (a, b) => a.address === b.address,
 );
 
@@ -261,18 +276,18 @@ const currentAccountSubmittedBallotsAtom = atom(
         }
 
         const baseAtom = submittedBallotsAtomFamily(wallet.account);
-        return get(baseAtom).map(BallotSubmission.fromSerializable);
+        const value = get(baseAtom);
+        const ballots = value.ballots.map(BallotSubmission.fromSerializable);
+        return { ...value, ballots };
     },
-    (get, set, update: BallotSubmission[]) => {
+    (get, set, update: SubmittedBallotsState<BallotSubmission>) => {
         const account = expectValue(
             get(activeWalletAtom)?.account,
             'Cannot update ballot submissions without an active account',
         );
         const baseAtom = submittedBallotsAtomFamily(account);
-        set(
-            baseAtom,
-            update.map((u) => u.toJSON()),
-        );
+        const ballots = update.ballots.map((u) => u.toJSON());
+        set(baseAtom, { ...update, ballots });
     },
 );
 
@@ -314,24 +329,15 @@ async function monitorAccountSubmission(
 }
 
 /**
- * Responsible for fetching the submitted ballots for the active account when it changes.
+ * Responsible for fetching the submitted ballots for the active account when it changes if no ballot page has been loaded
+ * yet.
  */
-const updateActiveAccountBallots = atomEffect((get, set) => {
-    const wallet = get(activeWalletAtom);
-    if (wallet?.account === undefined) {
-        return;
+const ensureActiveAccountBallots = atomEffect((get, set) => {
+    const ballots = get(currentAccountSubmittedBallotsAtom);
+    // Only get results if initial page has not been loaded yet.
+    if (ballots !== undefined && ballots.activePage === undefined) {
+        void set(loadMoreSubmittedBallotsAtom);
     }
-
-    const account = wallet.account;
-    void (async () => {
-        const ballots = await getAccountSubmissions(account);
-        const mapped = ballots.map((b) => BallotSubmission.fromDatabaseItem(b).toJSON());
-
-        const existingAtom = submittedBallotsAtomFamily(account);
-        const existing = get(existingAtom).filter((e) => !mapped.some((b) => b.transaction === e.transaction));
-
-        set(existingAtom, [...mapped, ...existing]);
-    })();
 });
 
 /**
@@ -341,7 +347,7 @@ const updateActiveAccountBallots = atomEffect((get, set) => {
  */
 const monitorBallots = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
-    const ballots = get(currentAccountSubmittedBallotsAtom) ?? [];
+    const ballots = get(currentAccountSubmittedBallotsAtom)?.ballots ?? [];
     if (wallet === undefined || ballots.length === 0) {
         return;
     }
@@ -358,10 +364,8 @@ const monitorBallots = atomEffect((get, set) => {
     const abortController = new AbortController();
     const setStatus = (ballot: BallotSubmission) => (status: BallotSubmissionStatus) => {
         const current = expectValue(get(currentAccountSubmittedBallotsAtom), 'Expected submitted ballots');
-        set(
-            currentAccountSubmittedBallotsAtom,
-            current.map((b) => (b.eq(ballot) ? b.changeStatus(status) : b)),
-        );
+        const updated = current.ballots.map((b) => (b.eq(ballot) ? b.changeStatus(status) : b));
+        set(currentAccountSubmittedBallotsAtom, { ...current, ballots: updated });
     };
 
     ballots.forEach((b) => void monitorAccountSubmission(b, grpc, abortController.signal, setStatus(b)));
@@ -375,7 +379,7 @@ const monitorBallots = atomEffect((get, set) => {
  * Holds the ballots submitted for the currently selected account (if any).
  */
 export const submittedBallotsAtom = atom((get) => {
-    get(updateActiveAccountBallots);
+    get(ensureActiveAccountBallots);
     get(monitorBallots); // Subscribe to status updates
     return get(currentAccountSubmittedBallotsAtom);
 });
@@ -384,6 +388,30 @@ export const submittedBallotsAtom = atom((get) => {
  * Exposes an atom setter, which adds a ballot submission to the submitted ballots of the currently selected account.
  */
 export const addSubmittedBallotAtom = atom(null, (get, set, submission: TransactionHash.Type) => {
-    const ballots = expectValue(get(currentAccountSubmittedBallotsAtom), 'Could not get ballot submissions');
-    set(currentAccountSubmittedBallotsAtom, [...ballots, BallotSubmission.fromTransaction(submission)]);
+    const current = expectValue(get(currentAccountSubmittedBallotsAtom), 'Could not get ballot submissions');
+    set(currentAccountSubmittedBallotsAtom, {
+        ...current,
+        ballots: [BallotSubmission.fromTransaction(submission), ...current.ballots],
+    });
+});
+
+/**
+ * Exposes an atom setter, which loads more submitted ballots from the backend API into the state for the selected
+ * account.
+ */
+export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
+    const account = expectValue(get(activeWalletAtom)?.account, 'Expected a wallet to be active');
+    const localBallotsAtom = submittedBallotsAtomFamily(account);
+
+    const { activePage } = get(localBallotsAtom);
+    const nextPage = activePage === undefined ? 0 : activePage + 1;
+    const { results, hasMore } = await getAccountSubmissions(account, nextPage);
+
+    const { ballots } = get(localBallotsAtom); // Get from store again to avoid a potential race condition
+    const remoteBallots = results.map((b) => BallotSubmission.fromDatabaseItem(b).toJSON());
+    const localFiltered = ballots.filter(
+        (local) => !remoteBallots.some((remote) => remote.transaction === local.transaction),
+    );
+
+    set(localBallotsAtom, { hasMore, activePage: nextPage, ballots: [...localFiltered, ...remoteBallots] });
 });

@@ -1,6 +1,8 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
 import { BACKEND_API } from './constants';
 
+const PAGINATION_SIZE = 10;
+
 /**
  * A candidate vote as stored in the backend database
  */
@@ -11,15 +13,15 @@ export interface DatabaseCandidateVote {
     candidateIndex: number;
 }
 /**
- * A ballot submission as stored in the backend database
+ * A ballot submission as stored in the backend database.
  */
-interface DatabaseBallotSubmissionJson {
+interface DatabaseBallotSubmissionSerializable {
     /** The submitting account address */
     account: Base58String;
     /** The transaction hash corresponding to the submission */
     transactionHash: HexString;
     /** The slot time of the block the submission is included in */
-    timestamp: string;
+    blockTime: string;
     /** Whether the ballot could be verified */
     verified: boolean;
     /** The contents of the ballot */
@@ -34,25 +36,34 @@ export interface DatabaseBallotSubmission {
     /** The transaction hash corresponding to the submission */
     transactionHash: TransactionHash.Type;
     /** The slot time of the block the submission is included in */
-    timestamp: Date;
+    blockTime: Date;
     /** Whether the ballot could be verified */
     verified: boolean;
     /** The contents of the ballot */
     ballot: DatabaseCandidateVote[];
 }
 
+type Paginated<T> = {
+    /** Whether there are more results to load */
+    hasMore: boolean;
+    /** The list of results */
+    results: T[];
+};
+
+export type SubmissionsResponse = Paginated<DatabaseBallotSubmission>;
+
 /**
- * Converts {@linkcode DatabaseBallotSubmissionJson} to {@linkcode DatabaseBallotSubmission}
+ * Converts {@linkcode DatabaseBallotSubmissionSerializable} to {@linkcode DatabaseBallotSubmission}
  */
-function reviveBallotSubmission(value: DatabaseBallotSubmissionJson): DatabaseBallotSubmission {
+function reviveBallotSubmission(value: DatabaseBallotSubmissionSerializable): DatabaseBallotSubmission {
     const account = AccountAddress.fromBase58(value.account);
     const transactionHash = TransactionHash.fromHexString(value.transactionHash);
-    const timestamp = new Date(value.timestamp);
+    const blockTime = new Date(value.blockTime);
     return {
         ...value,
         account,
         transactionHash,
-        timestamp,
+        blockTime,
     };
 }
 
@@ -66,7 +77,7 @@ function reviveBallotSubmission(value: DatabaseBallotSubmissionJson): DatabaseBa
  */
 export async function getSubmission(transaction: TransactionHash.Type): Promise<DatabaseBallotSubmission | null> {
     const transactionHex = TransactionHash.toHexString(transaction);
-    const url = `${BACKEND_API}/submission-status/${transactionHex}`;
+    const url = `${BACKEND_API}/api/submission-status/${transactionHex}`;
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -75,21 +86,26 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
         );
     }
 
-    const json = (await res.json()) as DatabaseBallotSubmissionJson | null;
+    const json = (await res.json()) as DatabaseBallotSubmissionSerializable | null;
     return json !== undefined && json !== null ? reviveBallotSubmission(json) : null;
 }
 
 /**
- * Gets the ballot submissions submitted by an account
+ * Gets the ballot submissions submitted by an account wrapped in a paginated response
  *
  * @param account - The account address to query ballot submissions for
+ * @param page - The page of submissions to load.
  *
- * @returns A promise which resolves with a list of {@linkcode DatabaseBallotSubmission}.
+ * @returns A promise which resolves with a list of {@linkcode DatabaseBallotSubmission} wrapped in {@linkcode
+ * SubmissionsResponse}.
  * @throws On http errors.
  */
-export async function getAccountSubmissions(accountAddress: AccountAddress.Type): Promise<DatabaseBallotSubmission[]> {
+export async function getAccountSubmissions(
+    accountAddress: AccountAddress.Type,
+    page: number,
+): Promise<SubmissionsResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
-    const url = `${BACKEND_API}/submissions/${acccoutBase58}`;
+    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?page=${page}&page-size=${PAGINATION_SIZE}`;
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -98,6 +114,6 @@ export async function getAccountSubmissions(accountAddress: AccountAddress.Type)
         );
     }
 
-    const json = (await res.json()) as DatabaseBallotSubmissionJson[];
-    return json.map(reviveBallotSubmission);
+    const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
+    return { ...json, results: json.results.map(reviveBallotSubmission) };
 }

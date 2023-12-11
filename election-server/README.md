@@ -32,7 +32,7 @@ Options:
       --listen-address <LISTEN_ADDRESS>
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
       --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
-          Address the http server will listen on [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=]
+          A json file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=]
   -h, --help
           Print help
 
@@ -53,8 +53,6 @@ Options:
           A connection string detailing the connection to the database used by the application. [env: CCD_ELECTION_DB_CONNECTION=] [default: "host=localhost dbname=gc-election user=postgres password=password port=5432"]
       --contract-address <CONTRACT_ADDRESS>
           The contract address used to filter contract updates [env: CCD_ELECTION_CONTRACT_ADDRESS=]
-      --from-height <FROM_HEIGHT>
-          The absolute block height to start indexing ballot submissions from [env: CCD_ELECTION_FROM_HEIGHT=]
       --log-level <LOG_LEVEL>
           Maximum log level [env: CCD_ELECTION_LOG_LEVEL=] [default: info]
       --max-behind-seconds <MAX_BEHIND_S>

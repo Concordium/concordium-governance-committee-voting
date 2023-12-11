@@ -195,13 +195,12 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 /// Temporary until election guard has an encrypted ballot.
 #[derive(Serialize, SchemaType, Debug)]
 #[cfg_attr(
-    feature = "full",
-    derive(serde::Serialize, serde::Deserialize, Clone, Copy)
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize, Clone, Copy),
+    serde(rename_all = "camelCase")
 )]
 pub struct Vote {
-    #[cfg_attr(feature = "full", serde(rename = "candidateIndex"))]
     pub candidate_index: u8,
-    #[cfg_attr(feature = "full", serde(rename = "hasVote"))]
     pub has_vote:        bool,
 }
 
