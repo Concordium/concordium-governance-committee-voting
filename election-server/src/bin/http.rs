@@ -74,7 +74,14 @@ struct AppConfig {
         long = "eligible-voters-file",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
     )]
-    eligible_voters_file: String,
+    eligible_voters_file: std::path::PathBuf,
+    /// A directory containing configuration files for election guard, i.e the election manifest
+    /// and the election parameters.
+    #[clap(
+        long = "eg-config-dir",
+        env = "CCD_ELECTION_EG_CONFIG_DIR"
+    )]
+    eg_config_dir: std::path::PathBuf,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
@@ -232,8 +239,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_state(state)
         .route_service(
-            "/static/eligible-voters.json",
+            "/static/concordium/eligible-voters.json",
             ServeFile::new(config.eligible_voters_file),
+        )
+        .nest_service(
+            "/static/electionguard",
+            ServeDir::new(config.eg_config_dir),
         )
         .route("/metrics", get(|| async move { metric_handle.render() }))
          // Fall back to serving anything from the frontend dir
