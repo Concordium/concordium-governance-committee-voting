@@ -10,7 +10,7 @@ use axum::{
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use clap::Parser;
 use concordium_rust_sdk::{
-    smart_contracts::common::AccountAddress, types::hashes::TransactionHash,
+    smart_contracts::common::AccountAddress, types::{hashes::TransactionHash, ContractAddress},
 };
 use election_server::db::{DatabasePool, StoredBallotSubmission};
 use serde::{Deserialize, Serialize};
@@ -97,6 +97,18 @@ struct AppConfig {
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
     allow_cors:           bool,
+    /// The network to connect users to (passed to frontend)
+    #[clap(
+        long = "network",
+        env = "CCD_ELECTION_NETWORK"
+    )]
+    network:           Network,
+    /// The contract address of the election contract (passed to frontend)
+    #[clap(
+        long = "contract-address",
+        env = "CCD_ELECTION_CONTRACT_ADDRESS"
+    )]
+    contract_address:           ContractAddress,
 }
 
 /// The app state shared across http requests made to the server.
@@ -104,6 +116,30 @@ struct AppConfig {
 struct AppState {
     /// The DB connection pool from.
     db_pool: DatabasePool,
+}
+
+#[derive(Clone, Debug, clap::ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Network {
+    Mainnet,
+    Testnet,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FrontendConfig {
+    node: String,
+    network: Network,
+    contract_address: ContractAddress,
+}
+
+impl From<AppConfig> for FrontendConfig {
+    fn from(value: AppConfig) -> Self {
+        Self {
+            node: value.node_endpoint.uri().to_string(),
+            network: value.network,
+            contract_address: value.contract_address,
+        }
+    }
 }
 
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
