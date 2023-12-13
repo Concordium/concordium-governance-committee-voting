@@ -16,6 +16,8 @@ export interface DatabaseCandidateVote {
  * A ballot submission as stored in the backend database.
  */
 interface DatabaseBallotSubmissionSerializable {
+    /** The index of the ballot submission in the database */
+    id: number;
     /** The submitting account address */
     account: Base58String;
     /** The transaction hash corresponding to the submission */
@@ -31,6 +33,8 @@ interface DatabaseBallotSubmissionSerializable {
  * A ballot submission as stored in the backend database. Deserialized into the representative types where possible.
  */
 export interface DatabaseBallotSubmission {
+    /** The index of the ballot submission in the database */
+    id: number;
     /** The submitting account address */
     account: AccountAddress.Type;
     /** The transaction hash corresponding to the submission */
@@ -94,7 +98,7 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
  * Gets the ballot submissions submitted by an account wrapped in a paginated response
  *
  * @param account - The account address to query ballot submissions for
- * @param page - The page of submissions to load.
+ * @param [from] - The ballot index (in the database) to load more submissions from.
  *
  * @returns A promise which resolves with a list of {@linkcode DatabaseBallotSubmission} wrapped in {@linkcode
  * SubmissionsResponse}.
@@ -102,10 +106,12 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
  */
 export async function getAccountSubmissions(
     accountAddress: AccountAddress.Type,
-    page: number,
+    from?: number,
 ): Promise<SubmissionsResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
-    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?page=${page}&page-size=${PAGINATION_SIZE}`;
+    const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?pageSize=${PAGINATION_SIZE}${
+        from !== undefined ? `&from=${from}` : ''
+    }`;
     const res = await fetch(url);
 
     if (!res.ok) {

@@ -27,12 +27,18 @@ Options:
           Maximum size of the database connection pool [env: CCD_ELECTION_DB_POOL_SIZE=] [default: 16]
       --log-level <LOG_LEVEL>
           Maximum log level [env: CCD_ELECTION_LOG_LEVEL=] [default: info]
-      --request-timeout <REQUEST_TIMEOUT>
-          The request timeout of the http server [env: CCD_ELECTION_REQUEST_TIMEOUT=] [default: 5000]
+      --request-timeout-ms <REQUEST_TIMEOUT_MS>
+          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 5000]
       --listen-address <LISTEN_ADDRESS>
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
+      --prometheus-address <PROMETHEUS_ADDRESS>
+          Address of the prometheus server [env: CCD_ELECTION_PROMETHEUS_ADDRESS=]
       --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
           A json file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=]
+      --frontend-dir <FRONTEND_DIR>
+          Path to the directory where frontend assets are located [env: CCD_ELECTION_FRONTEND_DIR=] [default: ./frontend/dist]
+      --allow-cors
+          Allow requests from other origins. Useful for development where frontend is not served from the server [env: CCD_ELECTION_ALLOW_CORS=]
   -h, --help
           Print help
 

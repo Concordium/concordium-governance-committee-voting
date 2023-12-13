@@ -1,5 +1,3 @@
-use std::ops::{Bound, RangeBounds};
-
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use concordium_governance_committee_election::RegisterVotesParameter;
@@ -65,6 +63,8 @@ impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredBallotSubmission {
+    /// The index of the ballot submission in the database
+    pub id:               u64,
     /// The account which submitted the ballot
     pub account:          AccountAddress,
     /// The ballot submitted
@@ -81,17 +81,19 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
     type Error = DatabaseError;
 
     fn try_from(value: tokio_postgres::Row) -> DatabaseResult<Self> {
-        let raw_transaction_hash: &[u8] = value.try_get(0)?;
-        let block_time: DateTime<Utc> = value.try_get(1)?;
-        let Json(ballot) = value.try_get(2)?;
-        let raw_account: &[u8] = value.try_get(3)?;
-        let verified: bool = value.try_get(4)?;
+        let id: i64 = value.try_get(0)?;
+        let raw_transaction_hash: &[u8] = value.try_get(1)?;
+        let block_time: DateTime<Utc> = value.try_get(2)?;
+        let Json(ballot) = value.try_get(3)?;
+        let raw_account: &[u8] = value.try_get(4)?;
+        let verified: bool = value.try_get(5)?;
 
         let account_bytes: [u8; ACCOUNT_ADDRESS_SIZE] = raw_account
             .try_into()
             .map_err(|_| DatabaseError::TypeConversion)?;
 
-        let stored_ballot = StoredBallotSubmission {
+        let stored_ballot = Self {
+            id: id as u64,
             transaction_hash: raw_transaction_hash
                 .try_into()
                 .map_err(|_| DatabaseError::TypeConversion)?,
@@ -167,38 +169,33 @@ impl Database {
         row.map(StoredBallotSubmission::try_from).transpose()
     }
 
-    /// Get ballot submission by account address within the give range. If upper
-    /// bound of range is unbounded, [`DatanaseError`] is returned as this
-    /// is not supported.
+    /// Get ballot submission by account address within the give range.
     pub async fn get_ballot_submissions(
         &self,
         account_address: AccountAddress,
-        range: &impl RangeBounds<usize>,
+        from: Option<usize>,
+        limit: usize,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
-        let from = match range.start_bound() {
-            Bound::Unbounded => 0,
-            Bound::Included(&from) => from,
-            Bound::Excluded(&from) => from.saturating_add(1),
-        };
-        let to = match range.end_bound() {
-            Bound::Unbounded => None,
-            Bound::Included(&to) => Some(to),
-            Bound::Excluded(&to) => Some(to.saturating_sub(1)),
-        };
-
-        let mut statement = "SELECT transaction_hash, block_time, ballot, account, verified from \
-                             ballots WHERE account = $1 ORDER BY block_time DESC OFFSET $2"
-            .to_string();
-        let rows = if let Some(to) = to {
-            let size = to - from + 1;
-            statement.push_str(" LIMIT $3");
-            let get_ballot_submissions = self.client.prepare_cached(&statement).await?;
+        let rows = if let Some(from) = from {
+            let get_ballot_submissions = self
+                .client
+                .prepare_cached(
+                    "SELECT id, transaction_hash, block_time, ballot, account, verified FROM \
+                     ballots WHERE account = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+                )
+                .await?;
             let params: [&(dyn ToSql + Sync); 3] =
-                [&account_address.0.as_ref(), &(from as i64), &(size as i64)];
+                [&account_address.0.as_ref(), &(from as i64), &(limit as i64)];
             self.client.query(&get_ballot_submissions, &params).await?
         } else {
-            let get_ballot_submissions = self.client.prepare_cached(&statement).await?;
-            let params: [&(dyn ToSql + Sync); 2] = [&account_address.0.as_ref(), &(from as i64)];
+            let get_ballot_submissions = self
+                .client
+                .prepare_cached(
+                    "SELECT id, transaction_hash, block_time, ballot, account, verified FROM \
+                     ballots WHERE account = $1 ORDER BY id DESC LIMIT $2",
+                )
+                .await?;
+            let params: [&(dyn ToSql + Sync); 2] = [&account_address.0.as_ref(), &(limit as i64)];
             self.client.query(&get_ballot_submissions, &params).await?
         };
 
@@ -282,15 +279,13 @@ impl DatabasePool {
             .build()
             .context("Failed to build database pool")?;
 
-        let client = pool
-            .get()
-            .await
-            .context("Could not get database connection from pool")?;
-
         if try_create_tables {
-            let create_statements = include_str!("../resources/schema.sql");
+            let client = pool
+                .get()
+                .await
+                .context("Could not get database connection from pool")?;
             client
-                .batch_execute(create_statements)
+                .batch_execute(include_str!("../resources/schema.sql"))
                 .await
                 .context("Failed to execute create statements")?;
         }
