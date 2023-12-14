@@ -3,16 +3,21 @@ use axum::{
     extract::{Path, Query, State},
     http::{Method, StatusCode},
     routing::get,
-    Json, Router,
+    Json, Router, response::Html,
 };
-use axum_prometheus::PrometheusMetricLayerBuilder;
+use axum_prometheus::{
+    metrics_exporter_prometheus::PrometheusHandle, GenericMetricLayer, PrometheusMetricLayerBuilder,
+};
 use clap::Parser;
 use concordium_rust_sdk::{
-    smart_contracts::common::AccountAddress, types::{hashes::TransactionHash, ContractAddress},
+    smart_contracts::common::AccountAddress,
+    types::{hashes::TransactionHash, ContractAddress},
 };
 use election_server::db::{DatabasePool, StoredBallotSubmission};
 use futures::FutureExt;
+use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{cmp, collections::VecDeque};
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -29,7 +34,7 @@ struct AppConfig {
         default_value = "http://localhost:20001",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
+    node_endpoint: concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -39,38 +44,38 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:        tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value_t = 16,
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size:            usize,
+    pool_size: usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:            tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
         default_value_t = 5000,
         env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
     )]
-    request_timeout_ms:   u64,
+    request_timeout_ms: u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address:       std::net::SocketAddr,
+    listen_address: std::net::SocketAddr,
     /// Address of the prometheus server
     #[clap(long = "prometheus-address", env = "CCD_ELECTION_PROMETHEUS_ADDRESS")]
-    prometheus_address:   Option<std::net::SocketAddr>,
+    prometheus_address: Option<std::net::SocketAddr>,
     /// A json file consisting of the list of eligible voters and their
     /// respective voting weights
     #[clap(
@@ -80,10 +85,7 @@ struct AppConfig {
     eligible_voters_file: std::path::PathBuf,
     /// A directory containing configuration files for election guard, i.e the election manifest
     /// and the election parameters.
-    #[clap(
-        long = "eg-config-dir",
-        env = "CCD_ELECTION_EG_CONFIG_DIR"
-    )]
+    #[clap(long = "eg-config-dir", env = "CCD_ELECTION_EG_CONFIG_DIR")]
     eg_config_dir: std::path::PathBuf,
     /// Path to the directory where frontend assets are located
     #[clap(
@@ -91,7 +93,7 @@ struct AppConfig {
         default_value = "./frontend/dist",
         env = "CCD_ELECTION_FRONTEND_DIR"
     )]
-    frontend_dir:         std::path::PathBuf,
+    frontend_dir: std::path::PathBuf,
     /// Allow requests from other origins. Useful for development where frontend
     /// is not served from the server.
     #[clap(
@@ -99,19 +101,13 @@ struct AppConfig {
         default_value_t = false,
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
-    allow_cors:           bool,
+    allow_cors: bool,
     /// The network to connect users to (passed to frontend)
-    #[clap(
-        long = "network",
-        env = "CCD_ELECTION_NETWORK"
-    )]
-    network:           Network,
+    #[clap(long = "network", env = "CCD_ELECTION_NETWORK")]
+    network: Network,
     /// The contract address of the election contract (passed to frontend)
-    #[clap(
-        long = "contract-address",
-        env = "CCD_ELECTION_CONTRACT_ADDRESS"
-    )]
-    contract_address:           ContractAddress,
+    #[clap(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
+    contract_address: ContractAddress,
 }
 
 /// The app state shared across http requests made to the server.
@@ -135,11 +131,11 @@ struct FrontendConfig {
     contract_address: ContractAddress,
 }
 
-impl From<AppConfig> for FrontendConfig {
-    fn from(value: AppConfig) -> Self {
+impl From<&AppConfig> for FrontendConfig {
+    fn from(value: &AppConfig) -> Self {
         Self {
             node: value.node_endpoint.uri().to_string(),
-            network: value.network,
+            network: value.network.clone(),
             contract_address: value.contract_address,
         }
     }
@@ -147,7 +143,9 @@ impl From<AppConfig> for FrontendConfig {
 
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
 
-fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
+fn default_page_size() -> usize {
+    MAX_SUBMISSIONS_PAGE_SIZE
+}
 
 /// query params passed to [`get_ballot_submissions_by_account`].
 #[derive(Deserialize, Debug)]
@@ -155,7 +153,7 @@ fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
 struct SubmissionsQueryParams {
     /// The page of ballot submissions to get.
     #[serde(default)]
-    from:      Option<usize>,
+    from: Option<usize>,
     /// The pagination size used.
     #[serde(default = "default_page_size")]
     page_size: usize,
@@ -164,7 +162,9 @@ struct SubmissionsQueryParams {
 impl SubmissionsQueryParams {
     /// Get the page size, where the max page size is capped by
     /// [`MAX_SUBMISSIONS_PAGE_SIZE`]
-    fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
+    fn page_size(&self) -> usize {
+        cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE)
+    }
 }
 
 /// The response type for [`get_ballot_submissions_by_account`] queries
@@ -172,7 +172,7 @@ impl SubmissionsQueryParams {
 #[serde(rename_all = "camelCase")]
 struct SubmissionsResponse {
     /// Ballots returned in the response
-    results:  Vec<StoredBallotSubmission>,
+    results: Vec<StoredBallotSubmission>,
     /// Whether there are more results in the database
     has_more: bool,
 }
@@ -235,30 +235,15 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = AppConfig::parse();
+type PrometheusLayer = GenericMetricLayer<'static, PrometheusHandle, axum_prometheus::Handle>;
 
-    {
-        use tracing_subscriber::prelude::*;
-        let log_filter = tracing_subscriber::filter::Targets::new()
-            .with_target(module_path!(), config.log_level)
-            .with_target("election_server", config.log_level)
-            .with_target("tower_http", config.log_level);
-
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer())
-            .with(log_filter)
-            .init();
-    }
-
-    let state = AppState {
-        db_pool: DatabasePool::create(config.db_connection, config.pool_size, true)
-            .await
-            .context("Failed to connect to the database")?,
-    };
-    let timeout = config.request_timeout_ms;
-
+/// Configures the prometheus server (if enabled through [`AppConfig`]). Returns a [`PrometheusLayer`] to be used by the HTTP server, and a handle for the corresponding process spawned.
+fn setup_prometheus(
+    config: &AppConfig,
+) -> (
+    PrometheusLayer,
+    Option<tokio::task::JoinHandle<Result<(), anyhow::Error>>>,
+) {
     let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
         .with_prefix("election-server")
         .with_default_metrics()
@@ -279,7 +264,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_context(|| {
                     format!(
                         "Could not create tcp listener on address: {}",
-                        &config.listen_address
+                        prometheus_address
                     )
                 })?;
             axum::serve(listener, prometheus_api)
@@ -290,6 +275,35 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
+
+    (prometheus_layer, prometheus_handle)
+}
+
+/// Configures the HTTP server which serves as an API for election components. Returns a handle for
+/// the corresponding process spawned, or an error if configuration fails.
+async fn setup_http(
+    config: &AppConfig,
+    prometheus_layer: PrometheusLayer,
+) -> Result<tokio::task::JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
+    let state = AppState {
+        db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
+            .await
+            .context("Failed to connect to the database")?,
+    };
+    let frontend_config: FrontendConfig = config.into();
+    
+    // Render index.html with config
+    let index_template = std::fs::read_to_string(config.frontend_dir.join("index.html"))
+        .context("Frontend was not built.")?;
+    let mut reg = Handlebars::new();
+    // Prevent handlebars from escaping inserted object
+    reg.register_escape_fn(|s| s.into());
+
+    let config_string = serde_json::to_string(&frontend_config)?;
+    let index_html = reg.render_template(
+        &index_template,
+        &json!({ "config": config_string }),
+    )?;
 
     let mut http_api = Router::new()
         .route(
@@ -303,17 +317,18 @@ async fn main() -> anyhow::Result<()> {
         .with_state(state)
         .route_service(
             "/static/concordium/eligible-voters.json",
-            ServeFile::new(config.eligible_voters_file),
+            ServeFile::new(config.eligible_voters_file.clone()),
         )
         .nest_service(
             "/static/electionguard",
-            ServeDir::new(config.eg_config_dir),
+            ServeDir::new(config.eg_config_dir.clone()),
         )
+        .route("/", get(|| async { Html(index_html) }))
          // Fall back to serving anything from the frontend dir
-        .nest_service("/", ServeDir::new(config.frontend_dir).append_index_html_on_directories(true))
+        .nest_service("/", ServeDir::new(config.frontend_dir.clone()).append_index_html_on_directories(true))
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
-            std::time::Duration::from_millis(timeout),
+            std::time::Duration::from_millis(config.request_timeout_ms),
         ))
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
@@ -330,21 +345,45 @@ async fn main() -> anyhow::Result<()> {
         http_api = http_api.layer(cors);
     }
 
+    let listen_address = config.listen_address;
     let http_handle = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(config.listen_address)
+        let listener = tokio::net::TcpListener::bind(listen_address)
             .await
             .with_context(|| {
                 format!(
                     "Could not create tcp listener on address: {}",
-                    &config.listen_address
+                    listen_address
                 )
             })?;
 
-        tracing::info!("Listening for requests at {}", config.listen_address);
+        tracing::info!("Listening for requests at {}", listen_address);
         axum::serve(listener, http_api)
             .await
             .context("HTTP server has shut down")
     });
+
+    Ok(http_handle)
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = AppConfig::parse();
+
+    {
+        use tracing_subscriber::prelude::*;
+        let log_filter = tracing_subscriber::filter::Targets::new()
+            .with_target(module_path!(), config.log_level)
+            .with_target("election_server", config.log_level)
+            .with_target("tower_http", config.log_level);
+
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(log_filter)
+            .init();
+    }
+
+    let (prometheus_layer, prometheus_handle) = setup_prometheus(&config);
+    let http_handle = setup_http(&config, prometheus_layer).await?;
 
     let http_handle = http_handle.map(|res| res.context("Http task panicked"));
     if let Some(prometheus_handle) = prometheus_handle {
