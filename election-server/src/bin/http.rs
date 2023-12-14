@@ -236,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_context(|| {
                     format!(
                         "Could not create tcp listener on address: {}",
-                        &config.listen_address
+                        prometheus_address
                     )
                 })?;
             axum::serve(listener, prometheus_api)
