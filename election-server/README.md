@@ -16,7 +16,7 @@ cargo run --bin http --release -- --eligible-voters-file "path/to/voters.json" #
 
 ### Configuration
 
-Usage: http [OPTIONS] --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
+Usage: http [OPTIONS] --eligible-voters-file <ELIGIBLE_VOTERS_FILE> --election-manifest-file <EG_MANIFEST_FILE> --election-parameters-file <EG_PARAMETERS_FILE> --network <NETWORK> --contract-address <CONTRACT_ADDRESS>
 
 Options:
       --node <NODE_ENDPOINT>
@@ -35,10 +35,18 @@ Options:
           Address of the prometheus server [env: CCD_ELECTION_PROMETHEUS_ADDRESS=]
       --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
           A json file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=]
+      --election-manifest-file <EG_MANIFEST_FILE>
+          A json file consisting of the election manifest used by election guard [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=]
+      --election-parameters-file <EG_PARAMETERS_FILE>
+          A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=]
       --frontend-dir <FRONTEND_DIR>
           Path to the directory where frontend assets are located [env: CCD_ELECTION_FRONTEND_DIR=] [default: ./frontend/dist]
       --allow-cors
           Allow requests from other origins. Useful for development where frontend is not served from the server [env: CCD_ELECTION_ALLOW_CORS=]
+      --network <NETWORK>
+          The network to connect users to (passed to frontend) [env: CCD_ELECTION_NETWORK=] [possible values: mainnet, testnet]
+      --contract-address <CONTRACT_ADDRESS>
+          The contract address of the election contract (passed to frontend) [env: CCD_ELECTION_CONTRACT_ADDRESS=]
   -h, --help
           Print help
 
