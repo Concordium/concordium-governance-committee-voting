@@ -16,7 +16,7 @@ name: check crates
 
 env:
   RUST_FMT: nightly-2023-04-01
-  RUST_VERSION: "1.67"
+  RUST_VERSION: "1.70"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
 
       - name: Run cargo check
         run: |
-          rustup default ${{ env.RUST_FMT }}
+          rustup default ${{ env.RUST_VERSION }}
           cargo check --manifest-path=${{ matrix.crates }}
   rustfmt:
     name: format
