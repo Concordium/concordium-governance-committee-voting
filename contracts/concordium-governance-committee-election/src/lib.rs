@@ -74,6 +74,7 @@ pub struct State<S: HasStateApi = StateApi> {
 impl State {
     /// Creates new [`Config`] from passed arguments while also checking that
     /// the configuration is sensible.
+    #[allow(clippy::too_many_arguments)]
     fn new_checked(
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
@@ -270,7 +271,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     name = "viewConfig",
     return_value = "ElectionConfig"
 )]
-fn view_config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<ElectionConfig> {
+fn view_config(_ctx: &ReceiveContext, host: &Host<State>) -> ReceiveResult<ElectionConfig> {
     Ok(host.state().into())
 }
 
@@ -291,9 +292,9 @@ pub type ViewElectionResultQueryResponse = Option<Vec<CandidateResult>>;
     return_value = "ViewElectionResultQueryResponse",
     error = "Error"
 )]
-fn view_election_result<'b>(
+fn view_election_result(
     _ctx: &ReceiveContext,
-    host: &'b Host<State>,
+    host: &Host<State>,
 ) -> ReceiveResult<ViewElectionResultQueryResponse> {
     let Some(result) = &host.state.election_result.get() else {
         return Ok(None);

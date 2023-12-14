@@ -20,8 +20,8 @@ env:
   CARGO_CONCORDIUM_VERSION: "3.0.0"
 
 jobs:
-  check:
-    name: check
+  clippy:
+    name: clippy
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,10 +35,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Run cargo check
+      - name: Run cargo clippy
         run: |
           rustup default ${{ env.RUST_VERSION }}
-          cargo check --manifest-path=${{ matrix.crates }}
+          rustup component add clippy
+          cargo clippy --manifest-path=${{ matrix.crates }} --locked -- -D warnings
   rustfmt:
     name: format
     runs-on: ubuntu-latest
