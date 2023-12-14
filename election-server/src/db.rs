@@ -12,6 +12,8 @@ use tokio_postgres::{
     NoTls,
 };
 
+use crate::types::BallotSubmission;
+
 /// Represents possible errors returned from [`Database`] or [`DatabasePool`]
 /// functions
 #[derive(thiserror::Error, Debug)]
@@ -228,7 +230,11 @@ impl<'a> Transaction<'a> {
     }
 
     /// Insert a ballot submission into the DB.
-    pub async fn insert_ballot(&self, ballot: &StoredBallotSubmission) -> DatabaseResult<()> {
+    pub async fn insert_ballot(
+        &self,
+        ballot: &BallotSubmission,
+        block_time: DateTime<Utc>,
+    ) -> DatabaseResult<()> {
         let insert_ballot = self
             .inner
             .prepare_cached(
@@ -239,7 +245,7 @@ impl<'a> Transaction<'a> {
 
         let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
-            &ballot.block_time,
+            &block_time,
             &Json(&ballot.ballot),
             &ballot.account.0.as_ref(),
             &ballot.verified,

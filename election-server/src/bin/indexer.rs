@@ -5,15 +5,17 @@ use concordium_governance_committee_election::{ElectionConfig, RegisterVotesPara
 use concordium_rust_sdk::{
     smart_contracts::common::{self as contracts_common},
     types::{
-        hashes::{BlockHash, TransactionHash},
+        hashes::BlockHash,
         smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult, OwnedReceiveName},
         AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
-use election_server::db::{Database, DatabasePool, StoredBallotSubmission, Transaction};
+use election_server::{
+    db::{Database, DatabasePool, Transaction},
+    types::BallotSubmission,
+};
 use futures::{future, TryStreamExt};
-use serde::Serialize;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -67,19 +69,6 @@ struct AppConfig {
     max_behind_s:     u32,
 }
 
-/// Describes an election ballot submission
-#[derive(Serialize, Debug)]
-pub struct BallotSubmission {
-    /// The account which submitted the ballot
-    pub account:          contracts_common::AccountAddress,
-    /// The ballot submitted
-    pub ballot:           RegisterVotesParameter,
-    /// The transaction hash of the ballot submission
-    pub transaction_hash: TransactionHash,
-    /// Whether the ballot proof could be verified.
-    pub verified:         bool,
-}
-
 /// The data collected for each block.
 #[derive(Debug)]
 pub struct BlockData {
@@ -96,24 +85,6 @@ pub struct BlockData {
 #[derive(thiserror::Error, Debug)]
 #[error("Could not construct datetime from timestamp due to being out of range.")]
 pub struct TimestampOutOfRangeError;
-
-impl From<&BlockData> for Vec<StoredBallotSubmission> {
-    fn from(value: &BlockData) -> Self {
-        let ballot_submissions = value
-            .ballots
-            .iter()
-            .map(|bs| StoredBallotSubmission {
-                block_time:       value.block_time,
-                account:          bs.account,
-                ballot:           bs.ballot.clone(),
-                verified:         bs.verified,
-                transaction_hash: bs.transaction_hash,
-            })
-            .collect();
-
-        ballot_submissions
-    }
-}
 
 /// Runs a process of inserting data coming in on `block_receiver` in a database
 /// defined in `db_connection`
@@ -232,9 +203,10 @@ async fn db_insert_block<'a>(
         let transaction = Transaction::from(&transaction);
         transaction.set_latest_height(block_data.height).await?;
 
-        let ballots: Vec<_> = block_data.try_into()?;
-        for ballot in ballots.iter() {
-            transaction.insert_ballot(ballot).await?;
+        for ballot in block_data.ballots.iter() {
+            transaction
+                .insert_ballot(ballot, block_data.block_time)
+                .await?;
         }
     }
 
