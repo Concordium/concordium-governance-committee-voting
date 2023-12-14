@@ -20,6 +20,25 @@ env:
   CARGO_CONCORDIUM_VERSION: "3.0.0"
 
 jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crates:
+          - contracts/concordium-governance-committee-election/Cargo.toml
+          - election-server/Cargo.toml
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run cargo check
+        run: |
+          rustup default ${{ env.RUST_FMT }}
+          cargo check --manifest-path=${{ matrix.crates }}
   rustfmt:
     name: format
     runs-on: ubuntu-latest
@@ -27,6 +46,7 @@ jobs:
       matrix:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
+          - election-server/Cargo.toml
 
     steps:
       - name: Checkout sources
