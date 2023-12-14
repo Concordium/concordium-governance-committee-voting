@@ -12,7 +12,7 @@ use concordium_rust_sdk::{
     v2::{BlockIdentifier, Client, Endpoint},
 };
 use election_server::{
-    db::{Database, DatabasePool, StoredBallotSubmission, Transaction},
+    db::{Database, DatabasePool, Transaction},
     types::BallotSubmission,
 };
 use futures::{future, TryStreamExt};
