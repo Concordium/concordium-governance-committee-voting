@@ -244,12 +244,12 @@ type SubmittedBallotsState<T> = {
     ballots: T[];
     /** Whether more pages exist in the database */
     hasMore: boolean;
-    /** Undefined means nothing has been loaded yet. */
-    activePage: number | undefined;
+    /** The index of the of the last ballot from the dtatbase. Undefined means nothing has been loaded yet. */
+    lastIndex: number | undefined;
 };
 
 const initialSubmittedBallotsState: SubmittedBallotsState<SerializableBallotSubmission> = {
-    activePage: undefined,
+    lastIndex: undefined,
     hasMore: true,
     ballots: [],
 };
@@ -335,7 +335,7 @@ async function monitorAccountSubmission(
 const ensureActiveAccountBallots = atomEffect((get, set) => {
     const ballots = get(currentAccountSubmittedBallotsAtom);
     // Only get results if initial page has not been loaded yet.
-    if (ballots !== undefined && ballots.activePage === undefined) {
+    if (ballots !== undefined && ballots.lastIndex === undefined) {
         void set(loadMoreSubmittedBallotsAtom);
     }
 });
@@ -403,8 +403,8 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     const account = expectValue(get(activeWalletAtom)?.account, 'Expected a wallet to be active');
     const localBallotsAtom = submittedBallotsAtomFamily(account);
 
-    const { activePage } = get(localBallotsAtom);
-    const { results, hasMore } = await getAccountSubmissions(account, activePage);
+    const { lastIndex } = get(localBallotsAtom);
+    const { results, hasMore } = await getAccountSubmissions(account, lastIndex);
 
     const { ballots } = get(localBallotsAtom); // Get from store again to avoid a potential race condition
     const remoteBallots = results.map((b) => BallotSubmission.fromDatabaseItem(b).toJSON());
@@ -413,5 +413,5 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     );
 
     const last = results.length > 0 ? results[results.length - 1] : undefined;
-    set(localBallotsAtom, { hasMore, activePage: last?.id, ballots: [...localFiltered, ...remoteBallots] });
+    set(localBallotsAtom, { hasMore, lastIndex: last?.id, ballots: [...localFiltered, ...remoteBallots] });
 });
