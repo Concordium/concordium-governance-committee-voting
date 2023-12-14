@@ -125,6 +125,7 @@ enum Network {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FrontendConfig {
     node: String,
     network: Network,
@@ -304,6 +305,7 @@ async fn setup_http(
         &index_template,
         &json!({ "config": config_string }),
     )?;
+    let index_handler = get(|| async { Html(index_html) });
 
     let mut http_api = Router::new()
         .route(
@@ -323,9 +325,10 @@ async fn setup_http(
             "/static/electionguard",
             ServeDir::new(config.eg_config_dir.clone()),
         )
-        .route("/", get(|| async { Html(index_html) }))
+        .route("/", index_handler.clone())
+        .route("/index.html", index_handler.clone())
          // Fall back to serving anything from the frontend dir
-        .nest_service("/", ServeDir::new(config.frontend_dir.clone()).append_index_html_on_directories(true))
+        .route_service("/*path", ServeDir::new(config.frontend_dir.clone()))
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(config.request_timeout_ms),

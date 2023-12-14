@@ -10,5 +10,6 @@
         }
     },
     "include": ["src", "types", "scripts"],
-    "exclude": ["src/__generated__"]
+    "exclude": ["src/__generated__"],
+    "references": [{ "path": "./tsconfig.node.json" }]
 }

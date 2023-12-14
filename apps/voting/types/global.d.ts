@@ -1,5 +1,3 @@
-/// <reference types="vite/client" />
-
 type TargetNetwork = 'testnet' | 'mainnet';
 
 declare namespace NodeJS {
@@ -15,4 +13,12 @@ declare namespace NodeJS {
     }
 }
 
+type Config = {
+    node: string;
+    contractAddress: { index: string; subindex: string };
+    network: TargetNetwork;
+};
+
 declare const DEVICE_NAME: string;
+declare const CONFIG: Config;
+declare const BACKEND_API: string;
