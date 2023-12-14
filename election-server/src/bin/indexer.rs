@@ -1,8 +1,3 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-
 use anyhow::{anyhow, Context};
 use chrono::{DateTime, Utc};
 use clap::Parser;
@@ -19,7 +14,13 @@ use concordium_rust_sdk::{
 use election_server::db::{Database, DatabasePool, StoredBallotSubmission, Transaction};
 use futures::{future, TryStreamExt};
 use serde::Serialize;
-use tokio::time::sleep;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 const CONFIG_VIEW: &str = "election.viewConfig";
@@ -118,7 +119,7 @@ impl From<&BlockData> for Vec<StoredBallotSubmission> {
 /// defined in `db_connection`
 async fn run_db_process(
     db_connection: tokio_postgres::config::Config,
-    contract_address: &ContractAddress,
+    contract_address: ContractAddress,
     mut block_receiver: tokio::sync::mpsc::Receiver<BlockData>,
     height_sender: tokio::sync::oneshot::Sender<Option<AbsoluteBlockHeight>>,
     stop_flag: Arc<AtomicBool>,
@@ -130,16 +131,16 @@ async fn run_db_process(
         .get()
         .await
         .context("Could not get database connection from pool")?;
-    db.init_settings(contract_address)
+    db.init_settings(&contract_address)
         .await
-        .context("Could not init settings in DB")?;
+        .context("Could not init settings for database")?;
     let settings = db
         .get_settings()
         .await
-        .context("Could not get best height from database")?;
+        .context("Could not get settings from database")?;
 
     anyhow::ensure!(
-        settings.contract_address == *contract_address,
+        settings.contract_address == contract_address,
         "Contract address does not match the contract address found in the database"
     );
 
@@ -276,7 +277,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
 }
 
 /// Extracts the ballot submission (if any) from `transaction`.
-#[tracing::instrument]
+#[tracing::instrument(skip(transaction), fields(tx_hash = %transaction.hash))]
 fn get_ballot_submission(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
@@ -370,7 +371,7 @@ async fn verify_contract(
         .context("Could not get instance info for election contract")?
         .response;
     let methods = match instance_info {
-        InstanceInfo::V0 { .. } => return Err(anyhow!("Expected V1 contract")),
+        InstanceInfo::V0 { .. } => anyhow::bail!("Expected V1 contract"),
         InstanceInfo::V1 { methods, .. } => methods,
     };
 
@@ -403,7 +404,7 @@ async fn find_election_start_height(
         .await?
         .response
     else {
-        return Err(anyhow!("Expected to be able to query election config"));
+        anyhow::bail!("Expected to be able to query election config");
     };
     let election_config: ElectionConfig =
         contracts_common::from_bytes(election_config.value.as_ref())
@@ -418,36 +419,37 @@ async fn find_election_start_height(
         );
 
         // As there is nothing to do until the election starts, wait until then.
-        sleep(election_start.signed_duration_since(now).to_std()?).await;
-    } else {
+        tokio::time::sleep(election_start.signed_duration_since(now).to_std()?).await;
     }
+
     let (creation_height, ..) = client
         .find_instance_creation(.., *contract_address)
         .await
         .context("Could not find contract instance creation block")?;
 
-    let result = client
-        .find_first_finalized_block_no_later_than(creation_height.., election_start)
+    let query_range = creation_height..;
+    let mut result = client
+        .find_first_finalized_block_no_later_than(query_range.clone(), election_start)
         .await;
 
-    let block_info = if let Ok(block_info) = result {
-        block_info
-    } else {
-        // Fall back to height of last finalized block
-        client
-            .get_block_info(BlockIdentifier::LastFinal)
-            .await
-            .context("Could not get block info for latest finalized block")?
-            .response
-    };
+    // If the result is an error, it means that the block we're waiting for has not
+    // yet been finalized. As such, we wait until we find the block by querying
+    // periodically.
+    while result.is_err() {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        result = client
+            .find_first_finalized_block_no_later_than(query_range.clone(), election_start)
+            .await;
+    }
 
+    let block_info = result.unwrap(); // We already checked for errors in the loop above.
     Ok(block_info.block_height)
 }
 
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
-#[tracing::instrument(skip_all, fields(node_endpoint = %node_endpoint.uri()))]
+#[tracing::instrument(skip_all, fields(node_endpoint = %node_endpoint.uri(), processed_height = ?processed_height))]
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
@@ -535,14 +537,15 @@ async fn main() -> anyhow::Result<()> {
     let db_handle = tokio::spawn(async move {
         let result = run_db_process(
             config.db_connection,
-            &config.contract_address,
+            config.contract_address,
             block_receiver,
             height_sender,
             db_stop,
         )
         .await;
-        if let Err(error) = result {
-            tracing::error!("Error happened while running DB process: {:?}", error);
+
+        if let Err(err) = result {
+            tracing::error!("Error happened while running the DB process: {:?}", err);
         }
     });
 
@@ -599,7 +602,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    db_handle.abort();
+    db_handle.await?;
     shutdown_handle.abort();
     Ok(())
 }

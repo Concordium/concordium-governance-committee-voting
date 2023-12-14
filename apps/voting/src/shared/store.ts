@@ -404,8 +404,7 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     const localBallotsAtom = submittedBallotsAtomFamily(account);
 
     const { activePage } = get(localBallotsAtom);
-    const nextPage = activePage === undefined ? 0 : activePage + 1;
-    const { results, hasMore } = await getAccountSubmissions(account, nextPage);
+    const { results, hasMore } = await getAccountSubmissions(account, activePage);
 
     const { ballots } = get(localBallotsAtom); // Get from store again to avoid a potential race condition
     const remoteBallots = results.map((b) => BallotSubmission.fromDatabaseItem(b).toJSON());
@@ -413,5 +412,6 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
         (local) => !remoteBallots.some((remote) => remote.transaction === local.transaction),
     );
 
-    set(localBallotsAtom, { hasMore, activePage: nextPage, ballots: [...localFiltered, ...remoteBallots] });
+    const last = results.length > 0 ? results[results.length - 1] : undefined;
+    set(localBallotsAtom, { hasMore, activePage: last?.id, ballots: [...localFiltered, ...remoteBallots] });
 });
