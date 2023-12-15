@@ -159,7 +159,7 @@ impl Database {
         let get_ballot_submission = self
             .client
             .prepare_cached(
-                "SELECT transaction_hash, block_time, ballot, account, verified from ballots \
+                "SELECT id, transaction_hash, block_time, ballot, account, verified from ballots \
                  WHERE transaction_hash = $1",
             )
             .await?;
