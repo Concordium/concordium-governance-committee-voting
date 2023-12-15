@@ -1,7 +1,5 @@
 mod utils;
 
-use std::{collections::BTreeMap, convert::TryFrom};
-
 use eg::{
     ballot::BallotEncrypted,
     contest_selection::ContestSelection,
@@ -16,12 +14,12 @@ use eg::{
 };
 use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
-use util::csprng::Csprng;
+use std::{collections::BTreeMap, convert::TryFrom};
 use tsify::Tsify;
-
-use utils::set_panic_hook;
+use util::csprng::Csprng;
 use wasm_bindgen::prelude::*;
 
+/// The missing typescript types for election guard structs.
 #[wasm_bindgen(typescript_custom_section)]
 const TS_APPEND_CONTENT: &'static str = r#"
 export type ElectionManifest = {
@@ -79,9 +77,11 @@ export type GuardianPublicKey = {
 #[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct EncryptedBallotContext {
-    /// The election manifest. This should be declared externally for each election.
-    pub election_manifest: ElectionManifest,
-    /// The election parameters. These should be generated externally for each election.
+    /// The election manifest. This should be declared externally for each
+    /// election.
+    pub election_manifest:    ElectionManifest,
+    /// The election parameters. These should be generated externally for each
+    /// election.
     // TODO: is the assumption above correct?
     pub election_parameters: ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
@@ -139,6 +139,8 @@ impl TryFrom<&EncryptedBallotContext> for PreVotingData {
     }
 }
 
+/// Wrapper around a vector of bool flags, representing a selection of candidates for a single
+/// election guard contest.
 #[derive(Debug, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct SingleContestSelection(pub Vec<bool>);
@@ -157,12 +159,15 @@ impl Into<BTreeMap<ContestIndex, ContestSelection>> for SingleContestSelection {
     }
 }
 
-/// Get an encrypted ballot from a selection of candidates. The value returned matches the ballot
-/// format expected by the election contract entrypoint for registering ballots.
+/// Get an encrypted ballot from a selection of candidates. The value returned
+/// matches the ballot format expected by the election contract entrypoint for
+/// registering ballots.
 #[wasm_bindgen(js_name = "getEncryptedBallot")]
-pub fn get_encrypted_ballot(selections: SingleContestSelection, context: EncryptedBallotContext, device_uuid: String) -> Result<JsValue, JsError> {
-    set_panic_hook(); // TODO: used for debugging
-
+pub fn get_encrypted_ballot(
+    selections: SingleContestSelection,
+    context: EncryptedBallotContext,
+    device_uuid: String,
+) -> Result<js_sys::Uint8Array, JsError> {
     let pre_voting_data: PreVotingData = context.try_into()?;
     let device = Device::new(&device_uuid, pre_voting_data);
 
@@ -181,6 +186,7 @@ pub fn get_encrypted_ballot(selections: SingleContestSelection, context: Encrypt
         primary_nonce.as_ref(),
         &selections.into(),
     );
-    let value = serde_wasm_bindgen::to_value(&ballot)?;
-    Ok(value)
+    let bytes = rmp_serde::to_vec(&ballot)?;
+    let js_value = js_sys::Uint8Array::from(bytes.as_slice());
+    Ok(js_value)
 }
