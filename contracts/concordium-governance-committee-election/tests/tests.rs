@@ -312,7 +312,7 @@ fn register_votes_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
-    param: &RegisterVoteParameter,
+    param: &RegisterVotesParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),

@@ -10,6 +10,8 @@ export const NETWORK = IS_MAINNET ? MAINNET : TESTNET;
 export const GRPC_ADDRESS = `${protocol}//${hostname}`;
 /** The port of the GRPC interface of the node accessible at {@linkcode GRPC_ADDRESS} */
 export const GRPC_PORT = Number(port);
+/** The URL of the backend API */
+export const BACKEND_API = process.env.CCD_ELECTION_BACKEND_API;
 
 const [, index, subindex] =
     process.env.CCD_ELECTION_CONTRACT_ADDRESS.match(/<(\d*),(\d*)>/) ??

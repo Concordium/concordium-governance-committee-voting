@@ -74,6 +74,7 @@ pub struct State<S: HasStateApi = StateApi> {
 impl State {
     /// Creates new [`Config`] from passed arguments while also checking that
     /// the configuration is sensible.
+    #[allow(clippy::too_many_arguments)]
     fn new_checked(
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
@@ -193,14 +194,19 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 }
 
 /// Temporary until election guard has an encrypted ballot.
-#[derive(Serialize, SchemaType)]
+#[derive(Serialize, SchemaType, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize, Clone, Copy),
+    serde(rename_all = "camelCase")
+)]
 pub struct Vote {
     pub candidate_index: u8,
     pub has_vote:        bool,
 }
 
 /// The parameter supplied to the [`register_votes`] entrypoint.
-pub type RegisterVoteParameter = Vec<Vote>;
+pub type RegisterVotesParameter = Vec<Vote>;
 
 /// Receive votes registration from voter. If a contract submits the vote, an
 /// error is returned. This function does not actually store anything. Instead
@@ -209,7 +215,7 @@ pub type RegisterVoteParameter = Vec<Vote>;
 #[receive(
     contract = "election",
     name = "registerVotes",
-    parameter = "RegisterVoteParameter",
+    parameter = "RegisterVotesParameter",
     error = "Error"
 )]
 fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error> {
@@ -265,7 +271,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     name = "viewConfig",
     return_value = "ElectionConfig"
 )]
-fn view_config<'b>(_ctx: &ReceiveContext, host: &'b Host<State>) -> ReceiveResult<ElectionConfig> {
+fn view_config(_ctx: &ReceiveContext, host: &Host<State>) -> ReceiveResult<ElectionConfig> {
     Ok(host.state().into())
 }
 
@@ -286,9 +292,9 @@ pub type ViewElectionResultQueryResponse = Option<Vec<CandidateResult>>;
     return_value = "ViewElectionResultQueryResponse",
     error = "Error"
 )]
-fn view_election_result<'b>(
+fn view_election_result(
     _ctx: &ReceiveContext,
-    host: &'b Host<State>,
+    host: &Host<State>,
 ) -> ReceiveResult<ViewElectionResultQueryResponse> {
     let Some(result) = &host.state.election_result.get() else {
         return Ok(None);

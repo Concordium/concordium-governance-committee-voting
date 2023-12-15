@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - main
+    # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - contracts/**/*
 
@@ -14,10 +16,30 @@ name: check crates
 
 env:
   RUST_FMT: nightly-2023-04-01
-  RUST_VERSION: "1.67"
+  RUST_VERSION: "1.70"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
 
 jobs:
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crates:
+          - contracts/concordium-governance-committee-election/Cargo.toml
+          - election-server/Cargo.toml
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run cargo clippy
+        run: |
+          rustup default ${{ env.RUST_VERSION }}
+          rustup component add clippy
+          cargo clippy --manifest-path=${{ matrix.crates }} --locked -- -D warnings
   rustfmt:
     name: format
     runs-on: ubuntu-latest
@@ -25,6 +47,7 @@ jobs:
       matrix:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
+          - election-server/Cargo.toml
 
     steps:
       - name: Checkout sources

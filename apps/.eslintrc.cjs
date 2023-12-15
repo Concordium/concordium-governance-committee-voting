@@ -32,6 +32,7 @@ module.exports = {
                 devDependencies: ['**/test/*', '**/*.config.*', '**/scripts/*'],
             },
         ],
+        '@typescript-eslint/consistent-type-definitions': 0,
     },
     parserOptions: {
         ecmaVersion: 'latest',
