@@ -1,4 +1,5 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
+import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 
 const PAGINATION_SIZE = 10;
 
@@ -121,4 +122,47 @@ export async function getAccountSubmissions(
 
     const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
     return { ...json, results: json.results.map(reviveBallotSubmission) };
+}
+
+/** A union of the static resources served by the election server */
+type StaticJsonPath = 'electionguard/election-manifest.json' | 'electionguard/election-parameters.json';
+
+/**
+ * Fetch a static JSON resource located at `/static` in the API.
+ *
+ * @template T - The expected type of the JSON located at `path`
+ * @param path - The location of the resource on the `static` path.
+ *
+ * @returns A promise which resolves to `T`
+ * @throws On http errors.
+ */
+async function getStaticJson<T>(path: StaticJsonPath): Promise<T> {
+    const url = `${BACKEND_API}/static/${path}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        throw new Error(`Error happened while trying to fetch static resource - ${res.status} (${res.statusText})`);
+    }
+
+    return res.json() as Promise<T>;
+}
+
+/**
+ * Fetch the election manifest from the election server
+ *
+ * @returns A promise which resolves with the election manifest
+ * @throws On http errors.
+ */
+export async function getElectionManifest(): Promise<ElectionManifest> {
+    return getStaticJson('electionguard/election-manifest.json');
+}
+
+/**
+ * Fetch the election parameters from the election server
+ *
+ * @returns A promise which resolves with the election parameters
+ * @throws On http errors.
+ */
+export async function getElectionParameters(): Promise<ElectionParameters> {
+    return getStaticJson('electionguard/election-parameters.json');
 }

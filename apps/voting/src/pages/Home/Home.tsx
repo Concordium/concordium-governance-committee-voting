@@ -12,6 +12,7 @@ import {
     activeWalletAtom,
 } from '@shared/store';
 import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
+import { useElectionGuard } from '@shared/election-guard';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
@@ -66,6 +67,7 @@ export default function Home() {
     const openViewConnection = useAtomValue(connectionViewAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
+    const {getEncryptedBallot} = useElectionGuard();
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -91,7 +93,12 @@ export default function Home() {
             .map((_, i) => selected.includes(i))
             .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const encrypted = getEncryptedBallot(ballot.map(selection => selection.has_vote));
+        console.log(encrypted);
+
         const transaction = await registerVotes(ballot, wallet.connection, wallet.account);
+        console.log(transaction);
         addSubmission(transaction);
 
         closeConfirm();

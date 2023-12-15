@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Offcanvas, ProgressBar, ProgressBarProps } from 'react-bootstrap';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { RESET } from 'jotai/utils';
+import { AccountAddress, TransactionHash } from '@concordium/web-sdk';
+import { clsx } from 'clsx';
 
 import { useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
 import WalletConnectIcon from '@assets/walletconnect.svg';
@@ -14,9 +16,7 @@ import {
     loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
 } from '@shared/store';
-import { AccountAddress, TransactionHash } from '@concordium/web-sdk';
 import { accountShowShort, commonDateTimeFormat } from '@shared/util';
-import { clsx } from 'clsx';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.

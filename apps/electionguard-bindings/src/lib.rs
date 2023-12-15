@@ -24,10 +24,56 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_APPEND_CONTENT: &'static str = r#"
-export type ElectionManifest = any;
-export type ElectionParameters = any;
-export type GuardianPublicKey = any;
-"#;
+export type ElectionManifest = {
+    label: string;
+    contests: {
+        label: string;
+        selection_limit: number;
+        options: {
+            label: string;
+        }[];
+    }[];
+    ballot_styles: {
+        label: string;
+        contests: number[];
+    }[];
+};
+export type ElectionParameters = {
+    fixed_parameters: {
+        ElectionGuard_Design_Specification: {
+            Official: {
+                version: number[];
+                release: string;
+            };
+        };
+        generation_parameters: {
+            q_bits_total: number;
+            p_bits_total: number;
+            p_bits_msb_fixed_1: number;
+            p_middle_bits_source: string;
+            p_bits_lsb_fixed_1: number;
+        };
+        p: string;
+        q: string;
+        r: string;
+        g: string;
+    };
+    varying_parameters: {
+        n: number;
+        k: number;
+        date: string;
+        info: string;
+        ballot_chaining: string;
+    };
+};
+export type GuardianPublicKey = {
+    i: number;
+    coefficient_commitments: string[];
+    coefficient_proofs: {
+        challenge: string;
+        response: string;
+    }[];
+};"#;
 
 /// The contextual parameters necessary to generate the encrypted ballot
 #[derive(Debug, Serialize, Deserialize, Clone, Tsify)]

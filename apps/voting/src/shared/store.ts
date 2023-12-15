@@ -16,7 +16,8 @@ import { atomEffect } from 'jotai-effect';
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
-import { DatabaseBallotSubmission, getAccountSubmissions, getSubmission } from './election-server';
+import { DatabaseBallotSubmission, getAccountSubmissions, getElectionManifest, getElectionParameters, getSubmission } from './election-server';
+import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 
 /**
  * Representation of an election candidate.
@@ -140,6 +141,44 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 export const electionConfigAtom = atom((get) => {
     get(ensureElectionConfigAtom);
     return get(electionConfigBaseAtom);
+});
+
+/**
+ * Describes the configuration used by election guard.
+ */
+type ElectionGuardState = {
+    /** The election parameters used by electionguard */
+    parameters: ElectionParameters;
+    /** The election manifest used by electionguard */
+    manifest: ElectionManifest;
+};
+
+/**
+ * Primitive atom for holding the {@linkcode ElectionGuardState} necessary to construct encrypted ballots
+ */
+const electionGuardConfigBaseAtom = atom<ElectionGuardState | undefined>(undefined);
+
+/**
+ * Ensures the necessary election guard configuration is fetched if not available.
+ */
+const ensureElectionGuardConfigAtom = atomEffect((get, set) => {
+    if (get(electionGuardConfigBaseAtom) !== undefined) {
+        return;
+    }
+
+    void Promise.all([getElectionManifest(), getElectionParameters()]).then(([manifest, parameters]) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        set(electionGuardConfigBaseAtom, {manifest, parameters});
+    });
+});
+
+/**
+ * Holds the election guard configuration. A reference to this should always be kept in the application root
+ * to avoid having to fetch the configuration more than once.
+ */
+export const electionGuardConfigAtom = atom((get) => {
+    get(ensureElectionGuardConfigAtom);
+    return get(electionGuardConfigBaseAtom);
 });
 
 /**

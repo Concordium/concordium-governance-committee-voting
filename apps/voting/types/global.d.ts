@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 type TargetNetwork = 'testnet' | 'mainnet';
 
 declare namespace NodeJS {
