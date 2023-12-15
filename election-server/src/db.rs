@@ -171,35 +171,31 @@ impl Database {
         row.map(StoredBallotSubmission::try_from).transpose()
     }
 
-    /// Get ballot submission by account address within the give range.
+    /// Get ballot submission by account address within the give range. The
+    /// results returned are ordered by descending value of id, meaning the
+    /// most recently submitted ballots are returned first.
     pub async fn get_ballot_submissions(
         &self,
         account_address: AccountAddress,
         from: Option<usize>,
         limit: usize,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
-        let rows = if let Some(from) = from {
-            let get_ballot_submissions = self
-                .client
-                .prepare_cached(
-                    "SELECT id, transaction_hash, block_time, ballot, account, verified FROM \
-                     ballots WHERE account = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
-                )
-                .await?;
-            let params: [&(dyn ToSql + Sync); 3] =
-                [&account_address.0.as_ref(), &(from as i64), &(limit as i64)];
-            self.client.query(&get_ballot_submissions, &params).await?
+        let from = if let Some(from) = from {
+            from as i64
         } else {
-            let get_ballot_submissions = self
-                .client
-                .prepare_cached(
-                    "SELECT id, transaction_hash, block_time, ballot, account, verified FROM \
-                     ballots WHERE account = $1 ORDER BY id DESC LIMIT $2",
-                )
-                .await?;
-            let params: [&(dyn ToSql + Sync); 2] = [&account_address.0.as_ref(), &(limit as i64)];
-            self.client.query(&get_ballot_submissions, &params).await?
+            i64::MAX
         };
+        let get_ballot_submissions = self
+            .client
+            .prepare_cached(
+                "SELECT id, transaction_hash, block_time, ballot, account, verified FROM ballots \
+                 WHERE account = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            )
+            .await?;
+
+        let params: [&(dyn ToSql + Sync); 3] =
+            [&account_address.0.as_ref(), &(from), &(limit as i64)];
+        let rows = self.client.query(&get_ballot_submissions, &params).await?;
 
         rows.into_iter()
             .map(StoredBallotSubmission::try_from)
@@ -210,11 +206,11 @@ impl Database {
 /// Wrapper around a database transaction
 pub struct Transaction<'a> {
     /// The inner transaction
-    inner: &'a deadpool_postgres::Transaction<'a>,
+    pub inner: deadpool_postgres::Transaction<'a>,
 }
 
-impl<'a> From<&'a deadpool_postgres::Transaction<'a>> for Transaction<'a> {
-    fn from(inner: &'a deadpool_postgres::Transaction<'a>) -> Self { Self { inner } }
+impl<'a> From<deadpool_postgres::Transaction<'a>> for Transaction<'a> {
+    fn from(inner: deadpool_postgres::Transaction<'a>) -> Self { Self { inner } }
 }
 
 impl<'a> Transaction<'a> {
@@ -238,8 +234,8 @@ impl<'a> Transaction<'a> {
         let insert_ballot = self
             .inner
             .prepare_cached(
-                "INSERT INTO ballots (transaction_hash, block_time, ballot, account, verified) \
-                 VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO ballots (id, transaction_hash, block_time, ballot, account, \
+                 verified) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4, $5 FROM ballots;",
             )
             .await?;
 
