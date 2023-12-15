@@ -7,7 +7,7 @@ import { getGuardianPublicKeys } from './election-contract';
 
 export interface ElectionGuard {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getEncryptedBallot(selection: eg.SingleContestSelection): any;
+    getEncryptedBallot(selection: eg.SingleContestSelection): Uint8Array;
 }
 
 export function useElectionGuard(): ElectionGuard {

@@ -3,7 +3,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row, Image } from 'react-bootstrap';
 
-import { ElectionContract, registerVotes } from '@shared/election-contract';
+import { registerVotes } from '@shared/election-contract';
 import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
@@ -67,7 +67,7 @@ export default function Home() {
     const openViewConnection = useAtomValue(connectionViewAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
-    const {getEncryptedBallot} = useElectionGuard();
+    const { getEncryptedBallot } = useElectionGuard();
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -89,16 +89,9 @@ export default function Home() {
         if (wallet?.connection === undefined || electionConfig === undefined || wallet?.account === undefined) {
             throw new Error('Expected required parameters to be defined'); // Will not happen.
         }
-        const ballot: ElectionContract.RegisterVotesParameter = electionConfig.candidates
-            .map((_, i) => selected.includes(i))
-            .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const encrypted = getEncryptedBallot(ballot.map(selection => selection.has_vote));
-        console.log(encrypted);
-
-        const transaction = await registerVotes(ballot, wallet.connection, wallet.account);
-        console.log(transaction);
+        const ballot = electionConfig.candidates.map((_, i) => selected.includes(i));
+        const encrypted = getEncryptedBallot(ballot);
+        const transaction = await registerVotes(Array.from(encrypted), wallet.connection, wallet.account);
         addSubmission(transaction);
 
         closeConfirm();

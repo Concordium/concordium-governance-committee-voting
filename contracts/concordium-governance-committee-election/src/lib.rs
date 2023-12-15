@@ -193,20 +193,8 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     Ok(initial_state)
 }
 
-/// Temporary until election guard has an encrypted ballot.
-#[derive(Serialize, SchemaType, Debug)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize, Clone, Copy),
-    serde(rename_all = "camelCase")
-)]
-pub struct Vote {
-    pub candidate_index: u8,
-    pub has_vote:        bool,
-}
-
 /// The parameter supplied to the [`register_votes`] entrypoint.
-pub type RegisterVotesParameter = Vec<Vote>;
+pub type RegisterVotesParameter = Vec<u8>;
 
 /// Receive votes registration from voter. If a contract submits the vote, an
 /// error is returned. This function does not actually store anything. Instead
