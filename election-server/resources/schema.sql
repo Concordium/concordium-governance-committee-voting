@@ -8,10 +8,13 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Table containing ballots successfully submitted to the contract monitored.
 CREATE TABLE IF NOT EXISTS ballots (
-  id SERIAL8 PRIMARY KEY, -- For pagination
+  id INT8 PRIMARY KEY, -- For pagination
   transaction_hash BYTEA NOT NULL,
   block_time TIMESTAMP WITH TIME ZONE NOT NULL,
   ballot JSONB NOT NULL,
   account BYTEA NOT NULL,
   verified BOOL NOT NULL
 );
+
+-- Improve performance on queries for ballots within id range for an account.
+CREATE INDEX IF NOT EXISTS ballots_account_id_idx ON ballots (account, id);

@@ -199,19 +199,18 @@ async fn db_insert_block<'a>(
         .await
         .context("Failed to build DB transaction")?;
 
-    {
-        let transaction = Transaction::from(&transaction);
-        transaction.set_latest_height(block_data.height).await?;
+    let transaction = Transaction::from(transaction);
+    transaction.set_latest_height(block_data.height).await?;
 
-        for ballot in block_data.ballots.iter() {
-            transaction
-                .insert_ballot(ballot, block_data.block_time)
-                .await?;
-        }
+    for ballot in block_data.ballots.iter() {
+        transaction
+            .insert_ballot(ballot, block_data.block_time)
+            .await?;
     }
 
     let now = tokio::time::Instant::now();
     transaction
+        .inner
         .commit()
         .await
         .context("Failed to commit DB transaction.")?;

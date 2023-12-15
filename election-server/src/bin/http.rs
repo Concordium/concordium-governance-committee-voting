@@ -19,7 +19,7 @@ use futures::FutureExt;
 use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{cmp, collections::VecDeque};
+use std::cmp;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -206,13 +206,10 @@ async fn get_ballot_submissions_by_account(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let has_more = results.len() > query_params.page_size();
+    let has_more = results.len() > page_size;
     if has_more {
-        // Pop the first value of the result, as the query returns values in descending
-        // order
-        let mut results_deque: VecDeque<_> = results.into();
-        results_deque.pop_front();
-        results = results_deque.into();
+        // Pop the last item of results, which will be the first item on the next page.
+        results.pop();
     }
 
     let response = SubmissionsResponse { results, has_more };
@@ -266,6 +263,7 @@ fn setup_prometheus(
                 std::time::Duration::from_millis(1000),
             ))
             .layer(tower_http::limit::RequestBodyLimitLayer::new(0));
+
         Some(tokio::spawn(async move {
             let listener = tokio::net::TcpListener::bind(prometheus_address)
                 .await
@@ -277,8 +275,7 @@ fn setup_prometheus(
                 })?;
             axum::serve(listener, prometheus_api)
                 .await
-                .context("Prometheus server has shut down")?;
-            Ok::<(), anyhow::Error>(())
+                .context("Prometheus server has shut down")
         }))
     } else {
         None
