@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Image } from 'react-bootstrap';
+import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
 
 import { registerVotes } from '@shared/election-contract';
 import {
@@ -68,6 +68,7 @@ export default function Home() {
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
     const { getEncryptedBallot } = useElectionGuard();
+    const [loading, setLoading] = useState(false);
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -89,8 +90,11 @@ export default function Home() {
         if (wallet?.connection === undefined || electionConfig === undefined || wallet?.account === undefined) {
             throw new Error('Expected required parameters to be defined'); // Will not happen.
         }
+        setLoading(true);
         const ballot = electionConfig.candidates.map((_, i) => selected.includes(i));
-        const encrypted = getEncryptedBallot(ballot);
+        const encrypted = await getEncryptedBallot(ballot);
+        setLoading(false);
+
         const transaction = await registerVotes(Array.from(encrypted), wallet.connection, wallet.account);
         addSubmission(transaction);
 
@@ -176,8 +180,8 @@ export default function Home() {
                     <Button variant="outline-secondary" onClick={closeConfirm}>
                         Cancel
                     </Button>
-                    <Button variant="primary" onClick={confirmSubmission}>
-                        Confirm
+                    <Button variant="primary" onClick={confirmSubmission} disabled={loading}>
+                        {loading ? <Spinner size='sm' animation='border' /> : 'Confirm'}
                     </Button>
                 </Modal.Footer>
             </Modal>
