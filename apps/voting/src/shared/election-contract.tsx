@@ -1,4 +1,5 @@
 import * as ElectionContract from '../__generated__/election-contract/module_election';
+import * as schema from '../__generated__/election-contract/election_schema.json';
 import {
     AccountTransactionType,
     ConcordiumGRPCWebClient,
@@ -13,9 +14,10 @@ import {
     AccountAddress,
     TransactionHash,
 } from '@concordium/web-sdk';
-import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 import { GuardianPublicKey } from 'electionguard-bindings';
+
+import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 
 export * as ElectionContract from '../__generated__/election-contract/module_election';
 
@@ -30,7 +32,7 @@ export interface ChecksumUrl {
 const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
 
-const REGISTER_VOTES_SCHEMA = toBuffer('EAIUAAIAAAAPAAAAY2FuZGlkYXRlX2luZGV4AggAAABoYXNfdm90ZQE=', 'base64');
+const registerVotesSchema = toBuffer(schema.entrypoints.registerVotes.parameter, 'base64');
 
 /**
  * Register a ballot in the election contract.
@@ -49,7 +51,7 @@ export async function registerVotes(
 ): Promise<TransactionHash.Type> {
     const params: TypedSmartContractParameters = {
         parameters: ballot,
-        schema: { type: 'TypeSchema', value: REGISTER_VOTES_SCHEMA },
+        schema: { type: 'TypeSchema', value: registerVotesSchema },
     };
 
     const result = await ElectionContract.dryRunRegisterVotes(contract, ballot);

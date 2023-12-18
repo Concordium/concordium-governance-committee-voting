@@ -16,7 +16,13 @@ import { atomEffect } from 'jotai-effect';
 import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
-import { DatabaseBallotSubmission, getAccountSubmissions, getElectionManifest, getElectionParameters, getSubmission } from './election-server';
+import {
+    DatabaseBallotSubmission,
+    getAccountSubmissions,
+    getElectionManifest,
+    getElectionParameters,
+    getSubmission,
+} from './election-server';
 import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 
 /**
@@ -168,7 +174,7 @@ const ensureElectionGuardConfigAtom = atomEffect((get, set) => {
 
     void Promise.all([getElectionManifest(), getElectionParameters()]).then(([manifest, parameters]) => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        set(electionGuardConfigBaseAtom, {manifest, parameters});
+        set(electionGuardConfigBaseAtom, { manifest, parameters });
     });
 });
 
