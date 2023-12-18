@@ -17,7 +17,7 @@ type MakeAsync<T extends (...args: any) => any> = (...args: Parameters<T>) => Pr
 const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) => {
     const promise = new Promise<Uint8Array>((resolve, reject) => {
         worker.onmessage = (event: MessageEvent<ReturnType<GetEncryptedBallotWasm>>) => {
-            resolve(event.data)
+            resolve(event.data);
             worker.onmessage = null;
         };
         worker.onmessageerror = (event) => {
@@ -28,7 +28,7 @@ const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) =>
     worker.postMessage(args);
 
     return promise;
-}
+};
 
 export interface ElectionGuard {
     /**

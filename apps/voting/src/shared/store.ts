@@ -380,7 +380,7 @@ async function monitorAccountSubmission(
 const ensureActiveAccountBallots = atomEffect((get, set) => {
     const ballots = get(currentAccountSubmittedBallotsAtom);
     // Only get results if initial page has not been loaded yet.
-    if (ballots !== undefined && ballots.lastIndex === undefined) {
+    if (ballots !== undefined && ballots.lastIndex === undefined && ballots.hasMore) {
         void set(loadMoreSubmittedBallotsAtom);
     }
 });

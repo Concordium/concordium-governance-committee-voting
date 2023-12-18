@@ -82,7 +82,6 @@ pub struct EncryptedBallotContext {
     pub election_manifest:    ElectionManifest,
     /// The election parameters. These should be generated externally for each
     /// election.
-    // TODO: is the assumption above correct?
     pub election_parameters: ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
     pub guardian_public_keys: Vec<GuardianPublicKey>,
@@ -127,15 +126,6 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
         };
 
         Ok(pre_voting_data)
-    }
-}
-
-impl TryFrom<&EncryptedBallotContext> for PreVotingData {
-    type Error = JsError;
-
-    fn try_from(value: &EncryptedBallotContext) -> Result<Self, Self::Error> {
-        let value = value.clone();
-        value.try_into()
     }
 }
 

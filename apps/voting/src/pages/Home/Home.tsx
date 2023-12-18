@@ -181,7 +181,7 @@ export default function Home() {
                         Cancel
                     </Button>
                     <Button variant="primary" onClick={confirmSubmission} disabled={loading}>
-                        {loading ? <Spinner size='sm' animation='border' /> : 'Confirm'}
+                        {loading ? <Spinner size="sm" animation="border" /> : 'Confirm'}
                     </Button>
                 </Modal.Footer>
             </Modal>

@@ -58,7 +58,7 @@ cargo run --bin indexer --release -- --contract-address "<7357,0>" # and other c
 
 ### Configuration
 
-Usage: indexer [OPTIONS] --contract-address <CONTRACT_ADDRESS>
+Usage: indexer [OPTIONS] --contract-address <CONTRACT_ADDRESS> --election-manifest-file <EG_MANIFEST_FILE> --election-parameters-file <EG_PARAMETERS_FILE> --guardian-keys-file <EG_GUARDIAN_KEYS_FILE>
 
 Options:
       --node <NODE_ENDPOINTS>
@@ -71,5 +71,11 @@ Options:
           Maximum log level [env: CCD_ELECTION_LOG_LEVEL=] [default: info]
       --max-behind-seconds <MAX_BEHIND_S>
           Max amount of seconds a response from a node can fall behind before trying another [env: CCD_ELECTION_MAX_BEHIND_SECONDS=] [default: 240]
+      --election-manifest-file <EG_MANIFEST_FILE>
+          A json file consisting of the election manifest used by election guard [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=]
+      --election-parameters-file <EG_PARAMETERS_FILE>
+          A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=]
+      --guardian-keys-file <EG_GUARDIAN_KEYS_FILE>
+          A json file consisting of the guardian public keys of the election [env: CCD_ELECTION_GUARDIAN_KEYS_FILE=]
   -h, --help
           Print help
