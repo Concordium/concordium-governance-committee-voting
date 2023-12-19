@@ -2,7 +2,7 @@
 import * as SDK from "@concordium/web-sdk";
 
 /** The reference of the smart contract module supported by the provided client. */
-export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a');
+export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('76f4190c1cfc6fb14251160bfed3d8b8bbbbf8290e5a4a85c7109141de604cf0');
 /** Name of the smart contract supported by this client. */
 export const contractName: SDK.ContractName.Type = /*#__PURE__*/ SDK.ContractName.fromStringUnchecked('election');
 

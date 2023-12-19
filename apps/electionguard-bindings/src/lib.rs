@@ -1,5 +1,3 @@
-mod utils;
-
 use eg::{
     ballot::BallotEncrypted,
     contest_selection::ContestSelection,

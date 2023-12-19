@@ -14,6 +14,10 @@ type GetEncryptedBallotWasm = typeof eg.getEncryptedBallot;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MakeAsync<T extends (...args: any) => any> = (...args: Parameters<T>) => Promise<ReturnType<T>>;
 
+/**
+ * Constructs a promise which resolves upon receiving a message from {@linkcode worker} and sends a message which
+ * constructs an encrypted ballot from the arguments given.
+ */
 const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) => {
     const promise = new Promise<Uint8Array>((resolve, reject) => {
         worker.onmessage = (event: MessageEvent<ReturnType<GetEncryptedBallotWasm>>) => {
@@ -30,6 +34,9 @@ const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) =>
     return promise;
 };
 
+/**
+ * Describes the election guard API
+ */
 export interface ElectionGuard {
     /**
      * Constructs an encrypted ballot from a selection of candidates. The list is expected to be ordered by candidate

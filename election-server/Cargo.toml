@@ -13,7 +13,7 @@ axum-prometheus = "0.5"
 chrono = "0.4"
 clap = { version = "4.4", features = ["derive", "env"] }
 concordium-rust-sdk = "3.2"
-concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election", features = ["serde"] }
+concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election" }
 deadpool-postgres = "0.11"
 eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
 futures = "0.3"
