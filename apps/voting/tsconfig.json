@@ -9,7 +9,7 @@
             "@shared/*": ["./src/shared/*"]
         }
     },
-    "include": ["src", "types", "scripts"],
+    "include": ["src", "types", "scripts", "package.json"],
     "exclude": ["src/__generated__"],
     "references": [{ "path": "./tsconfig.node.json" }]
 }
