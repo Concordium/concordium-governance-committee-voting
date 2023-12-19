@@ -16,7 +16,7 @@ name: check crates
 
 env:
   RUST_FMT: nightly-2023-04-01
-  RUST_VERSION: "1.67"
+  RUST_VERSION: "1.70"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
 
 jobs:
@@ -28,6 +28,7 @@ jobs:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
+          - apps/electionguard-bindings/Cargo.toml
 
     steps:
       - name: Checkout sources
@@ -48,6 +49,7 @@ jobs:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
+          - apps/electionguard-bindings/Cargo.toml
 
     steps:
       - name: Checkout sources

@@ -173,7 +173,6 @@ const ensureElectionGuardConfigAtom = atomEffect((get, set) => {
     }
 
     void Promise.all([getElectionManifest(), getElectionParameters()]).then(([manifest, parameters]) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         set(electionGuardConfigBaseAtom, { manifest, parameters });
     });
 });

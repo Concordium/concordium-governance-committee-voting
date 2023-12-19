@@ -1,0 +1,26 @@
+{
+    "name": "electionguard-bindings",
+    "collaborators": [
+        "Concordium software <support@concordium.software>"
+    ],
+    "version": "0.1.0",
+    "files": [
+        "pkg/electionguard_bindings_bg.wasm",
+        "pkg/electionguard_bindings.js",
+        "pkg/electionguard_bindings_bg.js",
+        "pkg/electionguard_bindings.d.ts"
+    ],
+    "module": "pkg/electionguard_bindings.js",
+    "types": "pkg/electionguard_bindings.d.ts",
+    "sideEffects": [
+        "./pkg/electionguard_bindings.js",
+        "./pkg/snippets/*"
+    ],
+    "scripts": {
+        "build": "wasm-pack build && rimraf ./pkg/package.json"
+    },
+    "devDependencies": {
+        "rimraf": "^5.0.5",
+        "wasm-pack": "^0.12.1"
+    }
+}

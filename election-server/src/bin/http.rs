@@ -332,7 +332,7 @@ async fn setup_http(
             ServeFile::new(config.eg_parameters_file.clone()),
         )
         .route("/", index_handler.clone())
-        .route("/index.html", index_handler.clone())
+        .route("/index.html", index_handler)
          // Fall back to serving anything from the frontend dir
         .route_service("/*path", ServeDir::new(config.frontend_dir.clone()))
         .layer(prometheus_layer)

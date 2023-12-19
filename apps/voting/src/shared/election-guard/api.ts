@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment */
 import { useCallback, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import type * as eg from 'electionguard-bindings';

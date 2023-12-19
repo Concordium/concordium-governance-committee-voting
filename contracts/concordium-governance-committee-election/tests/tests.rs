@@ -21,11 +21,11 @@ fn test_init_errors() {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
+            url:  "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
+            url:  "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -37,7 +37,7 @@ fn test_init_errors() {
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = ChecksumUrl {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
     let election_description = "Test election".to_string();
@@ -82,11 +82,11 @@ fn test_init_errors() {
     // Duolicates found in `candidates` list
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
+            url:  "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
+            url:  "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([0; 32]),
         },
     ];
@@ -114,11 +114,11 @@ fn test_init_config() {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
+            url:  "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
+            url:  "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -130,7 +130,7 @@ fn test_init_config() {
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
     let eligible_voters = ChecksumUrl {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
 
@@ -175,7 +175,7 @@ fn test_receive_ballot() {
         &mut chain,
         &contract_address,
         &Address::Contract(ContractAddress {
-            index: 0,
+            index:    0,
             subindex: 0,
         }),
         &param,
@@ -227,7 +227,7 @@ fn test_receive_election_result() {
         .expect_err("Cannot submit election result with insufficient vote counts");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index: 0,
+        index:    0,
         subindex: 0,
     });
     post_election_result_update(
@@ -274,10 +274,10 @@ fn post_election_result_update(
     param: &PostResultParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked("election.postElectionResult".to_string()),
-        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -289,10 +289,10 @@ fn view_election_result(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked("election.viewElectionResult".to_string()),
-        message: OwnedParameter::empty(),
+        message:      OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -306,10 +306,10 @@ fn register_votes_update(
     param: &RegisterVotesParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked("election.registerVotes".to_string()),
-        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -321,10 +321,10 @@ fn view_config(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount: Amount::zero(),
-        address: *address,
+        amount:       Amount::zero(),
+        address:      *address,
         receive_name: OwnedReceiveName::new_unchecked("election.viewConfig".to_string()),
-        message: OwnedParameter::empty(),
+        message:      OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -335,11 +335,11 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
 
     let candidates = vec![
         ChecksumUrl {
-            url: "https://candidates.concordium.com/john".to_string(),
+            url:  "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url: "https://candidates.concordium.com/peter".to_string(),
+            url:  "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -351,7 +351,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
     let eligible_voters = ChecksumUrl {
-        url: "http://some.election/voters".to_string(),
+        url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
 
@@ -396,10 +396,10 @@ fn initialize(
     chain: &mut Chain,
 ) -> Result<ContractInitSuccess, ContractInitError> {
     let payload = InitContractPayload {
-        amount: Amount::zero(),
-        mod_ref: *module_ref,
+        amount:    Amount::zero(),
+        mod_ref:   *module_ref,
         init_name: OwnedContractName::new_unchecked("init_election".to_string()),
-        param: OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
+        param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.
     chain.contract_init(SIGNER, ALICE, Energy::from(10_000), payload)

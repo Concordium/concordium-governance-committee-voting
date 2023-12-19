@@ -8,5 +8,5 @@ Concordium GC elections.
 To build the project, run
 
 ```bash
-yarn build:eg
+yarn build
 ```

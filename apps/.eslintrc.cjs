@@ -13,7 +13,7 @@ module.exports = {
         'plugin:jsx-a11y/recommended',
         'prettier',
     ],
-    ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn', '__generated__'],
+    ignorePatterns: ['dist', '.eslintrc.*', '.pnp.*', '.yarn', '__generated__', 'electionguard-bindings/pkg'],
     parser: '@typescript-eslint/parser',
     plugins: ['react'],
     rules: {

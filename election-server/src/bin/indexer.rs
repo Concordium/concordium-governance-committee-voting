@@ -380,9 +380,8 @@ fn get_ballot_submission(
         }
     };
 
-    // FIXME: verification panics due to some assertion failing.
     let verified = ballot.verify(
-        &verification_context,
+        verification_context,
         eg::index::Index::from_one_based_index(1).unwrap(),
     );
     let ballot_submission = BallotSubmission {

@@ -80,7 +80,7 @@ pub struct EncryptedBallotContext {
     pub election_manifest:    ElectionManifest,
     /// The election parameters. These should be generated externally for each
     /// election.
-    pub election_parameters: ElectionParameters,
+    pub election_parameters:  ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
     pub guardian_public_keys: Vec<GuardianPublicKey>,
 }
@@ -127,19 +127,19 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
     }
 }
 
-/// Wrapper around a vector of bool flags, representing a selection of candidates for a single
-/// election guard contest.
+/// Wrapper around a vector of bool flags, representing a selection of
+/// candidates for a single election guard contest.
 #[derive(Debug, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct SingleContestSelection(pub Vec<bool>);
 
-impl Into<BTreeMap<ContestIndex, ContestSelection>> for SingleContestSelection {
-    fn into(self) -> BTreeMap<ContestIndex, ContestSelection> {
-        let mut map = BTreeMap::new();
+impl From<SingleContestSelection> for BTreeMap<ContestIndex, ContestSelection> {
+    fn from(value: SingleContestSelection) -> Self {
+        let mut map = Self::new();
         // We only ever have one contest, so we unwrapping value created from 1u8.
         let index = ContestIndex::from_one_based_index_const(1).unwrap();
         let value = ContestSelection {
-            vote: self.0.clone().into_iter().map(|v| v.into()).collect(),
+            vote: value.0.into_iter().map(|v| v.into()).collect(),
         };
 
         map.insert(index, value);
