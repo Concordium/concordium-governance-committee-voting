@@ -197,16 +197,10 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     Ok(initial_state)
 }
 
-pub type RegisterGuardianFinalKeyParameter = Vec<u8>;
-
-#[receive(
-    contract = "election",
-    name = "registerGuardianFinalKey",
-    parameter = "RegisterGuardianFinalKeyParameter",
-    error = "Error",
-    mutable
-)]
-fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+fn validate_guardian_context<'a>(
+    ctx: &ReceiveContext,
+    host: &'a mut Host<State>,
+) -> Result<StateRefMut<'a, GuardianState, ExternStateApi>, Error> {
     let Address::Account(sender) = ctx.sender() else {
         bail!(Error::Unauthorized);
     };
@@ -217,15 +211,60 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
         Error::IncorrectElectionPhase
     );
 
-    let Some(mut guardian_state) = host.state.guardians.get_mut(&sender) else {
+    let Some(guardian_state) = host.state.guardians.get_mut(&sender) else {
         bail!(Error::Unauthorized);
     };
 
+    Ok(guardian_state)
+}
+
+pub type RegisterGuardianPreKeyParameter = Vec<u8>;
+
+#[receive(
+    contract = "election",
+    name = "registerGuardianPreKey",
+    parameter = "RegisterGuardianPreKeyParameter",
+    error = "Error",
+    mutable
+)]
+fn register_guardian_pre_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    ensure!(guardian_state.pre_key.is_none(), Error::DuplicateEntry);
+
+    let parameter: RegisterGuardianFinalKeyParameter = ctx.parameter_cursor().get()?;
+    guardian_state.pre_key = Some(parameter);
+    Ok(())
+}
+
+pub type RegisterGuardianFinalKeyParameter = Vec<u8>;
+
+#[receive(
+    contract = "election",
+    name = "registerGuardianFinalKey",
+    parameter = "RegisterGuardianFinalKeyParameter",
+    error = "Error",
+    mutable
+)]
+fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
     ensure!(guardian_state.final_key.is_none(), Error::DuplicateEntry);
 
     let parameter: RegisterGuardianFinalKeyParameter = ctx.parameter_cursor().get()?;
     guardian_state.final_key = Some(parameter);
+    Ok(())
+}
 
+#[receive(
+    contract = "election",
+    name = "registerGuardianComplaint",
+    error = "Error",
+    mutable
+)]
+fn register_guardian_complaint(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    ensure!(!guardian_state.complaint_filed, Error::DuplicateEntry);
+
+    guardian_state.complaint_filed = true;
     Ok(())
 }
 
