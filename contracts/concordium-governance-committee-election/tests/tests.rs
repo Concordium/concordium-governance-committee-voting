@@ -7,7 +7,13 @@ const ALICE: AccountAddress = AccountAddress([0u8; 32]);
 const ALICE_ADDR: Address = Address::Account(ALICE);
 
 const BOB: AccountAddress = AccountAddress([1u8; 32]);
+const BOB_ADDR: Address = Address::Account(BOB);
+
 const CAROLINE: AccountAddress = AccountAddress([2u8; 32]);
+const CAROLINE_ADDR: Address = Address::Account(CAROLINE);
+
+const DANIEL: AccountAddress = AccountAddress([3u8; 32]);
+const DANIEL_ADDR: Address = Address::Account(DANIEL);
 
 /// The initial balance of the ALICE test account.
 const ACC_INITIAL_BALANCE: Amount = Amount::from_ccd(10_000);
@@ -162,10 +168,7 @@ fn test_receive_ballot() {
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Vote registration prior to election window fails");
 
-    let dur_until_open = chain.block_time().duration_between(config.election_start);
-    chain
-        .tick_block_time(dur_until_open)
-        .expect("Block time does not overflow");
+    transition_to_open(&mut chain, &config);
 
     // Election window opens
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
@@ -182,18 +185,67 @@ fn test_receive_ballot() {
     )
     .expect_err("Fails to register vote with contract sender");
 
-    let dur_until_closed = chain
-        .block_time()
-        .duration_between(config.election_end)
-        .checked_add(Duration::from_millis(1))
-        .expect("Does not overflow");
-    chain
-        .tick_block_time(dur_until_closed)
-        .expect("Block time does not overflow");
+    transition_to_closed(&mut chain, &config);
 
     // Election window closed
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Vote registration prior to election window fails");
+}
+
+#[test]
+fn test_receive_guardian_key() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+        .expect("Can invoke config entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+
+    let param = vec![0, 1, 2, 5, 1, 6, 7];
+    let param_other = vec![1, 2, 3, 4, 5, 1, 2, 3];
+    register_guardian_final_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+        .expect("Key registration should succeed");
+
+    register_guardian_final_key_update(&mut chain, &contract_address, &DANIEL_ADDR, &param_other)
+        .expect("Key registration should succeed");
+
+    register_guardian_final_key_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Key registration should fail due to not being in the list of guardians");
+
+    let contract_sender = Address::Contract(ContractAddress {
+        index:    0,
+        subindex: 0,
+    });
+    register_guardian_final_key_update(&mut chain, &contract_address, &contract_sender, &param)
+        .expect_err("Cannot register keys from contract sender");
+
+    register_guardian_final_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+        .expect_err("Key registration should fail due to duplicate entry");
+
+    transition_to_open(&mut chain, &config);
+
+    // Election window opens
+    register_guardian_final_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
+        .expect_err("Key registration should fail when setup phase expires");
+
+    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+        .expect("Can invoke entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+
+    let expected_result: GuardiansState = vec![
+        (BOB, GuardianState {
+            final_key: Some(param),
+            ..Default::default()
+        }),
+        (CAROLINE, GuardianState {
+            ..Default::default()
+        }),
+        (DANIEL, GuardianState {
+            final_key: Some(param_other),
+            ..Default::default()
+        }),
+    ];
+    assert_eq!(guardians_state, expected_result);
 }
 
 #[test]
@@ -208,14 +260,7 @@ fn test_receive_election_result() {
     post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
         .expect_err("Cannot post election result when election is not yet over");
 
-    let dur_until_closed = chain
-        .block_time()
-        .duration_between(config.election_end)
-        .checked_add(Duration::from_millis(1))
-        .expect("Does not overflow");
-    chain
-        .tick_block_time(dur_until_closed)
-        .expect("Block time does not overflow");
+    transition_to_closed(&mut chain, &config);
 
     // Election window closed
     let invalid_param = vec![10; config.candidates.len() + 1];
@@ -238,7 +283,7 @@ fn test_receive_election_result() {
     )
     .expect_err("Cannot submit election result from a contract address");
 
-    let non_admin_account_sender = Address::Account(BOB);
+    let non_admin_account_sender = BOB_ADDR;
     post_election_result_update(
         &mut chain,
         &contract_address,
@@ -266,6 +311,26 @@ fn test_receive_election_result() {
     assert_eq!(election_result, Some(expected_result));
 }
 
+/// Shifts the block time to the election start time.
+fn transition_to_open(chain: &mut Chain, config: &ElectionConfig) {
+    let dur_until_open = chain.block_time().duration_between(config.election_start);
+    chain
+        .tick_block_time(dur_until_open)
+        .expect("Block time does not overflow");
+}
+
+/// Shifts the block time to after the election end time.
+fn transition_to_closed(chain: &mut Chain, config: &ElectionConfig) {
+    let dur_until_closed = chain
+        .block_time()
+        .duration_between(config.election_end)
+        .checked_add(Duration::from_millis(1))
+        .expect("Does not overflow");
+    chain
+        .tick_block_time(dur_until_closed)
+        .expect("Block time does not overflow");
+}
+
 /// Performs contract update at `post_election_result` entrypoint.
 fn post_election_result_update(
     chain: &mut Chain,
@@ -281,6 +346,39 @@ fn post_election_result_update(
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
+/// Performs contract update at `post_election_result` entrypoint.
+fn register_guardian_final_key_update(
+    chain: &mut Chain,
+    address: &ContractAddress,
+    sender: &Address,
+    param: &RegisterGuardianFinalKeyParameter,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount:       Amount::zero(),
+        address:      *address,
+        receive_name: OwnedReceiveName::new_unchecked(
+            "election.registerGuardianFinalKey".to_string(),
+        ),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+    };
+
+    chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
+fn view_guardians_state(
+    chain: &mut Chain,
+    address: &ContractAddress,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount:       Amount::zero(),
+        address:      *address,
+        receive_name: OwnedReceiveName::new_unchecked("election.viewGuardiansState".to_string()),
+        message:      OwnedParameter::empty(),
+    };
+
+    chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
 }
 
 /// Invokes `config` entrypoint
@@ -343,7 +441,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
             hash: HashSha2256([1; 32]),
         },
     ];
-    let guardians = vec![BOB, CAROLINE];
+    let guardians = vec![BOB, CAROLINE, DANIEL];
     let election_start = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::seconds(5))
         .unwrap();
@@ -379,6 +477,9 @@ fn new_chain_and_module() -> (Chain, ModuleReference) {
         .expect("Can build chain");
     // Create the test account.
     chain.create_account(Account::new(ALICE, ACC_INITIAL_BALANCE));
+    chain.create_account(Account::new(BOB, ACC_INITIAL_BALANCE));
+    chain.create_account(Account::new(CAROLINE, ACC_INITIAL_BALANCE));
+    chain.create_account(Account::new(DANIEL, ACC_INITIAL_BALANCE));
     // Load the module.
     let module = module_load_v1("./concordium-out/module.wasm.v1").expect("Module exists at path");
     // Deploy the module.

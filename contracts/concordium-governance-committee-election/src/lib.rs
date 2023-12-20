@@ -1,7 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # A Concordium V1 smart contract
-
 use concordium_std::*;
 
 /// Represents the list of eligible voters and their corresponding voting
@@ -29,19 +28,25 @@ pub enum Error {
     ParseParams,
     /// Tried to invoke contract from an unauthorized address.
     Unauthorized,
-    /// Could not create [`Config`] struct.
-    MalformedConfig,
-    /// Election result does not consist of the expected elements
-    MalformedElectionResult,
-    /// Election is closed
-    ElectionClosed,
-    /// Election is not over
-    Inconclusive,
+    /// Error when processing entity
+    Malformed,
+    /// An attempt to perform an action in the incorrect election phase was made
+    IncorrectElectionPhase,
+    /// An attempt to override a non-overridable state entry was made
+    DuplicateEntry,
 }
 
 /// State associated with each guardian.
-#[derive(Serialize, SchemaType)]
-pub struct GuardianState;
+#[derive(Serialize, SchemaType, Default, Clone, Debug, PartialEq)]
+pub struct GuardianState {
+    /// The pre-key of the guardian.
+    pub pre_key:         Option<Vec<u8>>,
+    /// The final key of the guardian.
+    pub final_key:       Option<Vec<u8>>,
+    /// Whether the guardian has filed any complaint during verification of keys
+    /// and associated proofs registered by any guardian.
+    pub complaint_filed: bool,
+}
 
 /// The internal state of the contract
 #[derive(Serial, DeserialWithState)]
@@ -88,23 +93,23 @@ impl State {
     ) -> Result<Self, Error> {
         let now = ctx.metadata().block_time();
 
-        ensure!(election_start > now, Error::MalformedConfig);
-        ensure!(election_start < election_end, Error::MalformedConfig);
-        ensure!(!election_description.is_empty(), Error::MalformedConfig);
-        ensure!(!candidates.is_empty(), Error::MalformedConfig);
-        ensure!(!guardians.is_empty(), Error::MalformedConfig);
-        ensure!(!eligible_voters.url.is_empty(), Error::MalformedConfig);
+        ensure!(election_start > now, Error::Malformed);
+        ensure!(election_start < election_end, Error::Malformed);
+        ensure!(!election_description.is_empty(), Error::Malformed);
+        ensure!(!candidates.is_empty(), Error::Malformed);
+        ensure!(!guardians.is_empty(), Error::Malformed);
+        ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
         for g in guardians.iter() {
-            if guardians_map.insert(*g, GuardianState).is_some() {
-                return Err(Error::MalformedConfig);
+            if guardians_map.insert(*g, GuardianState::default()).is_some() {
+                return Err(Error::Malformed);
             }
         }
         let mut candidates_set = state_builder.new_set();
         for c in candidates.iter() {
             if !candidates_set.insert(c.clone()) {
-                return Err(Error::MalformedConfig);
+                return Err(Error::Malformed);
             }
         }
 
@@ -178,7 +183,6 @@ impl From<&State> for ElectionConfig {
             election_end:         value.election_end,
             eligible_voters:      value.eligible_voters.get().clone(),
             candidates:           value.candidates.iter().map(|c| c.clone()).collect(),
-            // FIXME: Ignores associated `GuardianState` until we know more..
             guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
         }
     }
@@ -191,6 +195,57 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     let parameter: ElectionConfig = ctx.parameter_cursor().get()?;
     let initial_state = parameter.into_state(ctx, state_builder)?;
     Ok(initial_state)
+}
+
+pub type RegisterGuardianFinalKeyParameter = Vec<u8>;
+
+#[receive(
+    contract = "election",
+    name = "registerGuardianFinalKey",
+    parameter = "RegisterGuardianFinalKeyParameter",
+    error = "Error",
+    mutable
+)]
+fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let Address::Account(sender) = ctx.sender() else {
+        bail!(Error::Unauthorized);
+    };
+
+    let now = ctx.metadata().block_time();
+    ensure!(
+        now < host.state.election_start,
+        Error::IncorrectElectionPhase
+    );
+
+    let Some(mut guardian_state) = host.state.guardians.get_mut(&sender) else {
+        bail!(Error::Unauthorized);
+    };
+
+    ensure!(guardian_state.final_key.is_none(), Error::DuplicateEntry);
+
+    let parameter: RegisterGuardianFinalKeyParameter = ctx.parameter_cursor().get()?;
+    guardian_state.final_key = Some(parameter);
+
+    Ok(())
+}
+
+pub type GuardiansState = Vec<(AccountAddress, GuardianState)>;
+
+#[receive(
+    contract = "election",
+    name = "viewGuardiansState",
+    return_value = "GuardiansState"
+)]
+fn view_guardians_state(
+    _ctx: &ReceiveContext,
+    host: &Host<State>,
+) -> ReceiveResult<GuardiansState> {
+    let guardians_state = &host.state.guardians;
+    let guardians_state: Vec<_> = guardians_state
+        .iter()
+        .map(|(address, guardian_state)| (*address, guardian_state.clone()))
+        .collect();
+    Ok(guardians_state)
 }
 
 /// The parameter supplied to the [`register_votes`] entrypoint.
@@ -207,12 +262,12 @@ pub type RegisterVotesParameter = Vec<u8>;
     error = "Error"
 )]
 fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error> {
-    let now = ctx.metadata().block_time();
-
     ensure!(ctx.sender().is_account(), Error::Unauthorized);
+
+    let now = ctx.metadata().block_time();
     ensure!(
         host.state.election_start <= now && now <= host.state.election_end,
-        Error::ElectionClosed
+        Error::IncorrectElectionPhase
     );
 
     Ok(())
@@ -240,14 +295,11 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
         &sender == host.state.admin_account.get(),
         Error::Unauthorized
     );
-    ensure!(now > host.state.election_end, Error::Inconclusive);
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
 
     let candidates: Vec<_> = host.state.candidates.iter().collect();
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
-    ensure!(
-        parameter.len() == candidates.len(),
-        Error::MalformedElectionResult
-    );
+    ensure!(parameter.len() == candidates.len(), Error::Malformed);
 
     *host.state.election_result.get_mut() = Some(parameter);
     Ok(())
