@@ -197,6 +197,9 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
     Ok(initial_state)
 }
 
+/// Validates the context for guardian state updates. Returns a mutable
+/// reference to the [`GuardianState`] corresponding to the sender address from
+/// the [`ReceiveContext`].
 fn validate_guardian_context<'a>(
     ctx: &ReceiveContext,
     host: &'a mut Host<State>,
@@ -218,8 +221,11 @@ fn validate_guardian_context<'a>(
     Ok(guardian_state)
 }
 
+/// The parameter expected by the [`register_guardian_pre_key`] entrypoint.
 pub type RegisterGuardianPreKeyParameter = Vec<u8>;
 
+/// Entrypoint for registering a pre-key for the guardian corresponding to the
+/// sender address.
 #[receive(
     contract = "election",
     name = "registerGuardianPreKey",
@@ -231,13 +237,16 @@ fn register_guardian_pre_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Re
     let mut guardian_state = validate_guardian_context(ctx, host)?;
     ensure!(guardian_state.pre_key.is_none(), Error::DuplicateEntry);
 
-    let parameter: RegisterGuardianFinalKeyParameter = ctx.parameter_cursor().get()?;
+    let parameter: RegisterGuardianPreKeyParameter = ctx.parameter_cursor().get()?;
     guardian_state.pre_key = Some(parameter);
     Ok(())
 }
 
+/// The parameter expected by the [`register_guardian_final_key`] entrypoint.
 pub type RegisterGuardianFinalKeyParameter = Vec<u8>;
 
+/// Entrypoint for registering a final key for the guardian corresponding to the
+/// sender address.
 #[receive(
     contract = "election",
     name = "registerGuardianFinalKey",
@@ -254,6 +263,8 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
     Ok(())
 }
 
+/// Entrypoint for filing a comlaint if the cumulative state of guardians cannot
+/// be verified.
 #[receive(
     contract = "election",
     name = "registerGuardianComplaint",
@@ -268,8 +279,12 @@ fn register_guardian_complaint(ctx: &ReceiveContext, host: &mut Host<State>) -> 
     Ok(())
 }
 
+/// The cumulative state of all guardians
 pub type GuardiansState = Vec<(AccountAddress, GuardianState)>;
 
+/// View the cumulative state of all guardians. This is useful for guardians to
+/// validate the key registrations of other guardians, and construct final keys
+/// from registered pre-keys.
 #[receive(
     contract = "election",
     name = "viewGuardiansState",
