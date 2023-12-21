@@ -20,7 +20,6 @@ const DEFAULT_BACKEND_API = ''; // App is served from the same URL as the API.
 function validateURL(envField: string, allowUnset = true): void {
     const urlCandidate = process.env[envField];
     if (!allowUnset && !urlCandidate) {
-        console.log(envField, urlCandidate);
         throw new Error(`Value required for environment variable ${envField}`);
     }
 

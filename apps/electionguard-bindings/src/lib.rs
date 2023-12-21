@@ -1,6 +1,6 @@
 use eg::{
     ballot::BallotEncrypted,
-    contest_selection::ContestSelection,
+    contest_selection::{ContestSelection, ContestSelectionPlaintext},
     device::Device,
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
@@ -10,7 +10,7 @@ use eg::{
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use rand::{thread_rng, RngCore};
+use rand::{thread_rng, RngCore, Rng};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, convert::TryFrom};
 use tsify::Tsify;
@@ -136,10 +136,10 @@ pub struct SingleContestSelection(pub Vec<bool>);
 impl From<SingleContestSelection> for BTreeMap<ContestIndex, ContestSelection> {
     fn from(value: SingleContestSelection) -> Self {
         let mut map = Self::new();
-        // We only ever have one contest, so we unwrapping value created from 1u8.
+        // We only ever have one contest, so we unwrap the value created from 1u8.
         let index = ContestIndex::from_one_based_index_const(1).unwrap();
         let value = ContestSelection {
-            vote: value.0.into_iter().map(|v| v.into()).collect(),
+            vote: value.0.into_iter().map(ContestSelectionPlaintext::from).collect(),
         };
 
         map.insert(index, value);
@@ -159,14 +159,11 @@ pub fn get_encrypted_ballot(
     let pre_voting_data: PreVotingData = context.try_into()?;
     let device = Device::new(&device_uuid, pre_voting_data);
 
-    let mut seed = [0u8; 128];
-    thread_rng().fill_bytes(&mut seed);
+    let seed: [u8; 32] = thread_rng().gen();
     let mut csprng = Csprng::new(&seed);
 
-    // Random is fine as we don't need to re-derive encryption of ballots
-    // TODO: is the assumption above correct?
-    let mut primary_nonce = [0u8; 32];
-    thread_rng().fill_bytes(&mut primary_nonce);
+    // Random is fine here, as we don't need to re-derive encryption of ballots
+    let primary_nonce: [u8; 32] = thread_rng().gen();
 
     let ballot = BallotEncrypted::new_from_selections(
         &device,

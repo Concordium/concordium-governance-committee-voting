@@ -74,22 +74,50 @@ struct AppConfig {
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
     max_behind_s:          u32,
-    /// A json file consisting of the election manifest used by election guard
     #[clap(
         long = "election-manifest-file",
+        default_value = "../resources/config-example/election-manifest.json",
         env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
     )]
     eg_manifest_file:      std::path::PathBuf,
     /// A json file consisting of the election parameters used by election guard
     #[clap(
         long = "election-parameters-file",
+        default_value = "../resources/config-example/election-parameters.json",
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file:    std::path::PathBuf,
     /// A json file consisting of the guardian public keys of the election.
     // TODO: Temporary until guardian keys are registered in the contract.
-    #[clap(long = "guardian-keys-file", env = "CCD_ELECTION_GUARDIAN_KEYS_FILE")]
+    #[clap(
+        long = "guardian-keys-file",
+        default_value = "../resources/config-example/guardian-public-keys.json",
+        env = "CCD_ELECTION_GUARDIAN_KEYS_FILE"
+    )]
     eg_guardian_keys_file: std::path::PathBuf,
+}
+
+impl AppConfig {
+    fn read_config_files(&self) -> Result<ElectionGuardConfig, anyhow::Error> {
+        let election_manifest: ElectionManifest = serde_json::from_reader(
+            fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
+        )?;
+        let election_parameters: ElectionParameters = serde_json::from_reader(
+            fs::File::open(&self.eg_parameters_file)
+                .context("Could not read election parameters")?,
+        )?;
+        let guardian_public_keys: Vec<GuardianPublicKey> = serde_json::from_reader(
+            fs::File::open(&self.eg_guardian_keys_file)
+                .context("Could not read election guardian keys")?,
+        )?;
+
+        let context = ElectionGuardConfig {
+            election_manifest,
+            election_parameters,
+            guardian_public_keys,
+        };
+        Ok(context)
+    }
 }
 
 /// The data collected for each block.
@@ -116,35 +144,6 @@ pub struct ElectionGuardConfig {
     pub election_parameters:  ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
     pub guardian_public_keys: Vec<GuardianPublicKey>,
-}
-
-impl TryFrom<&AppConfig> for ElectionGuardConfig {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &AppConfig) -> Result<Self, Self::Error> {
-        let election_manifest = fs::read_to_string(value.eg_manifest_file.clone())
-            .context("Could not read election manifest")?;
-        let election_manifest: ElectionManifest = serde_json::from_str(&election_manifest)
-            .context("Could not parse election manifest")?;
-
-        let election_parameters = fs::read_to_string(value.eg_parameters_file.clone())
-            .context("Could not read election parameters")?;
-        let election_parameters: ElectionParameters = serde_json::from_str(&election_parameters)
-            .context("Could not parse election parameters")?;
-
-        let guardian_public_keys = fs::read_to_string(value.eg_guardian_keys_file.clone())
-            .context("Could not read election guardian keys")?;
-        let guardian_public_keys: Vec<GuardianPublicKey> =
-            serde_json::from_str(&guardian_public_keys)
-                .context("Could not parse election guardian keys")?;
-
-        let context = Self {
-            election_manifest,
-            election_parameters,
-            guardian_public_keys,
-        };
-        Ok(context)
-    }
 }
 
 impl TryFrom<ElectionGuardConfig> for PreVotingData {
@@ -612,7 +611,7 @@ async fn main() -> anyhow::Result<()> {
         .context("Could not create node client")?;
     verify_contract(&mut client, &config.contract_address).await?;
 
-    let eg_config = ElectionGuardConfig::try_from(&config)?;
+    let eg_config = config.read_config_files()?;
     let verification_context = PreVotingData::try_from(eg_config)?;
 
     // Since the database connection is managed by the background task we use a

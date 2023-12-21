@@ -54,7 +54,8 @@ export interface ElectionGuard {
  */
 export function useElectionGuard(): ElectionGuard {
     const config = useAtomValue(electionGuardConfigAtom);
-    const guardianPublicKeys = useMemo(() => getGuardianPublicKeys(), []); // TODO: get these from global store (lazily from contract).
+    // TODO: get the keys from global store as part of the configuration received from the election contract.
+    const guardianPublicKeys = useMemo(() => getGuardianPublicKeys(), []);
 
     const getEncryptedBallot: ElectionGuard['getEncryptedBallot'] = useCallback(
         (selection) => {

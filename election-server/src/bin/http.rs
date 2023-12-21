@@ -16,9 +16,8 @@ use concordium_rust_sdk::{
 };
 use election_server::db::{DatabasePool, StoredBallotSubmission};
 use futures::FutureExt;
-use handlebars::Handlebars;
+use handlebars::{no_escape, Handlebars};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::cmp;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -31,8 +30,10 @@ struct AppConfig {
     /// The node used for querying
     #[arg(
         long = "node",
-        help = "The endpoints are expected to point to concordium node grpc v2 API's.",
-        default_value = "http://localhost:20001",
+        help = "The endpoint is expected to point to concordium node grpc v2 API's. The endpoint \
+                is built into the frontend served, which means the node must enable grpc-web to \
+                be used successfully.",
+        default_value = "https://grpc.testnet.concordium.com:20000",
         env = "CCD_ELECTION_NODE"
     )]
     node_endpoint:        concordium_rust_sdk::v2::Endpoint,
@@ -81,25 +82,28 @@ struct AppConfig {
     /// respective voting weights
     #[clap(
         long = "eligible-voters-file",
+        default_value = "../resources/config-example/eligible-voters.json",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
     )]
     eligible_voters_file: std::path::PathBuf,
     /// A json file consisting of the election manifest used by election guard
     #[clap(
         long = "election-manifest-file",
+        default_value = "../resources/config-example/election-manifest.json",
         env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
     )]
     eg_manifest_file:     std::path::PathBuf,
     /// A json file consisting of the election parameters used by election guard
     #[clap(
         long = "election-parameters-file",
+        default_value = "../resources/config-example/election-parameters.json",
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file:   std::path::PathBuf,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
-        default_value = "./frontend/dist",
+        default_value = "../apps/voting/dist",
         env = "CCD_ELECTION_FRONTEND_DIR"
     )]
     frontend_dir:         std::path::PathBuf,
@@ -111,12 +115,30 @@ struct AppConfig {
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
     allow_cors:           bool,
-    /// The network to connect users to (passed to frontend)
-    #[clap(long = "network", env = "CCD_ELECTION_NETWORK")]
-    network:              Network,
+    /// The network to connect users to (passed to frontend).
+    #[clap(
+        long = "network",
+        env = "CCD_ELECTION_NETWORK",
+        default_value_t = concordium_rust_sdk::web3id::did::Network::Testnet,
+        help = "The network to connect users to (passed to frontend). Possible values: testnet, mainnet"
+    )]
+    network:              concordium_rust_sdk::web3id::did::Network,
     /// The contract address of the election contract (passed to frontend)
     #[clap(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
     contract_address:     ContractAddress,
+}
+
+impl AppConfig {
+    fn into_template(&self) -> serde_json::Value {
+        let config = serde_json::json!({
+            "node": self.node_endpoint.uri().to_string(),
+            "network": self.network,
+            "contractAddress": self.contract_address
+        });
+        let config_string =
+            serde_json::to_string(&config).expect("JSON serialization always succeeds");
+        serde_json::json!({ "config": config_string })
+    }
 }
 
 /// The app state shared across http requests made to the server.
@@ -124,31 +146,6 @@ struct AppConfig {
 struct AppState {
     /// The DB connection pool from.
     db_pool: DatabasePool,
-}
-
-#[derive(Clone, Debug, clap::ValueEnum, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum Network {
-    Mainnet,
-    Testnet,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FrontendConfig {
-    node:             String,
-    network:          Network,
-    contract_address: ContractAddress,
-}
-
-impl From<&AppConfig> for FrontendConfig {
-    fn from(value: &AppConfig) -> Self {
-        Self {
-            node:             value.node_endpoint.uri().to_string(),
-            network:          value.network.clone(),
-            contract_address: value.contract_address,
-        }
-    }
 }
 
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
@@ -296,17 +293,14 @@ async fn setup_http(
             .await
             .context("Failed to connect to the database")?,
     };
-    let frontend_config: FrontendConfig = config.into();
-
     // Render index.html with config
     let index_template = std::fs::read_to_string(config.frontend_dir.join("index.html"))
         .context("Frontend was not built.")?;
     let mut reg = Handlebars::new();
     // Prevent handlebars from escaping inserted object
-    reg.register_escape_fn(|s| s.into());
+    reg.register_escape_fn(no_escape);
 
-    let config_string = serde_json::to_string(&frontend_config)?;
-    let index_html = reg.render_template(&index_template, &json!({ "config": config_string }))?;
+    let index_html = reg.render_template(&index_template, &config.into_template())?;
     let index_handler = get(|| async { Html(index_html) });
 
     let mut http_api = Router::new()
@@ -321,20 +315,20 @@ async fn setup_http(
         .with_state(state)
         .route_service(
             "/static/concordium/eligible-voters.json",
-            ServeFile::new(config.eligible_voters_file.clone()),
+            ServeFile::new(&config.eligible_voters_file),
         )
         .route_service(
             "/static/electionguard/election-manifest.json",
-            ServeFile::new(config.eg_manifest_file.clone()),
+            ServeFile::new(&config.eg_manifest_file),
         )
         .route_service(
             "/static/electionguard/election-parameters.json",
-            ServeFile::new(config.eg_parameters_file.clone()),
+            ServeFile::new(&config.eg_parameters_file),
         )
         .route("/", index_handler.clone())
         .route("/index.html", index_handler)
          // Fall back to serving anything from the frontend dir
-        .route_service("/*path", ServeDir::new(config.frontend_dir.clone()))
+        .route_service("/*path", ServeDir::new(&config.frontend_dir))
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(config.request_timeout_ms),
