@@ -10,7 +10,7 @@ use eg::{
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use rand::{thread_rng, RngCore, Rng};
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, convert::TryFrom};
 use tsify::Tsify;
@@ -139,7 +139,11 @@ impl From<SingleContestSelection> for BTreeMap<ContestIndex, ContestSelection> {
         // We only ever have one contest, so we unwrap the value created from 1u8.
         let index = ContestIndex::from_one_based_index_const(1).unwrap();
         let value = ContestSelection {
-            vote: value.0.into_iter().map(ContestSelectionPlaintext::from).collect(),
+            vote: value
+                .0
+                .into_iter()
+                .map(ContestSelectionPlaintext::from)
+                .collect(),
         };
 
         map.insert(index, value);

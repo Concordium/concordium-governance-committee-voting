@@ -2,6 +2,7 @@ import { atom } from 'jotai';
 import { atomFamily, atomWithReset } from 'jotai/utils';
 import {
     AccountAddress,
+    Base58String,
     ConcordiumGRPCClient,
     Timestamp,
     TransactionHash,
@@ -13,17 +14,11 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
 import { atomEffect } from 'jotai-effect';
 
-import { ChecksumUrl, ElectionContract, getElectionConfig } from './election-contract';
+import { ChecksumUrl, getElectionConfig, getGuardianPublicKeys } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
-import {
-    DatabaseBallotSubmission,
-    getAccountSubmissions,
-    getElectionManifest,
-    getElectionParameters,
-    getSubmission,
-} from './election-server';
-import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
+import { DatabaseBallotSubmission, getAccountSubmissions, getSubmission } from './election-server';
+import { ElectionManifest, ElectionParameters, GuardianPublicKey } from 'electionguard-bindings';
 
 /**
  * Representation of an election candidate.
@@ -61,17 +56,66 @@ export interface IndexedCandidateDetails extends CandidateDetails {
     index: number;
 }
 
+export type EligibleVoters = {
+    [p in Base58String]: number;
+};
+
 /**
  * Representation of the election configration.
  */
-export interface ElectionConfig
-    extends Omit<ElectionContract.ReturnValueViewConfig, 'candidates' | 'election_start' | 'election_end'> {
+export interface ElectionConfig {
     /** The election candidates */
     candidates: IndexedCandidateDetails[];
     /** The election start time */
     start: Date;
     /** The election end time */
     end: Date;
+    /** The election description */
+    description: string;
+    /** The election manifest, used by election guard */
+    manifest: ElectionManifest;
+    /** The election parameters, used by election guard */
+    parameters: ElectionParameters;
+    /** The eligible voters for the election */
+    voters: EligibleVoters;
+    /** The registered public keys of the election guardians */
+    guardianKeys: GuardianPublicKey[];
+}
+
+/**
+ * Used to indicate failure to verify a remotely located resource
+ */
+export class ResourceVerificationError extends Error {}
+
+/**
+ * Gets the resource at the specified url.
+ * @template T - the JSON type of the resource.
+ * @param url - The url and checksum to fetch data from
+ * @param [verify] - An optional verification predicate function, which should verify if the fetched data
+ * conforms to an expected format. Defaults to a function a predicate that always returns true.
+ *
+ * @returns (Promise resolves) the resource of type `T`
+ * @throws (Promise rejects) with type {@linkcode ResourceVerificationError} if verification of resource fails
+ * @throws (Promise rejects) if an error happened while fetching the resource
+ */
+async function getChecksumResource<T>(
+    { url, hash }: ChecksumUrl,
+    verify: (value: unknown) => value is T = (_: unknown): _ is T => true,
+): Promise<T> {
+    const response = await fetch(url);
+    const bData = Buffer.from(await response.arrayBuffer());
+
+    const checksum = await window.crypto.subtle.digest('SHA-256', bData).then((b) => Buffer.from(b).toString('hex'));
+    if (checksum !== hash) {
+        throw new ResourceVerificationError();
+    }
+
+    const data: unknown = JSON.parse(bData.toString('utf8'));
+    if (!verify(data)) {
+        throw new ResourceVerificationError();
+    }
+
+    return data;
 }
 
 /**
@@ -84,29 +128,16 @@ export interface ElectionConfig
  * - `undefined` (failure), if
  *   - hash given with url does not match the hash of the data fetched
  *   - fetched data does not conform to expected format
- *   - An error happens while trying to fetch the data
+ * @throws (Promise rejects) if an error happened while fetching the resource
  */
-async function getCandidate({ url, hash }: ChecksumUrl, index: number): Promise<IndexedCandidateDetails | undefined> {
+async function getCandidate(url: ChecksumUrl, index: number): Promise<IndexedCandidateDetails | undefined> {
     try {
-        const response = await fetch(url);
-        const bData = Buffer.from(await response.arrayBuffer());
-
-        const checksum = await window.crypto.subtle
-            .digest('SHA-256', bData)
-            .then((b) => Buffer.from(b).toString('hex'));
-        if (checksum !== hash) {
-            return undefined;
-        }
-
-        const data: unknown = JSON.parse(bData.toString('utf8'));
-        if (!verifyCandidateDetails(data)) {
-            return undefined;
-        }
-
-        return { index, ...data };
+        const data = await getChecksumResource(url, verifyCandidateDetails);
+        return data === undefined ? undefined : { index, ...data };
     } catch (e) {
-        console.error(e);
-        return undefined;
+        if (e instanceof ResourceVerificationError) {
+            return undefined;
+        }
     }
 }
 
@@ -128,13 +159,27 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             return undefined;
         }
 
-        const candiatePromises = config.candidates.map(getCandidate);
-        const candidates = (await Promise.all(candiatePromises)).filter(isDefined);
+        const electionManifestPromise = getChecksumResource<ElectionManifest>(config.election_manifest);
+        const electionParametersPromise = getChecksumResource<ElectionParameters>(config.election_parameters);
+        const eligibleVotersPromise = getChecksumResource<EligibleVoters>(config.eligible_voters);
+        const candidatePromises = config.candidates.map(getCandidate);
+
+        const [manifest, parameters, voters, ...candidates] = await Promise.all([
+            electionManifestPromise,
+            electionParametersPromise,
+            eligibleVotersPromise,
+            ...candidatePromises,
+        ]);
+
         const mappedConfig: ElectionConfig = {
-            ...config,
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
-            candidates,
+            candidates: candidates.filter(isDefined),
+            description: config.election_description,
+            manifest,
+            parameters,
+            voters,
+            guardianKeys: getGuardianPublicKeys(), // TODO: will be part of election contract config.
         };
         set(electionConfigBaseAtom, mappedConfig);
     });
@@ -147,43 +192,6 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 export const electionConfigAtom = atom((get) => {
     get(ensureElectionConfigAtom);
     return get(electionConfigBaseAtom);
-});
-
-/**
- * Describes the configuration used by election guard.
- */
-type ElectionGuardState = {
-    /** The election parameters used by electionguard */
-    parameters: ElectionParameters;
-    /** The election manifest used by electionguard */
-    manifest: ElectionManifest;
-};
-
-/**
- * Primitive atom for holding the {@linkcode ElectionGuardState} necessary to construct encrypted ballots
- */
-const electionGuardConfigBaseAtom = atom<ElectionGuardState | undefined>(undefined);
-
-/**
- * Ensures the necessary election guard configuration is fetched if not available.
- */
-const ensureElectionGuardConfigAtom = atomEffect((get, set) => {
-    if (get(electionGuardConfigBaseAtom) !== undefined) {
-        return;
-    }
-
-    void Promise.all([getElectionManifest(), getElectionParameters()]).then(([manifest, parameters]) => {
-        set(electionGuardConfigBaseAtom, { manifest, parameters });
-    });
-});
-
-/**
- * Holds the election guard configuration. A reference to this should always be kept in the application root
- * to avoid having to fetch the configuration more than once.
- */
-export const electionGuardConfigAtom = atom((get) => {
-    get(ensureElectionGuardConfigAtom);
-    return get(electionGuardConfigBaseAtom);
 });
 
 /**

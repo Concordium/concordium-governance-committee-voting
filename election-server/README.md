@@ -33,6 +33,8 @@ Options:
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
       --prometheus-address <PROMETHEUS_ADDRESS>
           Address of the prometheus server [env: CCD_ELECTION_PROMETHEUS_ADDRESS=]
+      --candidates-metadata-dir <CANDIDATES_METADATA_DIR>
+          A directory holding metadata json files for each candidate [env: CCD_ELECTION_CANDIDATES_METADATA_DIR=] [default: ../resources/config-example/candidates]
       --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
           A json file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=] [default: ../resources/config-example/eligible-voters.json]
       --election-manifest-file <EG_MANIFEST_FILE>

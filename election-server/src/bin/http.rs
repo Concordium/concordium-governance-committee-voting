@@ -36,7 +36,7 @@ struct AppConfig {
         default_value = "https://grpc.testnet.concordium.com:20000",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
+    node_endpoint:           concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -46,38 +46,45 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:        tokio_postgres::config::Config,
+    db_connection:           tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value_t = 16,
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size:            usize,
+    pool_size:               usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:            tracing_subscriber::filter::LevelFilter,
+    log_level:               tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
         default_value_t = 5000,
         env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
     )]
-    request_timeout_ms:   u64,
+    request_timeout_ms:      u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address:       std::net::SocketAddr,
+    listen_address:          std::net::SocketAddr,
     /// Address of the prometheus server
     #[clap(long = "prometheus-address", env = "CCD_ELECTION_PROMETHEUS_ADDRESS")]
-    prometheus_address:   Option<std::net::SocketAddr>,
+    prometheus_address:      Option<std::net::SocketAddr>,
+    /// A directory holding metadata json files for each candidate.
+    #[clap(
+        long = "candidates-metadata-dir",
+        default_value = "../resources/config-example/candidates",
+        env = "CCD_ELECTION_CANDIDATES_METADATA_DIR"
+    )]
+    candidates_metadata_dir: std::path::PathBuf,
     /// A json file consisting of the list of eligible voters and their
     /// respective voting weights
     #[clap(
@@ -85,28 +92,28 @@ struct AppConfig {
         default_value = "../resources/config-example/eligible-voters.json",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
     )]
-    eligible_voters_file: std::path::PathBuf,
+    eligible_voters_file:    std::path::PathBuf,
     /// A json file consisting of the election manifest used by election guard
     #[clap(
         long = "election-manifest-file",
         default_value = "../resources/config-example/election-manifest.json",
         env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
     )]
-    eg_manifest_file:     std::path::PathBuf,
+    eg_manifest_file:        std::path::PathBuf,
     /// A json file consisting of the election parameters used by election guard
     #[clap(
         long = "election-parameters-file",
         default_value = "../resources/config-example/election-parameters.json",
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
-    eg_parameters_file:   std::path::PathBuf,
+    eg_parameters_file:      std::path::PathBuf,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
         default_value = "../apps/voting/dist",
         env = "CCD_ELECTION_FRONTEND_DIR"
     )]
-    frontend_dir:         std::path::PathBuf,
+    frontend_dir:            std::path::PathBuf,
     /// Allow requests from other origins. Useful for development where frontend
     /// is not served from the server.
     #[clap(
@@ -114,7 +121,7 @@ struct AppConfig {
         default_value_t = false,
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
-    allow_cors:           bool,
+    allow_cors:              bool,
     /// The network to connect users to (passed to frontend).
     #[clap(
         long = "network",
@@ -122,14 +129,15 @@ struct AppConfig {
         default_value_t = concordium_rust_sdk::web3id::did::Network::Testnet,
         help = "The network to connect users to (passed to frontend). Possible values: testnet, mainnet"
     )]
-    network:              concordium_rust_sdk::web3id::did::Network,
+    network:                 concordium_rust_sdk::web3id::did::Network,
     /// The contract address of the election contract (passed to frontend)
     #[clap(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
-    contract_address:     ContractAddress,
+    contract_address:        ContractAddress,
 }
 
 impl AppConfig {
-    fn into_template(&self) -> serde_json::Value {
+    /// Creates the JSON object required by the frontend.
+    fn as_frontend_config(&self) -> serde_json::Value {
         let config = serde_json::json!({
             "node": self.node_endpoint.uri().to_string(),
             "network": self.network,
@@ -300,7 +308,7 @@ async fn setup_http(
     // Prevent handlebars from escaping inserted object
     reg.register_escape_fn(no_escape);
 
-    let index_html = reg.render_template(&index_template, &config.into_template())?;
+    let index_html = reg.render_template(&index_template, &config.as_frontend_config())?;
     let index_handler = get(|| async { Html(index_html) });
 
     let mut http_api = Router::new()
@@ -313,6 +321,7 @@ async fn setup_http(
             get(get_ballot_submissions_by_account),
         )
         .with_state(state)
+        .nest_service("/static/concordium/candidates", ServeDir::new(&config.candidates_metadata_dir))
         .route_service(
             "/static/concordium/eligible-voters.json",
             ServeFile::new(&config.eligible_voters_file),
