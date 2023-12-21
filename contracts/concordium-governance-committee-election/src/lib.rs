@@ -43,32 +43,43 @@ pub enum Error {
 #[derive(Serialize, SchemaType)]
 pub struct GuardianState;
 
+#[derive(Serialize)]
+pub struct RegisteredData {
+    /// The list of eligible voters, represented by a url and a hash of the
+    /// list.
+    pub eligible_voters:      ChecksumUrl,
+    /// A url to the location of the election manifest used by election guard.
+    pub election_manifest:    ChecksumUrl,
+    /// A url to the location of the election parameters used by election guard.
+    pub election_parameters:  ChecksumUrl,
+    /// A description of the election, e.g. "Concordium GC election, June 2024".
+    pub election_description: String,
+}
+
 /// The internal state of the contract
 #[derive(Serial, DeserialWithState)]
 #[concordium(state_parameter = "S")]
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        StateBox<AccountAddress, S>,
+    pub admin_account:   StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:           StateSet<ChecksumUrl, S>,
+    pub candidates:      StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:            StateMap<AccountAddress, GuardianState, S>,
-    /// The list of eligible voters, represented by a url and a hash of the
-    /// list.
-    pub eligible_voters:      StateBox<ChecksumUrl, S>,
-    /// A description of the election, e.g. "Concordium GC election, June 2024".
-    pub election_description: StateBox<String, S>,
+    pub guardians:       StateMap<AccountAddress, GuardianState, S>,
+    /// Data registered upon contract instantiation which is used by off-chain
+    /// applications
+    pub registered_data: StateBox<RegisteredData, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:       Timestamp,
+    pub election_start:  Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:         Timestamp,
+    pub election_end:    Timestamp,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result:      StateBox<Option<ElectionResult>, S>,
+    pub election_result: StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -82,6 +93,8 @@ impl State {
         candidates: Vec<ChecksumUrl>,
         guardians: Vec<AccountAddress>,
         eligible_voters: ChecksumUrl,
+        election_manifest: ChecksumUrl,
+        election_parameters: ChecksumUrl,
         election_description: String,
         election_start: Timestamp,
         election_end: Timestamp,
@@ -108,12 +121,18 @@ impl State {
             }
         }
 
+        let registered_data = RegisteredData {
+            eligible_voters,
+            election_description,
+            election_manifest,
+            election_parameters,
+        };
+
         let config = Self {
             admin_account: state_builder.new_box(admin_account),
-            candidates: candidates_set,
             guardians: guardians_map,
-            eligible_voters: state_builder.new_box(eligible_voters),
-            election_description: state_builder.new_box(election_description),
+            candidates: candidates_set,
+            registered_data: state_builder.new_box(registered_data),
             election_start,
             election_end,
             election_result: state_builder.new_box(None),
@@ -135,6 +154,10 @@ pub struct ElectionConfig {
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
     pub eligible_voters:      ChecksumUrl,
+    /// A url to the location of the election manifest used by election guard.
+    pub election_manifest:    ChecksumUrl,
+    /// A url to the location of the election parameters used by election guard.
+    pub election_parameters:  ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
     /// The start time of the election, marking the time from which votes can be
@@ -161,6 +184,8 @@ impl ElectionConfig {
             self.candidates,
             self.guardians,
             self.eligible_voters,
+            self.election_manifest,
+            self.election_parameters,
             self.election_description,
             self.election_start,
             self.election_end,
@@ -171,12 +196,15 @@ impl ElectionConfig {
 
 impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
+        let registered_data = value.registered_data.get();
         Self {
             admin_account:        *value.admin_account.get(),
-            election_description: value.election_description.get().clone(),
+            election_description: registered_data.election_description.clone(),
             election_start:       value.election_start,
             election_end:         value.election_end,
-            eligible_voters:      value.eligible_voters.get().clone(),
+            eligible_voters:      registered_data.eligible_voters.clone(),
+            election_manifest:    registered_data.election_manifest.clone(),
+            election_parameters:  registered_data.election_parameters.clone(),
             candidates:           value.candidates.iter().map(|c| c.clone()).collect(),
             // FIXME: Ignores associated `GuardianState` until we know more..
             guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
