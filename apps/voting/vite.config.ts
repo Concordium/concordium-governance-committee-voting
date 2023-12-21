@@ -83,6 +83,7 @@ const viteConfig: UserConfig = {
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
     if (command === 'serve') {
+        // Mimic the configuration injection from the backend
         const config = getConfig();
         viteConfig.plugins!.push(
             handlebars({
