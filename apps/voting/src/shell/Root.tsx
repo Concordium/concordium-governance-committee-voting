@@ -1,7 +1,7 @@
 import { WalletConnectionManager } from '@shared/wallet-connection';
 import App from './App';
 import { Provider, createStore, useAtomValue } from 'jotai';
-import { electionConfigAtom, electionGuardConfigAtom } from '@shared/store';
+import { electionConfigAtom } from '@shared/store';
 
 const store = createStore();
 
@@ -10,7 +10,6 @@ const store = createStore();
  */
 function EnsureGlobalState() {
     useAtomValue(electionConfigAtom);
-    useAtomValue(electionGuardConfigAtom);
     return null;
 }
 

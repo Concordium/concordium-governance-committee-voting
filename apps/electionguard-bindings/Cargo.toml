@@ -7,9 +7,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["console_error_panic_hook"]
-
 [dependencies]
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 

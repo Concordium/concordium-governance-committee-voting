@@ -20,7 +20,6 @@ const DEFAULT_BACKEND_API = ''; // App is served from the same URL as the API.
 function validateURL(envField: string, allowUnset = true): void {
     const urlCandidate = process.env[envField];
     if (!allowUnset && !urlCandidate) {
-        console.log(envField, urlCandidate);
         throw new Error(`Value required for environment variable ${envField}`);
     }
 
@@ -84,6 +83,7 @@ const viteConfig: UserConfig = {
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
     if (command === 'serve') {
+        // Mimic the configuration injection from the backend
         const config = getConfig();
         viteConfig.plugins!.push(
             handlebars({

@@ -24,7 +24,7 @@ function App() {
                 <header className="d-flex flex-wrap justify-content-between mb-4 mt-5">
                     {electionConfig !== undefined && (
                         <div className="mb-2">
-                            <h2 className="mb-0">{electionConfig.election_description}</h2>
+                            <h2 className="mb-0">{electionConfig.description}</h2>
                             <div className={openState === ElectionOpenState.Open ? 'text-success' : 'text-danger'}>
                                 {openState === ElectionOpenState.Open && `Open until ${showDate(electionConfig.end)}`}
                                 {openState === ElectionOpenState.NotStarted &&

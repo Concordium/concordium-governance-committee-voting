@@ -81,7 +81,8 @@ export async function getElectionConfig(): Promise<ElectionContract.ReturnValueV
 }
 
 export function getGuardianPublicKeys(): GuardianPublicKey[] {
-    // TODO: for now, return a generated set of guardian keys to be used for testing.
+    // TODO: for now, return a generated set of guardian keys to be used for testing. Will be resolved upon adding the
+    // guardian keys to the contract configuration entrypoint.
 
     return [
         {

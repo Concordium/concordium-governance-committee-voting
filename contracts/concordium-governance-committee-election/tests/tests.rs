@@ -46,6 +46,14 @@ fn test_init_errors() {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
+    let election_manifest = ChecksumUrl {
+        url:  "http://some.election/manifest".to_string(),
+        hash: HashSha2256([1u8; 32]),
+    };
+    let election_parameters = ChecksumUrl {
+        url:  "http://some.election/parameters".to_string(),
+        hash: HashSha2256([2u8; 32]),
+    };
     let election_description = "Test election".to_string();
 
     let get_init_param = || ElectionConfig {
@@ -56,6 +64,8 @@ fn test_init_errors() {
         candidates: candidates.clone(),
         guardians: guardians.clone(),
         eligible_voters: eligible_voters.clone(),
+        election_manifest: election_manifest.clone(),
+        election_parameters: election_parameters.clone(),
     };
 
     let init_param = get_init_param();
@@ -139,6 +149,14 @@ fn test_init_config() {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
+    let election_manifest = ChecksumUrl {
+        url:  "http://some.election/manifest".to_string(),
+        hash: HashSha2256([1u8; 32]),
+    };
+    let election_parameters = ChecksumUrl {
+        url:  "http://some.election/parameters".to_string(),
+        hash: HashSha2256([2u8; 32]),
+    };
 
     let init_param = ElectionConfig {
         admin_account: ALICE,
@@ -148,6 +166,8 @@ fn test_init_config() {
         candidates,
         guardians,
         eligible_voters,
+        election_manifest,
+        election_parameters,
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
@@ -592,6 +612,14 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
     };
+    let election_manifest = ChecksumUrl {
+        url:  "http://some.election/manifest".to_string(),
+        hash: HashSha2256([1u8; 32]),
+    };
+    let election_parameters = ChecksumUrl {
+        url:  "http://some.election/parameters".to_string(),
+        hash: HashSha2256([2u8; 32]),
+    };
 
     // Default admin account
     let init_param = ElectionConfig {
@@ -602,6 +630,8 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         candidates,
         guardians,
         eligible_voters,
+        election_manifest,
+        election_parameters,
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
 
