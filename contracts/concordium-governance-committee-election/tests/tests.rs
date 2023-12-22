@@ -287,34 +287,68 @@ fn test_receive_guardian_final_key() {
 }
 
 #[test]
-fn test_receive_guardian_complaint() {
+fn test_receive_guardian_status() {
     let (mut chain, contract_address) = new_chain_and_contract();
     let config: ElectionConfig = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
 
-    register_guardian_complaint_update(&mut chain, &contract_address, &BOB_ADDR)
-        .expect("Complaint registration should succeed");
+    let complaint = "Could not verify guardian state";
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &BOB_ADDR,
+        GuardianStatus::VerificationFailed(complaint.to_string()),
+    )
+    .expect("Complaint registration should succeed");
 
-    register_guardian_complaint_update(&mut chain, &contract_address, &ALICE_ADDR)
-        .expect_err("Complaint registration should fail due to not being in the list of guardians");
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &DANIEL_ADDR,
+        GuardianStatus::VerificationSuccessful,
+    )
+    .expect("Complaint registration should succeed");
+
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &ALICE_ADDR,
+        GuardianStatus::VerificationSuccessful,
+    )
+    .expect_err("Complaint registration should fail due to not being in the list of guardians");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    register_guardian_complaint_update(&mut chain, &contract_address, &contract_sender)
-        .expect_err("Cannot register complaints from contract sender");
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &contract_sender,
+        GuardianStatus::VerificationSuccessful,
+    )
+    .expect_err("Cannot register complaints from contract sender");
 
-    register_guardian_complaint_update(&mut chain, &contract_address, &BOB_ADDR)
-        .expect_err("Complaint registration should fail due to duplicate entry");
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &BOB_ADDR,
+        GuardianStatus::VerificationSuccessful,
+    )
+    .expect_err("Complaint registration should fail due to duplicate entry");
 
     transition_to_open(&mut chain, &config);
 
     // Setup window closed
-    register_guardian_complaint_update(&mut chain, &contract_address, &CAROLINE_ADDR)
-        .expect_err("Complaint registration should fail when setup phase expires");
+    register_guardian_status_update(
+        &mut chain,
+        &contract_address,
+        &CAROLINE_ADDR,
+        GuardianStatus::VerificationSuccessful,
+    )
+    .expect_err("Complaint registration should fail when setup phase expires");
 
     let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
@@ -322,13 +356,14 @@ fn test_receive_guardian_complaint() {
         .expect("Can parse value");
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
-            complaint_filed: true,
+            status: Some(GuardianStatus::VerificationFailed(complaint.to_string())),
             ..Default::default()
         }),
         (CAROLINE, GuardianState {
             ..Default::default()
         }),
         (DANIEL, GuardianState {
+            status: Some(GuardianStatus::VerificationSuccessful),
             ..Default::default()
         }),
     ];
@@ -510,18 +545,19 @@ fn register_guardian_final_key_update(
 }
 
 /// Performs contract update at `register_guardian_complaint` entrypoint.
-fn register_guardian_complaint_update(
+fn register_guardian_status_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
+    status: GuardianStatus,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "election.registerGuardianComplaint".to_string(),
+            "election.registerGuardianStatus".to_string(),
         ),
-        message:      OwnedParameter::empty(),
+        message:      OwnedParameter::from_serial(&status).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)

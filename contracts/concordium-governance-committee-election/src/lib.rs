@@ -36,16 +36,26 @@ pub enum Error {
     DuplicateEntry,
 }
 
+/// The different status options available for guardians.
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+pub enum GuardianStatus {
+    /// Guardian could not verify the [`GuardianState`] of other guardians.
+    VerificationFailed(String),
+    /// Guardian has verified the [`GuardianState`] of other guardians is as
+    /// expected.
+    VerificationSuccessful,
+}
+
 /// State associated with each guardian.
 #[derive(Serialize, SchemaType, Default, Clone, Debug, PartialEq)]
 pub struct GuardianState {
     /// The pre-key of the guardian.
-    pub pre_key:         Option<Vec<u8>>,
+    pub pre_key:   Option<Vec<u8>>,
     /// The final key of the guardian.
-    pub final_key:       Option<Vec<u8>>,
-    /// Whether the guardian has filed any complaint during verification of keys
-    /// and associated proofs registered by any guardian.
-    pub complaint_filed: bool,
+    pub final_key: Option<Vec<u8>>,
+    /// The verification status of the guardian, with regards to verifying the
+    /// state of other guardians is as expected.
+    pub status:    Option<GuardianStatus>,
 }
 
 #[derive(Serialize)]
@@ -295,15 +305,17 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
 /// be verified.
 #[receive(
     contract = "election",
-    name = "registerGuardianComplaint",
+    name = "registerGuardianStatus",
+    parameter = "GuardianStatus",
     error = "Error",
     mutable
 )]
-fn register_guardian_complaint(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+fn register_guardian_status(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host)?;
-    ensure!(!guardian_state.complaint_filed, Error::DuplicateEntry);
+    ensure!(guardian_state.status.is_none(), Error::DuplicateEntry);
 
-    guardian_state.complaint_filed = true;
+    let status: GuardianStatus = ctx.parameter_cursor().get()?;
+    guardian_state.status = Some(status);
     Ok(())
 }
 
