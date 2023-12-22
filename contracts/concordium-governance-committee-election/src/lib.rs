@@ -49,13 +49,13 @@ pub enum GuardianStatus {
 /// State associated with each guardian.
 #[derive(Serialize, SchemaType, Default, Clone, Debug, PartialEq)]
 pub struct GuardianState {
-    /// The pre-key of the guardian.
-    pub pre_key:   Option<Vec<u8>>,
-    /// The final key of the guardian.
-    pub final_key: Option<Vec<u8>>,
+    /// The public key of the guardian.
+    pub public_key:      Option<Vec<u8>>,
+    /// The encrypted share of the guardian.
+    pub encrypted_share: Option<Vec<u8>>,
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
-    pub status:    Option<GuardianStatus>,
+    pub status:          Option<GuardianStatus>,
 }
 
 #[derive(Serialize)]
@@ -158,7 +158,7 @@ impl State {
 
 /// Parameter supplied to [`init`].
 #[derive(Serialize, SchemaType, Debug)]
-pub struct ElectionConfig {
+pub struct InitParameter {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
     pub admin_account:        AccountAddress,
@@ -183,7 +183,7 @@ pub struct ElectionConfig {
     pub election_end:         Timestamp,
 }
 
-impl ElectionConfig {
+impl InitParameter {
     /// Converts the init parameter to [`State`] with a supplied function for
     /// getting a fallback admin account if none is specified. The function
     /// consumes the parameter in the process.
@@ -209,28 +209,61 @@ impl ElectionConfig {
     }
 }
 
+#[derive(Serialize, SchemaType, Debug)]
+pub struct ElectionConfig {
+    /// The account used to perform administrative functions, such as publishing
+    /// the final result of the election.
+    pub admin_account:        AccountAddress,
+    /// A list of candidates that voters can vote for in the election.
+    pub candidates:           Vec<ChecksumUrl>,
+    /// The list of guardians for the election.
+    pub guardian_keys:        Vec<Vec<u8>>,
+    /// The merkle root of the list of eligible voters and their respective
+    /// voting weights.
+    pub eligible_voters:      ChecksumUrl,
+    /// A url to the location of the election manifest used by election guard.
+    pub election_manifest:    ChecksumUrl,
+    /// A url to the location of the election parameters used by election guard.
+    pub election_parameters:  ChecksumUrl,
+    /// A description of the election, e.g. "Concordium GC election, June 2024".
+    pub election_description: String,
+    /// The start time of the election, marking the time from which votes can be
+    /// registered.
+    pub election_start:       Timestamp,
+    /// The end time of the election, marking the time at which votes can no
+    /// longer be registered.
+    pub election_end:         Timestamp,
+}
+
 impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
         let registered_data = value.registered_data.get();
+        let candidates = value.candidates.iter().map(|c| c.clone()).collect();
+        let guardian_keys = value
+            .guardians
+            .iter()
+            .filter_map(|(_, guardian_state)| guardian_state.public_key.clone())
+            .collect();
+
         Self {
-            admin_account:        *value.admin_account.get(),
+            admin_account: *value.admin_account.get(),
             election_description: registered_data.election_description.clone(),
-            election_start:       value.election_start,
-            election_end:         value.election_end,
-            eligible_voters:      registered_data.eligible_voters.clone(),
-            election_manifest:    registered_data.election_manifest.clone(),
-            election_parameters:  registered_data.election_parameters.clone(),
-            candidates:           value.candidates.iter().map(|c| c.clone()).collect(),
-            guardians:            value.guardians.iter().map(|(ga, _)| *ga).collect(),
+            election_start: value.election_start,
+            election_end: value.election_end,
+            eligible_voters: registered_data.eligible_voters.clone(),
+            election_manifest: registered_data.election_manifest.clone(),
+            election_parameters: registered_data.election_parameters.clone(),
+            candidates,
+            guardian_keys,
         }
     }
 }
 
 /// Init function that creates a new smart contract with an initial [`State`]
 /// derived from the supplied [`InitParameter`]
-#[init(contract = "election", parameter = "ElectionConfig", error = "Error")]
+#[init(contract = "election", parameter = "InitParameter", error = "Error")]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
-    let parameter: ElectionConfig = ctx.parameter_cursor().get()?;
+    let parameter: InitParameter = ctx.parameter_cursor().get()?;
     let initial_state = parameter.into_state(ctx, state_builder)?;
     Ok(initial_state)
 }
@@ -260,44 +293,47 @@ fn validate_guardian_context<'a>(
 }
 
 /// The parameter expected by the [`register_guardian_pre_key`] entrypoint.
-pub type RegisterGuardianPreKeyParameter = Vec<u8>;
+pub type RegisterGuardianPublicKeyParameter = Vec<u8>;
 
-/// Entrypoint for registering a pre-key for the guardian corresponding to the
-/// sender address.
+/// Entrypoint for registering a public key for the guardian corresponding to
+/// the sender address.
 #[receive(
     contract = "election",
-    name = "registerGuardianPreKey",
-    parameter = "RegisterGuardianPreKeyParameter",
+    name = "registerGuardianPublicKey",
+    parameter = "RegisterGuardianPublicKeyParameter",
     error = "Error",
     mutable
 )]
-fn register_guardian_pre_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+fn register_guardian_public_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host)?;
-    ensure!(guardian_state.pre_key.is_none(), Error::DuplicateEntry);
+    ensure!(guardian_state.public_key.is_none(), Error::DuplicateEntry);
 
-    let parameter: RegisterGuardianPreKeyParameter = ctx.parameter_cursor().get()?;
-    guardian_state.pre_key = Some(parameter);
+    let parameter: RegisterGuardianPublicKeyParameter = ctx.parameter_cursor().get()?;
+    guardian_state.public_key = Some(parameter);
     Ok(())
 }
 
 /// The parameter expected by the [`register_guardian_final_key`] entrypoint.
-pub type RegisterGuardianFinalKeyParameter = Vec<u8>;
+pub type RegisterGuardianEncryptedShareParameter = Vec<u8>;
 
-/// Entrypoint for registering a final key for the guardian corresponding to the
-/// sender address.
+/// Entrypoint for registering an encryption share for the guardian
+/// corresponding to the sender address.
 #[receive(
     contract = "election",
-    name = "registerGuardianFinalKey",
-    parameter = "RegisterGuardianFinalKeyParameter",
+    name = "registerGuardianEncryptedShare",
+    parameter = "RegisterGuardianEncryptedShareParameter",
     error = "Error",
     mutable
 )]
 fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host)?;
-    ensure!(guardian_state.final_key.is_none(), Error::DuplicateEntry);
+    ensure!(
+        guardian_state.encrypted_share.is_none(),
+        Error::DuplicateEntry
+    );
 
-    let parameter: RegisterGuardianFinalKeyParameter = ctx.parameter_cursor().get()?;
-    guardian_state.final_key = Some(parameter);
+    let parameter: RegisterGuardianEncryptedShareParameter = ctx.parameter_cursor().get()?;
+    guardian_state.encrypted_share = Some(parameter);
     Ok(())
 }
 

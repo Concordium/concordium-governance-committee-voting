@@ -5,7 +5,6 @@ use eg::{
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
-    guardian_public_key::GuardianPublicKey,
     hashes::Hashes,
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
@@ -61,15 +60,20 @@ export type ElectionParameters = {
         info: string;
         ballot_chaining: string;
     };
-};
-export type GuardianPublicKey = {
-    i: number;
-    coefficient_commitments: string[];
-    coefficient_proofs: {
-        challenge: string;
-        response: string;
-    }[];
 };"#;
+
+/// Bytes representation of a guardian public key
+#[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
+pub struct GuardianPublicKey(Vec<u8>);
+
+impl TryFrom<GuardianPublicKey> for eg::guardian_public_key::GuardianPublicKey {
+    type Error = JsError;
+
+    fn try_from(value: GuardianPublicKey) -> Result<Self, Self::Error> {
+        let pub_key = rmp_serde::from_slice::<Self>(&value.0)?;
+        Ok(pub_key)
+    }
+}
 
 /// The contextual parameters necessary to generate the encrypted ballot
 #[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
@@ -89,9 +93,14 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
     type Error = JsError;
 
     fn try_from(value: EncryptedBallotContext) -> Result<Self, Self::Error> {
+        let guardian_public_keys: Vec<eg::guardian_public_key::GuardianPublicKey> = value
+            .guardian_public_keys
+            .into_iter()
+            .map(eg::guardian_public_key::GuardianPublicKey::try_from)
+            .collect::<Result<_, _>>()?;
         let joint_election_public_key = JointElectionPublicKey::compute(
             &value.election_parameters,
-            value.guardian_public_keys.as_slice(),
+            &guardian_public_keys,
         )
         .map_err(|e| {
             JsError::new(&format!(
@@ -112,7 +121,7 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
             &value.election_parameters,
             &hashes,
             &joint_election_public_key,
-            value.guardian_public_keys.as_slice(),
+            &guardian_public_keys,
         );
 
         let pre_voting_data = PreVotingData {

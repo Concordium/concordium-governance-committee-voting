@@ -56,7 +56,7 @@ fn test_init_errors() {
     };
     let election_description = "Test election".to_string();
 
-    let get_init_param = || ElectionConfig {
+    let get_init_param = || InitParameter {
         admin_account: ALICE,
         election_description: election_description.clone(),
         election_start,
@@ -158,7 +158,7 @@ fn test_init_config() {
         hash: HashSha2256([2u8; 32]),
     };
 
-    let init_param = ElectionConfig {
+    let init_param = InitParameter {
         admin_account: ALICE,
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
@@ -172,43 +172,43 @@ fn test_init_config() {
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
         view_config(&mut chain, &init.contract_address).expect("Can invoke config entrypoint");
-    let config: ElectionConfig = invocation.parse_return_value().expect("Can parse value");
+    let config: InitParameter = invocation.parse_return_value().expect("Can parse value");
     assert_eq!(config.admin_account, ALICE);
 }
 
 #[test]
-fn test_receive_guardian_pre_key() {
+fn test_receive_guardian_public_key() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+    let config: InitParameter = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
 
     let param = vec![0, 1, 2, 5, 1, 6, 7];
     let param_other = vec![1, 2, 3, 4, 5, 1, 2, 3];
-    register_guardian_pre_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+    register_guardian_public_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
         .expect("Key registration should succeed");
 
-    register_guardian_pre_key_update(&mut chain, &contract_address, &DANIEL_ADDR, &param_other)
+    register_guardian_public_key_update(&mut chain, &contract_address, &DANIEL_ADDR, &param_other)
         .expect("Key registration should succeed");
 
-    register_guardian_pre_key_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    register_guardian_public_key_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Key registration should fail due to not being in the list of guardians");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    register_guardian_pre_key_update(&mut chain, &contract_address, &contract_sender, &param)
+    register_guardian_public_key_update(&mut chain, &contract_address, &contract_sender, &param)
         .expect_err("Cannot register keys from contract sender");
 
-    register_guardian_pre_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+    register_guardian_public_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
         .expect_err("Key registration should fail due to duplicate entry");
 
     transition_to_open(&mut chain, &config);
 
     // Setup window closed
-    register_guardian_pre_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
+    register_guardian_public_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
         .expect_err("Key registration should fail when setup phase expires");
 
     let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
@@ -217,14 +217,14 @@ fn test_receive_guardian_pre_key() {
         .expect("Can parse value");
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
-            pre_key: Some(param),
+            public_key: Some(param),
             ..Default::default()
         }),
         (CAROLINE, GuardianState {
             ..Default::default()
         }),
         (DANIEL, GuardianState {
-            pre_key: Some(param_other),
+            public_key: Some(param_other),
             ..Default::default()
         }),
     ];
@@ -232,38 +232,48 @@ fn test_receive_guardian_pre_key() {
 }
 
 #[test]
-fn test_receive_guardian_final_key() {
+fn test_receive_guardian_encrypted_share() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+    let config: InitParameter = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
 
     let param = vec![0, 1, 2, 5, 1, 6, 7];
     let param_other = vec![1, 2, 3, 4, 5, 1, 2, 3];
-    register_guardian_final_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+    register_guardian_encrypted_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
         .expect("Key registration should succeed");
 
-    register_guardian_final_key_update(&mut chain, &contract_address, &DANIEL_ADDR, &param_other)
-        .expect("Key registration should succeed");
+    register_guardian_encrypted_share_update(
+        &mut chain,
+        &contract_address,
+        &DANIEL_ADDR,
+        &param_other,
+    )
+    .expect("Key registration should succeed");
 
-    register_guardian_final_key_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+    register_guardian_encrypted_share_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Key registration should fail due to not being in the list of guardians");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    register_guardian_final_key_update(&mut chain, &contract_address, &contract_sender, &param)
-        .expect_err("Cannot register keys from contract sender");
+    register_guardian_encrypted_share_update(
+        &mut chain,
+        &contract_address,
+        &contract_sender,
+        &param,
+    )
+    .expect_err("Cannot register keys from contract sender");
 
-    register_guardian_final_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+    register_guardian_encrypted_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
         .expect_err("Key registration should fail due to duplicate entry");
 
     transition_to_open(&mut chain, &config);
 
     // Setup window closed
-    register_guardian_final_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
+    register_guardian_encrypted_share_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
         .expect_err("Key registration should fail when setup phase expires");
 
     let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
@@ -272,14 +282,14 @@ fn test_receive_guardian_final_key() {
         .expect("Can parse value");
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
-            final_key: Some(param),
+            encrypted_share: Some(param),
             ..Default::default()
         }),
         (CAROLINE, GuardianState {
             ..Default::default()
         }),
         (DANIEL, GuardianState {
-            final_key: Some(param_other),
+            encrypted_share: Some(param_other),
             ..Default::default()
         }),
     ];
@@ -289,7 +299,7 @@ fn test_receive_guardian_final_key() {
 #[test]
 fn test_receive_guardian_status() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+    let config: InitParameter = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
@@ -373,7 +383,7 @@ fn test_receive_guardian_status() {
 #[test]
 fn test_receive_ballot() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+    let config: InitParameter = view_config(&mut chain, &contract_address)
         .expect("Can invoke config entrypoint")
         .parse_return_value()
         .expect("Can parse value");
@@ -409,7 +419,7 @@ fn test_receive_ballot() {
 #[test]
 fn test_receive_election_result() {
     let (mut chain, contract_address) = new_chain_and_contract();
-    let config: ElectionConfig = view_config(&mut chain, &contract_address)
+    let config: InitParameter = view_config(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
@@ -470,7 +480,7 @@ fn test_receive_election_result() {
 }
 
 /// Shifts the block time to the election start time.
-fn transition_to_open(chain: &mut Chain, config: &ElectionConfig) {
+fn transition_to_open(chain: &mut Chain, config: &InitParameter) {
     let dur_until_open = chain.block_time().duration_between(config.election_start);
     chain
         .tick_block_time(dur_until_open)
@@ -478,7 +488,7 @@ fn transition_to_open(chain: &mut Chain, config: &ElectionConfig) {
 }
 
 /// Shifts the block time to after the election end time.
-fn transition_to_closed(chain: &mut Chain, config: &ElectionConfig) {
+fn transition_to_closed(chain: &mut Chain, config: &InitParameter) {
     let dur_until_closed = chain
         .block_time()
         .duration_between(config.election_end)
@@ -506,18 +516,18 @@ fn post_election_result_update(
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
 }
 
-/// Performs contract update at `register_guardian_pre_key` entrypoint.
-fn register_guardian_pre_key_update(
+/// Performs contract update at `register_guardian_public_key` entrypoint.
+fn register_guardian_public_key_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
-    param: &RegisterGuardianPreKeyParameter,
+    param: &RegisterGuardianPublicKeyParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "election.registerGuardianPreKey".to_string(),
+            "election.registerGuardianPublicKey".to_string(),
         ),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
@@ -525,18 +535,18 @@ fn register_guardian_pre_key_update(
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
 }
 
-/// Performs contract update at `register_guardian_final_key` entrypoint.
-fn register_guardian_final_key_update(
+/// Performs contract update at `register_guardian_encrypted_share` entrypoint.
+fn register_guardian_encrypted_share_update(
     chain: &mut Chain,
     address: &ContractAddress,
     sender: &Address,
-    param: &RegisterGuardianFinalKeyParameter,
+    param: &RegisterGuardianEncryptedShareParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
         amount:       Amount::zero(),
         address:      *address,
         receive_name: OwnedReceiveName::new_unchecked(
-            "election.registerGuardianFinalKey".to_string(),
+            "election.registerGuardianEncryptedShare".to_string(),
         ),
         message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
@@ -658,7 +668,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
     };
 
     // Default admin account
-    let init_param = ElectionConfig {
+    let init_param = InitParameter {
         admin_account: ALICE,
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
@@ -699,7 +709,7 @@ fn new_chain_and_module() -> (Chain, ModuleReference) {
 /// Helper method for initializing the contract.
 fn initialize(
     module_ref: &ModuleReference,
-    init_param: &ElectionConfig,
+    init_param: &InitParameter,
     chain: &mut Chain,
 ) -> Result<ContractInitSuccess, ContractInitError> {
     let payload = InitContractPayload {

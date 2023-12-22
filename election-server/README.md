@@ -54,7 +54,7 @@ Options:
 
 Example usage (with all defaults applied):
 ```bash
-http --contract-address "<7493,0>"
+http --contract-address "<7551,0>"
 ```
 
 ## Running the indexer binary
@@ -89,5 +89,5 @@ Options:
 
 Example usage (with all defaults applied):
 ```bash
-indexer --contract-address "<7493,0>"
+indexer --contract-address "<7551,0>"
 ```
