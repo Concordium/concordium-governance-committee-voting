@@ -106,7 +106,7 @@ impl State {
     ) -> Result<Self, Error> {
         let now = ctx.metadata().block_time();
 
-        ensure!(election_start > now, Error::Malformed);
+        ensure!(election_start >= now, Error::Malformed);
         ensure!(election_start < election_end, Error::Malformed);
         ensure!(!election_description.is_empty(), Error::Malformed);
         ensure!(!candidates.is_empty(), Error::Malformed);
