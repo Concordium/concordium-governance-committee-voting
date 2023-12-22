@@ -153,7 +153,7 @@ export default function Home() {
                 </div>
             )}
             {isElectionOpen && canVote === EligibleStatus.Ineligible && (
-                <div className="d-flex justify-content-center mt-4">Connected account cannot vote</div>
+                <div className="d-flex justify-content-center mt-4 small text-muted">Connected account cannot vote</div>
             )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">
                 <Modal.Header closeButton>
