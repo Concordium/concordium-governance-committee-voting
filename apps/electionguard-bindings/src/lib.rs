@@ -98,16 +98,14 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
             .into_iter()
             .map(eg::guardian_public_key::GuardianPublicKey::try_from)
             .collect::<Result<_, _>>()?;
-        let joint_election_public_key = JointElectionPublicKey::compute(
-            &value.election_parameters,
-            &guardian_public_keys,
-        )
-        .map_err(|e| {
-            JsError::new(&format!(
-                "Could not compute joint election public key: {}",
-                e
-            ))
-        })?;
+        let joint_election_public_key =
+            JointElectionPublicKey::compute(&value.election_parameters, &guardian_public_keys)
+                .map_err(|e| {
+                    JsError::new(&format!(
+                        "Could not compute joint election public key: {}",
+                        e
+                    ))
+                })?;
 
         let hashes = Hashes::compute(&value.election_parameters, &value.election_manifest)
             .map_err(|e| {
