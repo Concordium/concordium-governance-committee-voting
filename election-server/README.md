@@ -60,7 +60,7 @@ http --contract-address "<7551,0>"
 ## Running the indexer binary
 
 ```bash
-cargo run --bin indexer --release -- --contract-address "<7357,0>" # and other configration options.
+cargo run --bin indexer --release -- --contract-address "<7357,0>" # and other configuration options.
 ```
 
 ### Configuration
