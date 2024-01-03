@@ -12,7 +12,7 @@ use tokio_postgres::{
     NoTls,
 };
 
-use crate::types::BallotSubmission;
+use crate::util::BallotSubmission;
 
 /// Represents possible errors returned from [`Database`] or [`DatabasePool`]
 /// functions

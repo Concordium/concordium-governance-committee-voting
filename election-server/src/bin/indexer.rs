@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, ensure, Context};
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
@@ -6,11 +6,12 @@ use concordium_rust_sdk::{
     smart_contracts::common::{self as contracts_common},
     types::{
         hashes::BlockHash,
-        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult, OwnedReceiveName},
+        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult},
         AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
+use concordium_std::{HashSha2256, OwnedReceiveName};
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
     election_parameters::ElectionParameters, election_record::PreVotingData,
@@ -19,11 +20,13 @@ use eg::{
 };
 use election_server::{
     db::{Database, DatabasePool, Transaction},
-    types::BallotSubmission,
+    util::BallotSubmission,
 };
 use futures::{future, TryStreamExt};
 use std::{
     fs,
+    path::PathBuf,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -97,15 +100,40 @@ struct AppConfig {
     eg_guardian_keys_file: std::path::PathBuf,
 }
 
+fn verify_checksum(file: &PathBuf, checksum: HashSha2256) -> anyhow::Result<()> {
+    let hash = sha256::try_digest(file)
+        .with_context(|| format!("Could not digest file at location: {:?}", file))?;
+    let hash = HashSha2256::from_str(&hash).context("Could not parse hash")?;
+
+    ensure!(hash == checksum, "Hash of file did not match checksum");
+    Ok(())
+}
+
 impl AppConfig {
-    fn read_config_files(&self) -> Result<ElectionGuardConfig, anyhow::Error> {
+    /// Deserializes the election guard config files. The supplied [`Client`] is
+    /// used to verify the files match the checksum registered in the
+    /// election contract.
+    fn read_config_files(
+        &self,
+        contract_config: &ElectionConfig,
+    ) -> Result<ElectionGuardConfig, anyhow::Error> {
+        verify_checksum(
+            &self.eg_manifest_file,
+            contract_config.election_manifest.hash,
+        )?;
         let election_manifest: ElectionManifest = serde_json::from_reader(
             fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
+        )?;
+
+        verify_checksum(
+            &self.eg_parameters_file,
+            contract_config.election_parameters.hash,
         )?;
         let election_parameters: ElectionParameters = serde_json::from_reader(
             fs::File::open(&self.eg_parameters_file)
                 .context("Could not read election parameters")?,
         )?;
+
         let guardian_public_keys: Vec<GuardianPublicKey> = serde_json::from_reader(
             fs::File::open(&self.eg_guardian_keys_file)
                 .context("Could not read election guardian keys")?,
@@ -467,14 +495,10 @@ async fn verify_contract(
     Ok(())
 }
 
-/// Find the block height corresponding to the start time of the election. If
-/// the election start time is in the future, this function will pause the
-/// thread until the election has started, after which it will return the block
-/// height corresponding to the latest finalized block.
-async fn find_election_start_height(
-    client: &mut Client,
+async fn get_contract_config(
+    client: &mut concordium_rust_sdk::v2::Client,
     contract_address: &ContractAddress,
-) -> anyhow::Result<AbsoluteBlockHeight> {
+) -> anyhow::Result<ElectionConfig> {
     let context = ContractContext::new(
         *contract_address,
         OwnedReceiveName::new_unchecked(CONFIG_VIEW.to_string()),
@@ -492,7 +516,19 @@ async fn find_election_start_height(
     let election_config: ElectionConfig =
         contracts_common::from_bytes(election_config.value.as_ref())
             .context("Failed to parse election config from contract invocation result")?;
-    let election_start: DateTime<Utc> = election_config.election_start.try_into()?;
+    Ok(election_config)
+}
+
+/// Find the block height corresponding to the start time of the election. If
+/// the election start time is in the future, this function will pause the
+/// thread until the election has started, after which it will return the block
+/// height corresponding to the latest finalized block.
+async fn find_election_start_height(
+    client: &mut Client,
+    contract_address: &ContractAddress,
+) -> anyhow::Result<AbsoluteBlockHeight> {
+    let contract_config = get_contract_config(client, contract_address).await?;
+    let election_start: DateTime<Utc> = contract_config.election_start.try_into()?;
 
     let now = Utc::now();
     if election_start > now {
@@ -611,7 +647,8 @@ async fn main() -> anyhow::Result<()> {
         .context("Could not create node client")?;
     verify_contract(&mut client, &config.contract_address).await?;
 
-    let eg_config = config.read_config_files()?;
+    let contract_config = get_contract_config(&mut client, &config.contract_address).await?;
+    let eg_config = config.read_config_files(&contract_config)?;
     let verification_context = PreVotingData::try_from(eg_config)?;
 
     // Since the database connection is managed by the background task we use a
