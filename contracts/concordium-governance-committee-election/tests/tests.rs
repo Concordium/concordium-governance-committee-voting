@@ -220,9 +220,7 @@ fn test_receive_guardian_public_key() {
             public_key: Some(param),
             ..Default::default()
         }),
-        (CAROLINE, GuardianState {
-            ..Default::default()
-        }),
+        (CAROLINE, GuardianState::default()),
         (DANIEL, GuardianState {
             public_key: Some(param_other),
             ..Default::default()
@@ -252,29 +250,56 @@ fn test_receive_guardian_encrypted_share() {
     )
     .expect("Key registration should succeed");
 
-    register_guardian_encrypted_share_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect_err("Key registration should fail due to not being in the list of guardians");
+    let error: Error = register_guardian_encrypted_share_update(
+        &mut chain,
+        &contract_address,
+        &ALICE_ADDR,
+        &param,
+    )
+    .expect_err("Key registration should fail due to not being in the list of guardians")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    register_guardian_encrypted_share_update(
+    let error: Error = register_guardian_encrypted_share_update(
         &mut chain,
         &contract_address,
         &contract_sender,
         &param,
     )
-    .expect_err("Cannot register keys from contract sender");
+    .expect_err("Cannot register keys from contract sender")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
-    register_guardian_encrypted_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
-        .expect_err("Key registration should fail due to duplicate entry");
+    let error: Error =
+        register_guardian_encrypted_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+            .expect_err("Key registration should fail due to duplicate entry")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::DuplicateEntry, "Unexpected error type");
 
     transition_to_open(&mut chain, &config);
 
     // Setup window closed
-    register_guardian_encrypted_share_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
-        .expect_err("Key registration should fail when setup phase expires");
+    let error: Error = register_guardian_encrypted_share_update(
+        &mut chain,
+        &contract_address,
+        &CAROLINE_ADDR,
+        &param,
+    )
+    .expect_err("Key registration should fail when setup phase expires")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
 
     let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
@@ -285,9 +310,7 @@ fn test_receive_guardian_encrypted_share() {
             encrypted_share: Some(param),
             ..Default::default()
         }),
-        (CAROLINE, GuardianState {
-            ..Default::default()
-        }),
+        (CAROLINE, GuardianState::default()),
         (DANIEL, GuardianState {
             encrypted_share: Some(param_other),
             ..Default::default()
@@ -321,44 +344,60 @@ fn test_receive_guardian_status() {
     )
     .expect("Complaint registration should succeed");
 
-    register_guardian_status_update(
+    let error: Error = register_guardian_status_update(
         &mut chain,
         &contract_address,
         &ALICE_ADDR,
         GuardianStatus::VerificationSuccessful,
     )
-    .expect_err("Complaint registration should fail due to not being in the list of guardians");
+    .expect_err("Complaint registration should fail due to not being in the list of guardians")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    register_guardian_status_update(
+    let error: Error = register_guardian_status_update(
         &mut chain,
         &contract_address,
         &contract_sender,
         GuardianStatus::VerificationSuccessful,
     )
-    .expect_err("Cannot register complaints from contract sender");
+    .expect_err("Cannot register complaints from contract sender")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
-    register_guardian_status_update(
+    let error: Error = register_guardian_status_update(
         &mut chain,
         &contract_address,
         &BOB_ADDR,
         GuardianStatus::VerificationSuccessful,
     )
-    .expect_err("Complaint registration should fail due to duplicate entry");
+    .expect_err("Complaint registration should fail due to duplicate entry")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::DuplicateEntry, "Unexpected error type");
 
     transition_to_open(&mut chain, &config);
 
     // Setup window closed
-    register_guardian_status_update(
+    let error: Error = register_guardian_status_update(
         &mut chain,
         &contract_address,
         &CAROLINE_ADDR,
         GuardianStatus::VerificationSuccessful,
     )
-    .expect_err("Complaint registration should fail when setup phase expires");
+    .expect_err("Complaint registration should fail when setup phase expires")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
 
     let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
@@ -369,9 +408,7 @@ fn test_receive_guardian_status() {
             status: Some(GuardianStatus::VerificationFailed(complaint.to_string())),
             ..Default::default()
         }),
-        (CAROLINE, GuardianState {
-            ..Default::default()
-        }),
+        (CAROLINE, GuardianState::default()),
         (DANIEL, GuardianState {
             status: Some(GuardianStatus::VerificationSuccessful),
             ..Default::default()
@@ -389,8 +426,15 @@ fn test_receive_ballot() {
         .expect("Can parse value");
 
     let param = vec![0u8, 32u8, 55u8, 3u8];
-    register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect_err("Vote registration prior to election window fails");
+    let error: Error = register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Vote registration prior to election window fails")
+        .parse_return_value()
+        .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
 
     transition_to_open(&mut chain, &config);
 
@@ -398,7 +442,7 @@ fn test_receive_ballot() {
     register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect("Can register votes");
 
-    register_votes_update(
+    let error: Error = register_votes_update(
         &mut chain,
         &contract_address,
         &Address::Contract(ContractAddress {
@@ -407,13 +451,23 @@ fn test_receive_ballot() {
         }),
         &param,
     )
-    .expect_err("Fails to register vote with contract sender");
+    .expect_err("Fails to register vote with contract sender")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     transition_to_closed(&mut chain, &config);
 
     // Election window closed
-    register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
-        .expect_err("Vote registration prior to election window fails");
+    let error: Error = register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+        .expect_err("Vote registration prior to election window fails")
+        .parse_return_value()
+        .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
 }
 
 #[test]
@@ -425,40 +479,62 @@ fn test_receive_election_result() {
         .expect("Can parse value");
     let valid_param = vec![10; config.candidates.len()];
 
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
-        .expect_err("Cannot post election result when election is not yet over");
+    let error: Error =
+        post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
+            .expect_err("Cannot post election result when election is not yet over")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
 
     transition_to_closed(&mut chain, &config);
 
     // Election window closed
     let invalid_param = vec![10; config.candidates.len() + 1];
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
-        .expect_err("Cannot submit election result with too many vote counts");
+    let error: Error =
+        post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
+            .expect_err("Cannot submit election result with too many vote counts")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::Malformed, "Unexpected error type");
 
     let invalid_param = vec![10; config.candidates.len() - 1];
-    post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
-        .expect_err("Cannot submit election result with insufficient vote counts");
+    let error: Error =
+        post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &invalid_param)
+            .expect_err("Cannot submit election result with insufficient vote counts")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::Malformed, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
         index:    0,
         subindex: 0,
     });
-    post_election_result_update(
+    let error: Error = post_election_result_update(
         &mut chain,
         &contract_address,
         &contract_sender,
         &valid_param,
     )
-    .expect_err("Cannot submit election result from a contract address");
+    .expect_err("Cannot submit election result from a contract address")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let non_admin_account_sender = BOB_ADDR;
-    post_election_result_update(
+    let error: Error = post_election_result_update(
         &mut chain,
         &contract_address,
         &non_admin_account_sender,
         &valid_param,
     )
-    .expect_err("Cannot submit election result from a non-admin account");
+    .expect_err("Cannot submit election result from a non-admin account")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     post_election_result_update(&mut chain, &contract_address, &ALICE_ADDR, &valid_param)
         .expect("Can post election result");

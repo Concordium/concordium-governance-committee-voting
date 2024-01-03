@@ -285,11 +285,10 @@ fn validate_guardian_context<'a>(
         Error::IncorrectElectionPhase
     );
 
-    let Some(guardian_state) = host.state.guardians.get_mut(&sender) else {
-        bail!(Error::Unauthorized);
-    };
-
-    Ok(guardian_state)
+    host.state
+        .guardians
+        .get_mut(&sender)
+        .ok_or(Error::Unauthorized)
 }
 
 /// The parameter expected by the [`register_guardian_pre_key`] entrypoint.
@@ -337,8 +336,8 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
     Ok(())
 }
 
-/// Entrypoint for filing a comlaint if the cumulative state of guardians cannot
-/// be verified.
+/// Entrypoint for filing a complaint if the cumulative state of guardians
+/// cannot be verified.
 #[receive(
     contract = "election",
     name = "registerGuardianStatus",
