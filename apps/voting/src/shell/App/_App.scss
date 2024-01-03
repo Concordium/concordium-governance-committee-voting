@@ -48,3 +48,12 @@
         }
     }
 }
+
+.app {
+    &__footer {
+        display: flex;
+        flex-direction: row-reverse;
+        font-size: 14px;
+        color: $gray-500;
+    }
+}

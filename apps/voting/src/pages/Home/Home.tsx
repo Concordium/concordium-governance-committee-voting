@@ -1,9 +1,9 @@
 import { clsx } from 'clsx';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Image } from 'react-bootstrap';
+import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
 
-import { ElectionContract, registerVotes } from '@shared/election-contract';
+import { registerVotes } from '@shared/election-contract';
 import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
@@ -11,7 +11,8 @@ import {
     connectionViewAtom,
     activeWalletAtom,
 } from '@shared/store';
-import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
+import { ElectionOpenState, EligibleStatus, useCanVote, useIsElectionOpen } from '@shared/hooks';
+import { useElectionGuard } from '@shared/election-guard';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
@@ -66,6 +67,9 @@ export default function Home() {
     const openViewConnection = useAtomValue(connectionViewAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
+    const { getEncryptedBallot } = useElectionGuard();
+    const [loading, setLoading] = useState(false);
+    const canVote = useCanVote();
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -87,11 +91,12 @@ export default function Home() {
         if (wallet?.connection === undefined || electionConfig === undefined || wallet?.account === undefined) {
             throw new Error('Expected required parameters to be defined'); // Will not happen.
         }
-        const ballot: ElectionContract.RegisterVotesParameter = electionConfig.candidates
-            .map((_, i) => selected.includes(i))
-            .map((hasVote, i) => ({ candidate_index: i, has_vote: hasVote }));
+        setLoading(true);
+        const ballot = electionConfig.candidates.map((_, i) => selected.includes(i));
+        const encrypted = await getEncryptedBallot(ballot);
+        setLoading(false);
 
-        const transaction = await registerVotes(ballot, wallet.connection, wallet.account);
+        const transaction = await registerVotes(Array.from(encrypted), wallet.connection, wallet.account);
         addSubmission(transaction);
 
         closeConfirm();
@@ -113,11 +118,16 @@ export default function Home() {
 
     // Handle connecting due to a submission attempt while not connected.
     useEffect(() => {
-        if (awaitConnection && wallet?.connection !== undefined && wallet?.account !== undefined) {
+        if (
+            awaitConnection &&
+            wallet?.connection !== undefined &&
+            wallet?.account !== undefined &&
+            canVote === EligibleStatus.Eligible
+        ) {
             submit();
             setAwaitConnection(false);
         }
-    }, [awaitConnection, wallet?.connection, submit, wallet?.account]);
+    }, [awaitConnection, wallet?.connection, submit, wallet?.account, canVote]);
 
     if (electionConfig === undefined) {
         return null;
@@ -135,12 +145,15 @@ export default function Home() {
                     />
                 ))}
             </Row>
-            {isElectionOpen && (
+            {isElectionOpen && canVote !== EligibleStatus.Ineligible && (
                 <div className="d-flex justify-content-center mt-4">
                     <Button className="text-center" variant="primary" onClick={submit}>
                         Submit
                     </Button>
                 </div>
+            )}
+            {isElectionOpen && canVote === EligibleStatus.Ineligible && (
+                <div className="d-flex justify-content-center mt-4 small text-muted">Connected account cannot vote</div>
             )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">
                 <Modal.Header closeButton>
@@ -176,8 +189,8 @@ export default function Home() {
                     <Button variant="outline-secondary" onClick={closeConfirm}>
                         Cancel
                     </Button>
-                    <Button variant="primary" onClick={confirmSubmission}>
-                        Confirm
+                    <Button variant="primary" onClick={confirmSubmission} disabled={loading}>
+                        {loading ? <Spinner size="sm" animation="border" /> : 'Confirm'}
                     </Button>
                 </Modal.Footer>
             </Modal>

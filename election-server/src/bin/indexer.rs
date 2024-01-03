@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, ensure, Context};
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
@@ -6,17 +6,27 @@ use concordium_rust_sdk::{
     smart_contracts::common::{self as contracts_common},
     types::{
         hashes::BlockHash,
-        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult, OwnedReceiveName},
+        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult},
         AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
+use concordium_std::{HashSha2256, OwnedReceiveName};
+use eg::{
+    ballot::BallotEncrypted, election_manifest::ElectionManifest,
+    election_parameters::ElectionParameters, election_record::PreVotingData,
+    guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
+    joint_election_public_key::JointElectionPublicKey,
+};
 use election_server::{
     db::{Database, DatabasePool, Transaction},
-    types::BallotSubmission,
+    util::BallotSubmission,
 };
 use futures::{future, TryStreamExt};
 use std::{
+    fs,
+    path::PathBuf,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -30,7 +40,7 @@ const CONFIG_VIEW: &str = "election.viewConfig";
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
 struct AppConfig {
-    /// The node used for querying
+    /// The node(s) used for querying
     #[arg(
         long = "node",
         help = "The endpoints are expected to point to concordium node grpc v2 API's.",
@@ -38,7 +48,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:   Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:        Vec<concordium_rust_sdk::v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -48,17 +58,17 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:    tokio_postgres::config::Config,
+    db_connection:         tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
-    contract_address: ContractAddress,
+    contract_address:      ContractAddress,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:        tracing_subscriber::filter::LevelFilter,
+    log_level:             tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -66,7 +76,76 @@ struct AppConfig {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s:     u32,
+    max_behind_s:          u32,
+    #[clap(
+        long = "election-manifest-file",
+        default_value = "../resources/config-example/election-manifest.json",
+        env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
+    )]
+    eg_manifest_file:      std::path::PathBuf,
+    /// A json file consisting of the election parameters used by election guard
+    #[clap(
+        long = "election-parameters-file",
+        default_value = "../resources/config-example/election-parameters.json",
+        env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
+    )]
+    eg_parameters_file:    std::path::PathBuf,
+    /// A json file consisting of the guardian public keys of the election.
+    // TODO: Temporary until guardian keys are registered in the contract.
+    #[clap(
+        long = "guardian-keys-file",
+        default_value = "../resources/config-example/guardian-public-keys.json",
+        env = "CCD_ELECTION_GUARDIAN_KEYS_FILE"
+    )]
+    eg_guardian_keys_file: std::path::PathBuf,
+}
+
+fn verify_checksum(file: &PathBuf, checksum: HashSha2256) -> anyhow::Result<()> {
+    let hash = sha256::try_digest(file)
+        .with_context(|| format!("Could not digest file at location: {:?}", file))?;
+    let hash = HashSha2256::from_str(&hash).context("Could not parse hash")?;
+
+    ensure!(hash == checksum, "Hash of file did not match checksum");
+    Ok(())
+}
+
+impl AppConfig {
+    /// Deserializes the election guard config files. The supplied [`Client`] is
+    /// used to verify the files match the checksum registered in the
+    /// election contract.
+    fn read_config_files(
+        &self,
+        contract_config: &ElectionConfig,
+    ) -> Result<ElectionGuardConfig, anyhow::Error> {
+        verify_checksum(
+            &self.eg_manifest_file,
+            contract_config.election_manifest.hash,
+        )?;
+        let election_manifest: ElectionManifest = serde_json::from_reader(
+            fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
+        )?;
+
+        verify_checksum(
+            &self.eg_parameters_file,
+            contract_config.election_parameters.hash,
+        )?;
+        let election_parameters: ElectionParameters = serde_json::from_reader(
+            fs::File::open(&self.eg_parameters_file)
+                .context("Could not read election parameters")?,
+        )?;
+
+        let guardian_public_keys: Vec<GuardianPublicKey> = serde_json::from_reader(
+            fs::File::open(&self.eg_guardian_keys_file)
+                .context("Could not read election guardian keys")?,
+        )?;
+
+        let context = ElectionGuardConfig {
+            election_manifest,
+            election_parameters,
+            guardian_public_keys,
+        };
+        Ok(context)
+    }
 }
 
 /// The data collected for each block.
@@ -80,6 +159,51 @@ pub struct BlockData {
     pub block_time: DateTime<Utc>,
     /// The ballots submitted in the block
     pub ballots:    Vec<BallotSubmission>,
+}
+
+/// The contextual parameters necessary to generate the encrypted ballot
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ElectionGuardConfig {
+    /// The election manifest. This should be declared externally for each
+    /// election.
+    pub election_manifest:    ElectionManifest,
+    /// The election parameters. These should be generated externally for each
+    /// election.
+    pub election_parameters:  ElectionParameters,
+    /// The guardian public keys, which are registered in the election contract.
+    pub guardian_public_keys: Vec<GuardianPublicKey>,
+}
+
+impl TryFrom<ElectionGuardConfig> for PreVotingData {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ElectionGuardConfig) -> Result<Self, Self::Error> {
+        let joint_election_public_key = JointElectionPublicKey::compute(
+            &value.election_parameters,
+            value.guardian_public_keys.as_slice(),
+        )
+        .context("Could not compute joint election public key")?;
+
+        let hashes = Hashes::compute(&value.election_parameters, &value.election_manifest)
+            .context("Could not compute hashes from election context")?;
+
+        let hashes_ext = HashesExt::compute(
+            &value.election_parameters,
+            &hashes,
+            &joint_election_public_key,
+            value.guardian_public_keys.as_slice(),
+        );
+
+        let pre_voting_data = PreVotingData {
+            manifest: value.election_manifest.clone(),
+            parameters: value.election_parameters,
+            hashes,
+            hashes_ext,
+            public_key: joint_election_public_key,
+        };
+
+        Ok(pre_voting_data)
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -252,6 +376,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
 fn get_ballot_submission(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
+    verification_context: &PreVotingData,
 ) -> Option<BallotSubmission> {
     let account = transaction.sender_account()?;
     let transaction_hash = transaction.hash;
@@ -269,16 +394,26 @@ fn get_ballot_submission(
         return None;
     };
 
-    let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref()) {
+    let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
+        .context("Failed to parse ballot from transaction message")
+        .and_then(|ballot| {
+            rmp_serde::from_slice::<BallotEncrypted>(&ballot)
+                .context("Failed to parse ballot from transaction parameter")
+        }) {
         Ok(ballot) => ballot,
         Err(err) => {
-            tracing::warn!("Could not parse ballot from transaction message: {}", err);
+            tracing::warn!("Could not parse ballot: {}", err);
             return None;
         }
     };
+
+    let verified = ballot.verify(
+        verification_context,
+        eg::index::Index::from_one_based_index(1).unwrap(),
+    );
     let ballot_submission = BallotSubmission {
         ballot,
-        verified: true, // TODO: verify with election guard
+        verified,
         account,
         transaction_hash,
     };
@@ -294,6 +429,7 @@ async fn process_block(
     node: &mut Client,
     block_hash: BlockHash,
     contract_address: &ContractAddress,
+    verification_context: &PreVotingData,
 ) -> anyhow::Result<BlockData> {
     let block_info = node
         .get_block_info(block_hash)
@@ -307,7 +443,11 @@ async fn process_block(
         .with_context(|| format!("Could not get transactions for block: {}", block_hash))?
         .response
         .try_filter_map(|transaction| {
-            future::ok(get_ballot_submission(transaction, contract_address))
+            future::ok(get_ballot_submission(
+                transaction,
+                contract_address,
+                verification_context,
+            ))
         })
         .try_collect()
         .await
@@ -355,14 +495,10 @@ async fn verify_contract(
     Ok(())
 }
 
-/// Find the block height corresponding to the start time of the election. If
-/// the election start time is in the future, this function will pause the
-/// thread until the election has started, after which it will return the block
-/// height corresponding to the latest finalized block.
-async fn find_election_start_height(
-    client: &mut Client,
+async fn get_contract_config(
+    client: &mut concordium_rust_sdk::v2::Client,
     contract_address: &ContractAddress,
-) -> anyhow::Result<AbsoluteBlockHeight> {
+) -> anyhow::Result<ElectionConfig> {
     let context = ContractContext::new(
         *contract_address,
         OwnedReceiveName::new_unchecked(CONFIG_VIEW.to_string()),
@@ -380,7 +516,19 @@ async fn find_election_start_height(
     let election_config: ElectionConfig =
         contracts_common::from_bytes(election_config.value.as_ref())
             .context("Failed to parse election config from contract invocation result")?;
-    let election_start: DateTime<Utc> = election_config.election_start.try_into()?;
+    Ok(election_config)
+}
+
+/// Find the block height corresponding to the start time of the election. If
+/// the election start time is in the future, this function will pause the
+/// thread until the election has started, after which it will return the block
+/// height corresponding to the latest finalized block.
+async fn find_election_start_height(
+    client: &mut Client,
+    contract_address: &ContractAddress,
+) -> anyhow::Result<AbsoluteBlockHeight> {
+    let contract_config = get_contract_config(client, contract_address).await?;
+    let election_start: DateTime<Utc> = contract_config.election_start.try_into()?;
 
     let now = Utc::now();
     if election_start > now {
@@ -424,6 +572,7 @@ async fn find_election_start_height(
 async fn node_process(
     node_endpoint: Endpoint,
     contract_address: &ContractAddress,
+    verification_context: &PreVotingData,
     processed_height: &mut Option<AbsoluteBlockHeight>,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
@@ -454,7 +603,13 @@ async fn node_process(
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
-        let block_data = process_block(&mut node, block.block_hash, contract_address).await?;
+        let block_data = process_block(
+            &mut node,
+            block.block_hash,
+            contract_address,
+            verification_context,
+        )
+        .await?;
         if block_sender.send(block_data).await.is_err() {
             tracing::error!("The database connection has been closed. Terminating node queries.");
             return Ok(());
@@ -491,6 +646,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Could not create node client")?;
     verify_contract(&mut client, &config.contract_address).await?;
+
+    let contract_config = get_contract_config(&mut client, &config.contract_address).await?;
+    let eg_config = config.read_config_files(&contract_config)?;
+    let verification_context = PreVotingData::try_from(eg_config)?;
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the
@@ -549,6 +708,7 @@ async fn main() -> anyhow::Result<()> {
         let node_result = node_process(
             node.clone(),
             &config.contract_address,
+            &verification_context,
             &mut latest_height,
             &block_sender,
             config.max_behind_s,

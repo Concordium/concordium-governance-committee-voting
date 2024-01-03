@@ -53,7 +53,10 @@ jobs:
 
       - name: Get dependencies
         if: ${{ steps.yarn-cache.outputs.cache-hit != 'true' }}
-        run: yarn install --immutable
+        run: |
+          yarn install --immutable
+          cd ./electionguard-bindings
+          yarn build
 
   generate-client:
     if: github.event.pull_request.draft == false
@@ -118,6 +121,8 @@ jobs:
         working-directory: apps
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
 
       - uses: actions/setup-node@v3
         with:
@@ -140,8 +145,8 @@ jobs:
             ./apps/voting/src/__generated__/election-contract
           key: ${{ runner.os }}-election-contract
 
-      - name: Lint
-        run: yarn lint:all && yarn fmt-check:all
-
       - name: Build
         run: yarn build:all
+
+      - name: Lint
+        run: yarn lint:all && yarn fmt-check:all

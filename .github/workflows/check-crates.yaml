@@ -28,6 +28,7 @@ jobs:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
+          - apps/electionguard-bindings/Cargo.toml
 
     steps:
       - name: Checkout sources
@@ -48,6 +49,7 @@ jobs:
         crates:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
+          - apps/electionguard-bindings/Cargo.toml
 
     steps:
       - name: Checkout sources

@@ -1,6 +1,7 @@
 import { useAtomValue } from 'jotai';
 import { useMemo } from 'react';
-import { electionConfigAtom } from './store';
+import { activeWalletAtom, electionConfigAtom } from './store';
+import { AccountAddress } from '@concordium/web-sdk';
 
 export const enum ElectionOpenState {
     NotStarted,
@@ -26,4 +27,32 @@ export function useIsElectionOpen(): ElectionOpenState | undefined {
     }, [electionConfig]);
 
     return isElectionOpen;
+}
+
+/**
+ * Possible values describing whether a user can cast votes in the election.
+ */
+export const enum EligibleStatus {
+    /** Either election config or account connection missing */
+    MissingValues,
+    /** Account ineligible for voting */
+    Ineligible,
+    /** Account eligible for voting */
+    Eligible,
+}
+
+/**
+ * Returns a {@linkcode EligibleStatus} describing whether a user account can cast votes.
+ */
+export function useCanVote(): EligibleStatus {
+    const electionConfig = useAtomValue(electionConfigAtom);
+    const activeWallet = useAtomValue(activeWalletAtom);
+
+    if (electionConfig === undefined || activeWallet?.account === undefined) {
+        return EligibleStatus.MissingValues;
+    }
+
+    return AccountAddress.toBase58(activeWallet.account) in electionConfig.voters
+        ? EligibleStatus.Eligible
+        : EligibleStatus.Ineligible;
 }

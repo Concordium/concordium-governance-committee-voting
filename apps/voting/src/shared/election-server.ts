@@ -1,5 +1,4 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
-import { BACKEND_API } from './constants';
 
 const PAGINATION_SIZE = 10;
 
