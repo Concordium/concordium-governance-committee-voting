@@ -22,9 +22,9 @@ const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) =>
             resolve(event.data);
             worker.onmessage = null;
         };
-        worker.onmessageerror = (event) => {
-            reject(event);
-            worker.onmessageerror = null;
+        worker.onerror = (event) => {
+            reject(event.message);
+            worker.onerror = null;
         };
     });
     worker.postMessage(args);

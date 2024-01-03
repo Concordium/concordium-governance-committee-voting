@@ -14,7 +14,7 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
 import { atomEffect } from 'jotai-effect';
 
-import { ChecksumUrl, getElectionConfig, getGuardianPublicKeys } from './election-contract';
+import { ChecksumUrl, getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
 import { DatabaseBallotSubmission, getAccountSubmissions, getSubmission } from './election-server';
@@ -179,7 +179,7 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             manifest,
             parameters,
             voters,
-            guardianKeys: getGuardianPublicKeys(), // TODO: will be part of election contract config.
+            guardianKeys: config.guardian_keys,
         };
         set(electionConfigBaseAtom, mappedConfig);
     });
