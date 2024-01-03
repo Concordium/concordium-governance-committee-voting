@@ -1,18 +1,15 @@
-mod utils;
-
 use eg::{
     ballot::BallotEncrypted,
-    contest_selection::ContestSelection,
+    contest_selection::{ContestSelection, ContestSelectionPlaintext},
     device::Device,
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
-    guardian_public_key::GuardianPublicKey,
     hashes::Hashes,
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use rand::{thread_rng, RngCore};
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, convert::TryFrom};
 use tsify::Tsify;
@@ -63,15 +60,20 @@ export type ElectionParameters = {
         info: string;
         ballot_chaining: string;
     };
-};
-export type GuardianPublicKey = {
-    i: number;
-    coefficient_commitments: string[];
-    coefficient_proofs: {
-        challenge: string;
-        response: string;
-    }[];
 };"#;
+
+/// Bytes representation of a guardian public key
+#[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
+pub struct GuardianPublicKey(Vec<u8>);
+
+impl TryFrom<GuardianPublicKey> for eg::guardian_public_key::GuardianPublicKey {
+    type Error = JsError;
+
+    fn try_from(value: GuardianPublicKey) -> Result<Self, Self::Error> {
+        let pub_key = rmp_serde::from_slice::<Self>(&value.0)?;
+        Ok(pub_key)
+    }
+}
 
 /// The contextual parameters necessary to generate the encrypted ballot
 #[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
@@ -82,7 +84,7 @@ pub struct EncryptedBallotContext {
     pub election_manifest:    ElectionManifest,
     /// The election parameters. These should be generated externally for each
     /// election.
-    pub election_parameters: ElectionParameters,
+    pub election_parameters:  ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
     pub guardian_public_keys: Vec<GuardianPublicKey>,
 }
@@ -91,16 +93,19 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
     type Error = JsError;
 
     fn try_from(value: EncryptedBallotContext) -> Result<Self, Self::Error> {
-        let joint_election_public_key = JointElectionPublicKey::compute(
-            &value.election_parameters,
-            value.guardian_public_keys.as_slice(),
-        )
-        .map_err(|e| {
-            JsError::new(&format!(
-                "Could not compute joint election public key: {}",
-                e
-            ))
-        })?;
+        let guardian_public_keys: Vec<eg::guardian_public_key::GuardianPublicKey> = value
+            .guardian_public_keys
+            .into_iter()
+            .map(eg::guardian_public_key::GuardianPublicKey::try_from)
+            .collect::<Result<_, _>>()?;
+        let joint_election_public_key =
+            JointElectionPublicKey::compute(&value.election_parameters, &guardian_public_keys)
+                .map_err(|e| {
+                    JsError::new(&format!(
+                        "Could not compute joint election public key: {}",
+                        e
+                    ))
+                })?;
 
         let hashes = Hashes::compute(&value.election_parameters, &value.election_manifest)
             .map_err(|e| {
@@ -114,7 +119,7 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
             &value.election_parameters,
             &hashes,
             &joint_election_public_key,
-            value.guardian_public_keys.as_slice(),
+            &guardian_public_keys,
         );
 
         let pre_voting_data = PreVotingData {
@@ -129,19 +134,23 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
     }
 }
 
-/// Wrapper around a vector of bool flags, representing a selection of candidates for a single
-/// election guard contest.
+/// Wrapper around a vector of bool flags, representing a selection of
+/// candidates for a single election guard contest.
 #[derive(Debug, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct SingleContestSelection(pub Vec<bool>);
 
-impl Into<BTreeMap<ContestIndex, ContestSelection>> for SingleContestSelection {
-    fn into(self) -> BTreeMap<ContestIndex, ContestSelection> {
-        let mut map = BTreeMap::new();
-        // We only ever have one contest, so we unwrapping value created from 1u8.
+impl From<SingleContestSelection> for BTreeMap<ContestIndex, ContestSelection> {
+    fn from(value: SingleContestSelection) -> Self {
+        let mut map = Self::new();
+        // We only ever have one contest, so we unwrap the value created from 1u8.
         let index = ContestIndex::from_one_based_index_const(1).unwrap();
         let value = ContestSelection {
-            vote: self.0.clone().into_iter().map(|v| v.into()).collect(),
+            vote: value
+                .0
+                .into_iter()
+                .map(ContestSelectionPlaintext::from)
+                .collect(),
         };
 
         map.insert(index, value);
@@ -161,14 +170,11 @@ pub fn get_encrypted_ballot(
     let pre_voting_data: PreVotingData = context.try_into()?;
     let device = Device::new(&device_uuid, pre_voting_data);
 
-    let mut seed = [0u8; 128];
-    thread_rng().fill_bytes(&mut seed);
+    let seed: [u8; 32] = thread_rng().gen();
     let mut csprng = Csprng::new(&seed);
 
-    // Random is fine as we don't need to re-derive encryption of ballots
-    // TODO: is the assumption above correct?
-    let mut primary_nonce = [0u8; 32];
-    thread_rng().fill_bytes(&mut primary_nonce);
+    // Random is fine here, as we don't need to re-derive encryption of ballots
+    let primary_nonce: [u8; 32] = thread_rng().gen();
 
     let ballot = BallotEncrypted::new_from_selections(
         &device,

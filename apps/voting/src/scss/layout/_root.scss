@@ -1,9 +1,15 @@
-html {
+html,
+body,
+#root {
     height: 100%;
 }
 
 body {
     background-image: $bg-gradient;
     background-repeat: no-repeat;
-    min-height: 100%;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
 }

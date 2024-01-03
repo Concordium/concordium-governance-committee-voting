@@ -1,9 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment */
 import { useCallback, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import type * as eg from 'electionguard-bindings';
-import { electionGuardConfigAtom } from '../store';
-import { getGuardianPublicKeys } from '../election-contract';
+import { electionConfigAtom } from '../store';
 // vite constructs a default export.
 // eslint-disable-next-line import/default
 import ElectionGuardWorker from './worker?worker';
@@ -14,22 +12,29 @@ type GetEncryptedBallotWasm = typeof eg.getEncryptedBallot;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MakeAsync<T extends (...args: any) => any> = (...args: Parameters<T>) => Promise<ReturnType<T>>;
 
+/**
+ * Constructs a promise which resolves upon receiving a message from {@linkcode worker} and sends a message which
+ * constructs an encrypted ballot from the arguments given.
+ */
 const getEncryptedBallotWorker: MakeAsync<GetEncryptedBallotWasm> = (...args) => {
     const promise = new Promise<Uint8Array>((resolve, reject) => {
         worker.onmessage = (event: MessageEvent<ReturnType<GetEncryptedBallotWasm>>) => {
-            resolve(event.data)
+            resolve(event.data);
             worker.onmessage = null;
         };
-        worker.onmessageerror = (event) => {
-            reject(event);
-            worker.onmessageerror = null;
+        worker.onerror = (event) => {
+            reject(event.message);
+            worker.onerror = null;
         };
     });
     worker.postMessage(args);
 
     return promise;
-}
+};
 
+/**
+ * Describes the election guard API
+ */
 export interface ElectionGuard {
     /**
      * Constructs an encrypted ballot from a selection of candidates. The list is expected to be ordered by candidate
@@ -47,8 +52,7 @@ export interface ElectionGuard {
  * A hook which exposes an interface for interacting with election guard.
  */
 export function useElectionGuard(): ElectionGuard {
-    const config = useAtomValue(electionGuardConfigAtom);
-    const guardianPublicKeys = useMemo(() => getGuardianPublicKeys(), []); // TODO: get these from global store (lazily from contract).
+    const config = useAtomValue(electionConfigAtom);
 
     const getEncryptedBallot: ElectionGuard['getEncryptedBallot'] = useCallback(
         (selection) => {
@@ -59,11 +63,11 @@ export function useElectionGuard(): ElectionGuard {
             const context: eg.EncryptedBallotContext = {
                 election_manifest: config.manifest,
                 election_parameters: config.parameters,
-                guardian_public_keys: guardianPublicKeys,
+                guardian_public_keys: config.guardianKeys,
             };
             return getEncryptedBallotWorker(selection, context, DEVICE_NAME);
         },
-        [config, guardianPublicKeys],
+        [config],
     );
 
     return useMemo<ElectionGuard>(() => ({ getEncryptedBallot }), [getEncryptedBallot]);

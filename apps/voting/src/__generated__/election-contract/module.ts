@@ -2,9 +2,9 @@
 import * as SDK from "@concordium/web-sdk";
 
 /** The reference of the smart contract module supported by the provided client. */
-export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a');
+export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec');
 
-/** Client for an on-chain smart contract module with module reference '6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a', can be used for instantiating new smart contract instances. */
+/** Client for an on-chain smart contract module with module reference 'e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec', can be used for instantiating new smart contract instances. */
 class ModuleModule {
     /** Having a private field prevents similar structured objects to be considered the same type (similar to nominal typing). */
     private __nominal = true;
@@ -17,7 +17,7 @@ class ModuleModule {
     }
 }
 
-/** Client for an on-chain smart contract module with module reference '6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a', can be used for instantiating new smart contract instances. */
+/** Client for an on-chain smart contract module with module reference 'e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec', can be used for instantiating new smart contract instances. */
 export type Type = ModuleModule;
 
 /**
@@ -46,7 +46,7 @@ export function createUnchecked(grpcClient: SDK.ConcordiumGRPCClient): ModuleMod
 /**
  * Construct a ModuleModule client for interacting with a smart contract module on chain.
  * This function ensures the smart contract module is deployed on chain.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence 'e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec'.
  * @throws If failing to communicate with the concordium node or if the module reference is not present on chain.
  * @returns {ModuleModule} A module client ensured to be deployed on chain.
  */
@@ -56,7 +56,7 @@ export function checkOnChain(moduleClient: ModuleModule): Promise<void> {
 
 /**
  * Get the module source of the deployed smart contract module.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence 'e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec'.
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or module not found.
  * @returns {SDK.VersionedModuleSource} Module source of the deployed smart contract module.
  */
@@ -73,6 +73,14 @@ export type ElectionParameter = {
     }>,
     guardians: Array<SDK.AccountAddress.Type>,
     eligible_voters: {
+    url: string,
+    hash: SDK.HexString,
+    },
+    election_manifest: {
+    url: string,
+    hash: SDK.HexString,
+    },
+    election_parameters: {
     url: string,
     hash: SDK.HexString,
     },
@@ -111,27 +119,43 @@ export function createElectionParameter(parameter: ElectionParameter): SDK.Param
     url: field15,
     hash: field16,
     };
-    const field17 = parameter.election_description;
-    const field18 = parameter.election_start;
-    const timestamp19 = SDK.Timestamp.toSchemaValue(field18);
-    const field20 = parameter.election_end;
-    const timestamp21 = SDK.Timestamp.toSchemaValue(field20);
+    const field17 = parameter.election_manifest;
+    const field19 = field17.url;
+    const field20 = field17.hash;
+    const named18 = {
+    url: field19,
+    hash: field20,
+    };
+    const field21 = parameter.election_parameters;
+    const field23 = field21.url;
+    const field24 = field21.hash;
+    const named22 = {
+    url: field23,
+    hash: field24,
+    };
+    const field25 = parameter.election_description;
+    const field26 = parameter.election_start;
+    const timestamp27 = SDK.Timestamp.toSchemaValue(field26);
+    const field28 = parameter.election_end;
+    const timestamp29 = SDK.Timestamp.toSchemaValue(field28);
     const named0 = {
     admin_account: accountAddress2,
     candidates: list4,
     guardians: list10,
     eligible_voters: named14,
-    election_description: field17,
-    election_start: timestamp19,
-    election_end: timestamp21,
+    election_manifest: named18,
+    election_parameters: named22,
+    election_description: field25,
+    election_start: timestamp27,
+    election_end: timestamp29,
     };
-    const out = SDK.Parameter.fromBase64SchemaType('FAAHAAAADQAAAGFkbWluX2FjY291bnQLCgAAAGNhbmRpZGF0ZXMQAhQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAJAAAAZ3VhcmRpYW5zEAILDwAAAGVsaWdpYmxlX3ZvdGVycxQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAUAAAAZWxlY3Rpb25fZGVzY3JpcHRpb24WAg4AAABlbGVjdGlvbl9zdGFydA0MAAAAZWxlY3Rpb25fZW5kDQ==', named0);
+    const out = SDK.Parameter.fromBase64SchemaType('FAAJAAAADQAAAGFkbWluX2FjY291bnQLCgAAAGNhbmRpZGF0ZXMQAhQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAAJAAAAZ3VhcmRpYW5zEAILDwAAAGVsaWdpYmxlX3ZvdGVycxQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAARAAAAZWxlY3Rpb25fbWFuaWZlc3QUAAIAAAADAAAAdXJsFgIEAAAAaGFzaB4gAAAAEwAAAGVsZWN0aW9uX3BhcmFtZXRlcnMUAAIAAAADAAAAdXJsFgIEAAAAaGFzaB4gAAAAFAAAAGVsZWN0aW9uX2Rlc2NyaXB0aW9uFgIOAAAAZWxlY3Rpb25fc3RhcnQNDAAAAGVsZWN0aW9uX2VuZA0=', named0);
     return out
 }
 
 /**
  * Send transaction for instantiating a new 'election' smart contract instance.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '6498b5c1fd50ac2d2425567db8d9a17a66646592786a338d01a8e50e25bd764a'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence 'e8fc258ccdd334dcb58a629afe947f4aa9cb18eab45e9d7ae0ade8818746eeec'.
  * @param {SDK.ContractTransactionMetadata} transactionMetadata - Metadata related to constructing a transaction for a smart contract module.
  * @param {ElectionParameter} parameter - Parameter to provide as part of the transaction for the instantiation of a new smart contract contract.
  * @param {SDK.AccountSigner} signer - The signer of the update contract transaction.

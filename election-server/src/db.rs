@@ -1,18 +1,18 @@
 use anyhow::Context;
 use chrono::{DateTime, Utc};
-use concordium_governance_committee_election::RegisterVotesParameter;
 use concordium_rust_sdk::{
     smart_contracts::common::{AccountAddress, ACCOUNT_ADDRESS_SIZE},
     types::{hashes::TransactionHash, AbsoluteBlockHeight, ContractAddress},
 };
 use deadpool_postgres::{GenericClient, Object};
+use eg::ballot::BallotEncrypted;
 use serde::Serialize;
 use tokio_postgres::{
     types::{Json, ToSql},
     NoTls,
 };
 
-use crate::types::BallotSubmission;
+use crate::util::BallotSubmission;
 
 /// Represents possible errors returned from [`Database`] or [`DatabasePool`]
 /// functions
@@ -70,7 +70,7 @@ pub struct StoredBallotSubmission {
     /// The account which submitted the ballot
     pub account:          AccountAddress,
     /// The ballot submitted
-    pub ballot:           RegisterVotesParameter,
+    pub ballot:           BallotEncrypted,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
