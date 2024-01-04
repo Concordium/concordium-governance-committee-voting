@@ -7,8 +7,8 @@ use concordium_rust_sdk::{
     indexer,
     smart_contracts::common::{AccountAddress, Amount},
     types::{
-        queries::BlockInfo, AbsoluteBlockHeight, AccountAddressEq, AccountIndex,
-        AccountTransactionEffects, BlockItemSummaryDetails,
+        hashes::TransactionHash, queries::BlockInfo, AbsoluteBlockHeight, AccountAddressEq,
+        AccountIndex, AccountTransactionEffects, BlockItemSummaryDetails,
     },
     v2::{self as sdk, BlockIdentifier},
 };
@@ -35,19 +35,26 @@ struct Args {
 enum Command {
     /// For each account compute the average amount of CCD held
     /// during the period.
-    #[command(name = "average-ccd")]
-    AccountCCDs(RangeWithOutput),
+    #[command(name = "initial-weights")]
+    InitialWeights(RangeWithOutput),
     /// Look for delegations of the vote in the supplied period
-    #[command(name = "delegations")]
-    GatherDelegations {
+    #[command(name = "final-weights")]
+    FinalWeights {
         #[clap(flatten)]
-        range: RangeWithOutput,
+        range:           RangeWithOutput,
         #[arg(
             long = "memo",
             help = "The memo to look for.",
             default_value = "Delegate vote for governance committee election"
         )]
-        memo:  String,
+        memo:            String,
+        #[arg(long = "initial-weights", help = "The CSV file with initial weights.")]
+        initial_weights: std::path::PathBuf,
+        #[arg(
+            long = "final-weights",
+            help = "Location where to write the final weights."
+        )]
+        final_weights:   std::path::PathBuf,
     },
 }
 
@@ -86,10 +93,13 @@ async fn main() -> anyhow::Result<()> {
     .timeout(std::time::Duration::from_secs(10));
 
     match app.command {
-        Command::AccountCCDs(accds) => handle_gather_average_balance(endpoint, accds).await,
-        Command::GatherDelegations { range, memo } => {
-            handle_gather_delegations(endpoint, range, memo).await
-        }
+        Command::InitialWeights(accds) => handle_gather_average_balance(endpoint, accds).await,
+        Command::FinalWeights {
+            range,
+            memo,
+            initial_weights,
+            final_weights,
+        } => handle_final_weights(endpoint, range, memo, initial_weights, final_weights).await,
     }
 }
 
@@ -134,10 +144,25 @@ async fn range_setup(
     Ok((client, first_block, last_block))
 }
 
-async fn handle_gather_delegations(
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WeightRow {
+    account: AccountAddress,
+    amount:  Amount,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DelegationRow {
+    hash: TransactionHash,
+    from: AccountAddress,
+    to:   AccountAddress,
+}
+
+async fn handle_final_weights(
     endpoint: sdk::Endpoint,
     accds: RangeWithOutput,
     expected_memo: String,
+    initial_weights: std::path::PathBuf,
+    final_weights_path: std::path::PathBuf,
 ) -> anyhow::Result<()> {
     let (_, first_block, last_block) = range_setup(endpoint.clone(), &accds).await?;
 
@@ -179,23 +204,63 @@ async fn handle_gather_delegations(
             }
         }
     }
-    let mut out_handle: Box<dyn std::io::Write> = if let Some(file) = accds.out {
-        Box::new(std::fs::File::create(file)?)
-    } else {
-        Box::new(std::io::stdout().lock())
-    };
-    writeln!(out_handle, "Transaction hash,From,To")?;
-    for (from, (hash, to)) in mapping {
-        writeln!(
-            out_handle,
-            "{}, {}, {}",
-            hash,
-            AccountAddress::from(from),
-            to
-        )?;
+    {
+        let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = accds.out {
+            csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
+        } else {
+            csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
+        };
+        for (from, (hash, to)) in &mapping {
+            out_handle.serialize(DelegationRow {
+                hash: *hash,
+                from: *from.as_ref(),
+                to:   *to,
+            })?;
+        }
+        out_handle.flush()?;
     }
-    out_handle.flush()?;
     bar.finish_and_clear();
+
+    let initial_weights = std::fs::File::open(initial_weights)?;
+    let mut weights = csv::Reader::from_reader(std::io::BufReader::new(initial_weights));
+    // For each initial account
+    let mut final_weights = BTreeMap::new();
+    for row in weights.deserialize() {
+        let row: WeightRow = row?;
+        if let Some((_hash, target)) = mapping.remove(row.account.as_ref()) {
+            let weight = final_weights
+                .entry(AccountAddressEq::from(target))
+                .or_insert((Amount::zero(), Vec::new()));
+            weight.0 += row.amount;
+            weight.1.push(row.account);
+        } else {
+            let weight = final_weights
+                .entry(AccountAddressEq::from(row.account))
+                .or_insert((Amount::zero(), Vec::new()));
+            weight.0 += row.amount;
+        }
+    }
+
+    {
+        let mut out_handle = {
+            let mut builder = csv::WriterBuilder::new();
+            builder.has_headers(false);
+            builder.from_writer(std::fs::File::create(final_weights_path)?)
+        };
+        out_handle.write_record(["account", "amount", "delegators ..."])?;
+        for (addr, (amount, delegators)) in final_weights {
+            out_handle.write_record([
+                AccountAddress::from(addr).to_string(),
+                amount.micro_ccd().to_string(),
+                delegators
+                    .into_iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(";"),
+            ])?;
+        }
+        out_handle.flush()?;
+    }
 
     Ok(())
 }
@@ -288,20 +353,16 @@ async fn handle_gather_average_balance(
     cancel_handle.abort();
     bar.finish_and_clear();
 
-    let mut out_handle: Box<dyn std::io::Write> = if let Some(file) = accds.out {
-        Box::new(std::fs::File::create(file)?)
+    let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = accds.out {
+        csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
     } else {
-        Box::new(std::io::stdout().lock())
+        csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
     };
     anyhow::ensure!(
         account_addresses.len() == account_balances.len(),
         "Expecting addresses match account balances. This is a bug."
     );
-    for (i, (balances, address)) in account_balances
-        .into_iter()
-        .zip(account_addresses)
-        .enumerate()
-    {
+    for (balances, address) in account_balances.into_iter().zip(account_addresses) {
         let Some((&first, rest)) = balances.split_first() else {
                     anyhow::bail!("A bug, there should always be at least one reading.");
                 };
@@ -325,7 +386,10 @@ async fn handle_gather_average_balance(
                 .signed_duration_since(first_block.block_slot_time)
                 .num_milliseconds() as u128);
         let amount = Amount::from_micro_ccd(amount as u64);
-        writeln!(out_handle, "{i}, {address}, {amount}",)?;
+        out_handle.serialize(WeightRow {
+            account: address,
+            amount,
+        })?;
     }
     out_handle.flush()?;
     Ok(())
