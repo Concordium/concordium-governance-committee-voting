@@ -54,13 +54,13 @@ Options:
 
 Example usage (with all defaults applied):
 ```bash
-http --contract-address "<7551,0>"
+http --contract-address "<7635,0>"
 ```
 
 ## Running the indexer binary
 
 ```bash
-cargo run --bin indexer --release -- --contract-address "<7357,0>" # and other configration options.
+cargo run --bin indexer --release -- --contract-address "<7635,0>" # and other configration options.
 ```
 
 ### Configuration
@@ -89,5 +89,5 @@ Options:
 
 Example usage (with all defaults applied):
 ```bash
-indexer --contract-address "<7551,0>"
+indexer --contract-address "<7635,0>"
 ```
