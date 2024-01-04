@@ -13,6 +13,7 @@
     },
     "workspaces": [
         "./voting",
+        "./ccd-bootstrap",
         "./electionguard-bindings",
         "./guardian"
     ],
