@@ -92,6 +92,8 @@ pub struct State<S: HasStateApi = StateApi> {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:    Timestamp,
+    /// The encrypted tally posted by the operator for convenience of guardians.
+    pub encrypted_tally: StateBox<Option<Vec<u8>>, S>,
     /// The election result, which will be registered after `election_end` has
     /// passed.
     pub election_result: StateBox<Option<ElectionResult>, S>,
@@ -150,6 +152,7 @@ impl State {
             registered_data: state_builder.new_box(registered_data),
             election_start,
             election_end,
+            encrypted_tally: state_builder.new_box(None),
             election_result: state_builder.new_box(None),
         };
         Ok(config)
@@ -402,6 +405,33 @@ fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error>
     Ok(())
 }
 
+/// The parameter supplied to the [`post_encrypted_tally`] entrypoint.
+pub type PostEncryptedTallyParameter = Vec<u8>;
+
+/// Receive the election result and update the contract state with the supplied
+/// result from the parameter
+#[receive(
+    contract = "election",
+    name = "postEncryptedTally",
+    parameter = "PostEncryptedTallyParameter",
+    error = "Error",
+    mutable
+)]
+fn post_encrypted_tally(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let now = ctx.metadata().block_time();
+
+    ensure!(
+        ctx.sender().matches_account(host.state.admin_account.get()),
+        Error::Unauthorized
+    );
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
+
+    let parameter: PostEncryptedTallyParameter = ctx.parameter_cursor().get()?;
+
+    *host.state.encrypted_tally.get_mut() = Some(parameter);
+    Ok(())
+}
+
 /// The parameter supplied to the [`post_election_result`] entrypoint.
 pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 
@@ -417,11 +447,8 @@ pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let now = ctx.metadata().block_time();
 
-    let Address::Account(sender) = ctx.sender() else {
-        return Err(Error::Unauthorized);
-    };
     ensure!(
-        &sender == host.state.admin_account.get(),
+        ctx.sender().matches_account(host.state.admin_account.get()),
         Error::Unauthorized
     );
     ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
@@ -480,4 +507,22 @@ fn view_election_result(
         .collect();
 
     Ok(Some(response))
+}
+
+/// View function that returns the encrypted tally.
+#[receive(
+    contract = "election",
+    name = "viewEncryptedTally",
+    return_value = "Option<Vec<u8>>",
+    error = "Error"
+)]
+fn view_encrypted_tally<'a>(
+    _ctx: &ReceiveContext,
+    host: &'a Host<State>,
+) -> ReceiveResult<Option<Vec<u8>>> {
+    if let Some(result) = &host.state.encrypted_tally.get() {
+        Ok(Some(result.clone()))
+    } else {
+        return Ok(None);
+    }
 }
