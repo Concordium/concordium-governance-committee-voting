@@ -2,11 +2,9 @@ on:
   # Trigger the workflow on push or pull request,
   # but only for the main branch
   push:
-    branches:
-      - main
+    branches: [main, release**, feature**]
   pull_request:
-    branches:
-      - main
+    branches: [main, release**, feature**]
     # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -34,6 +32,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          # Needed to support tauri
+          packages: libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          version: 1.0
 
       - name: Run cargo clippy
         run: |

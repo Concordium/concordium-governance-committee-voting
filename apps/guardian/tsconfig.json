@@ -5,8 +5,7 @@
         "paths": {
             "@assets/*": ["./src/assets/*"],
             "@shell/*": ["./src/shell/*"],
-            "@pages/*": ["./src/pages/*"],
-            "@shared/*": ["./src/shared/*"]
+            "@pages/*": ["./src/pages/*"]
         }
     },
     "include": ["src", "types"],

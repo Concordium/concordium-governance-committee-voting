@@ -40,8 +40,10 @@ module.exports = {
         sourceType: 'module',
         tsconfigRootDir: __dirname,
         project: [
-            './voting/tsconfig.json', './voting/tsconfig.node.json',
-            './guardian/tsconfig.json', './guardian/tsconfig.node.json'
+            './voting/tsconfig.json',
+            './voting/tsconfig.node.json',
+            './guardian/tsconfig.json',
+            './guardian/tsconfig.node.json',
         ],
     },
     settings: {

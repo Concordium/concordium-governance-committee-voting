@@ -33,10 +33,10 @@
     "packageManager": "yarn@4.0.1",
     "scripts": {
         "build:all": "yarn workspaces foreach --all -pt run build",
-        "lint:all": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-        "lint-fix:all": "yarn lint:all --fix",
+        "lint:all": "yarn workspaces foreach --all -p run lint",
+        "lint-fix:all": "yarn workspaces foreach --all -p run lint-fix",
         "prettier": "prettier ./.*.* ./*.* -u",
-        "fmt:all": "yarn prettier --write && yarn workspaces foreach --all run fmt",
-        "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all run fmt-check"
+        "fmt:all": "yarn prettier --write && yarn workspaces foreach --all -p run fmt",
+        "fmt-check:all": "yarn prettier --check && yarn workspaces foreach --all -p run fmt-check"
     }
 }
