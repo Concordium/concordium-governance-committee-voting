@@ -9,8 +9,6 @@ on:
       - main
     # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - contracts/**/*
 
 name: check crates
 
@@ -29,6 +27,7 @@ jobs:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
           - apps/electionguard-bindings/Cargo.toml
+          - apps/guardian/src-tauri/Cargo.toml
 
     steps:
       - name: Checkout sources
@@ -50,6 +49,7 @@ jobs:
           - contracts/concordium-governance-committee-election/Cargo.toml
           - election-server/Cargo.toml
           - apps/electionguard-bindings/Cargo.toml
+          - apps/guardian/src-tauri/Cargo.toml
 
     steps:
       - name: Checkout sources
