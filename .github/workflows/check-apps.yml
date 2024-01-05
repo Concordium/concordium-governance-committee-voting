@@ -47,6 +47,7 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn-${{ hashFiles('./apps/yarn.lock') }}-${{ env.DUMMY }}
           restore-keys: |
             ${{ runner.os }}-yarn
@@ -102,6 +103,7 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Generate contract client
@@ -136,6 +138,7 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Restore generated contract client
