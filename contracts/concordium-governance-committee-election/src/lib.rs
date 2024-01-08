@@ -47,8 +47,10 @@ pub enum GuardianStatus {
 }
 
 /// State associated with each guardian.
-#[derive(Serialize, SchemaType, Default, Clone, Debug, PartialEq)]
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct GuardianState {
+    /// Index of the guardian used for key-sharing. Not modifiable.
+    pub index:           u32,
     /// The public key of the guardian.
     pub public_key:      Option<Vec<u8>>,
     /// The encrypted share of the guardian.
@@ -56,6 +58,17 @@ pub struct GuardianState {
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
     pub status:          Option<GuardianStatus>,
+}
+
+impl GuardianState {
+    pub fn new(index: u32) -> Self {
+        Self {
+            index,
+            public_key: None,
+            encrypted_share: None,
+            status: None,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -126,8 +139,11 @@ impl State {
         ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
-        for g in guardians.iter() {
-            if guardians_map.insert(*g, GuardianState::default()).is_some() {
+        for (&guardian_address, index) in guardians.iter().zip(1u32..) {
+            if guardians_map
+                .insert(guardian_address, GuardianState::new(index))
+                .is_some()
+            {
                 return Err(Error::Malformed);
             }
         }

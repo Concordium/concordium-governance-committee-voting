@@ -211,19 +211,20 @@ fn test_receive_guardian_public_key() {
     register_guardian_public_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
         .expect_err("Key registration should fail when setup phase expires");
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             public_key: Some(param),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             public_key: Some(param_other),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
@@ -301,19 +302,20 @@ fn test_receive_guardian_encrypted_share() {
         "Unexpected error type"
     );
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|x| x.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             encrypted_share: Some(param),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             encrypted_share: Some(param_other),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
@@ -399,19 +401,20 @@ fn test_receive_guardian_status() {
         "Unexpected error type"
     );
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             status: Some(GuardianStatus::VerificationFailed(complaint.to_string())),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             status: Some(GuardianStatus::VerificationSuccessful),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
