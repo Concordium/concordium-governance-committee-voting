@@ -19,4 +19,5 @@ export default defineConfig(() => ({
             ignored: ['**/src-tauri/**'],
         },
     },
+    envPrefix: ['CCD_ELECTION_'],
 }));

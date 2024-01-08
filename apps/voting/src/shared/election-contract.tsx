@@ -1,5 +1,5 @@
-import * as ElectionContract from '../__generated__/election-contract/module_election';
-import * as schema from '../__generated__/election-contract/election_schema.json';
+import * as ElectionContract from 'shared/election-contract/client';
+import * as schema from 'shared/election-contract/schema';
 import {
     AccountTransactionType,
     ConcordiumGRPCWebClient,
@@ -8,7 +8,6 @@ import {
     UpdateContractPayload,
     CcdAmount,
     ReceiveName,
-    HexString,
     EntrypointName,
     Energy,
     AccountAddress,
@@ -18,15 +17,7 @@ import { TypedSmartContractParameters, WalletConnection } from '@concordium/wall
 
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 
-export * as ElectionContract from '../__generated__/election-contract/module_election';
-
-/**
- * Representation of a url with associated checksum from the election contract.
- */
-export interface ChecksumUrl {
-    url: string;
-    hash: HexString;
-}
+export * as ElectionContract from 'shared/election-contract/client';
 
 const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);

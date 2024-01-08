@@ -44,6 +44,7 @@ module.exports = {
             './voting/tsconfig.node.json',
             './guardian/tsconfig.json',
             './guardian/tsconfig.node.json',
+            './shared/tsconfig.json',
         ],
     },
     settings: {
@@ -52,10 +53,10 @@ module.exports = {
         },
         'import/resolver': {
             typescript: {
-                project: ['./voting/tsconfig.json', './guardian/tsconfig.json'],
+                project: ['./voting/tsconfig.json', './guardian/tsconfig.json', './shared/tsconfig.json'],
             },
             node: {
-                project: ['./voting/tsconfig.json', './guardian/tsconfig.json'],
+                project: ['./voting/tsconfig.json', './guardian/tsconfig.json', './shared/tsconfig.json'],
             },
         },
     },
