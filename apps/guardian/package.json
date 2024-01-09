@@ -15,11 +15,15 @@
         "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
+        "@concordium/web-sdk": "^7.1.0",
         "@tauri-apps/api": "^1.5.2",
         "ccd-bootstrap": "workspace:^",
+        "jotai": "^2.5.1",
+        "jotai-effect": "^0.2.3",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "react-router-dom": "^6.21.1"
+        "react-router-dom": "^6.21.1",
+        "shared": "workspace:^"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^1.5.8",
@@ -30,7 +34,7 @@
         "eslint": "^8.56.0",
         "prettier": "^3.1.1",
         "typescript": "^5.0.2",
-        "vite": "^5.0.0",
+        "vite": "^5.0.11",
         "vite-tsconfig-paths": "^4.2.3"
     }
 }

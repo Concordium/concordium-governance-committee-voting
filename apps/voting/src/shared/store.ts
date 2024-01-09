@@ -2,7 +2,6 @@ import { atom } from 'jotai';
 import { atomFamily, atomWithReset } from 'jotai/utils';
 import {
     AccountAddress,
-    Base58String,
     ConcordiumGRPCClient,
     Timestamp,
     TransactionHash,
@@ -13,7 +12,8 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
 import { atomEffect } from 'jotai-effect';
 import { ElectionManifest, ElectionParameters, GuardianPublicKey } from 'electionguard-bindings';
-import { ChecksumUrl, ResourceVerificationError, getChecksumResource } from 'shared/util';
+import { ResourceVerificationError, getChecksumResource } from 'shared/util';
+import { ChecksumUrl, EligibleVoters } from 'shared/types';
 
 import { getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
@@ -55,10 +55,6 @@ export interface IndexedCandidateDetails extends CandidateDetails {
     /** The index the candidate is registered at in the election contract */
     index: number;
 }
-
-export type EligibleVoters = {
-    [p in Base58String]: number;
-};
 
 /**
  * Representation of the election configration.

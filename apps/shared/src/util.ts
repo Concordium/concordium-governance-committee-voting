@@ -1,15 +1,5 @@
-import { HexString } from '@concordium/web-sdk/types';
 import { Buffer } from 'buffer/index.js';
-
-/**
- * Representation of a url with associated checksum from the election contract.
- */
-export interface ChecksumUrl {
-    /** The URL of the resource */
-    url: string;
-    /** The sha2 checksum */
-    hash: HexString;
-}
+import { ChecksumUrl } from './types';
 
 /**
  * Used to indicate failure to verify a remotely located resource

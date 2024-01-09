@@ -1,9 +1,8 @@
-import * as ElectionContract from 'shared/election-contract/client';
+import * as ElectionContract from 'shared/election-contract';
 import * as schema from 'shared/election-contract/schema';
 import {
     AccountTransactionType,
     ConcordiumGRPCWebClient,
-    Parameter,
     toBuffer,
     UpdateContractPayload,
     CcdAmount,
@@ -16,8 +15,6 @@ import {
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
-
-export * as ElectionContract from 'shared/election-contract/client';
 
 const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
@@ -65,7 +62,6 @@ export async function registerVotes(
  * Gets the configuration of the election contract.
  * @returns A promise resolving with the corresponding {@linkcode ElectionContract.ReturnValueViewConfig}
  */
-export async function getElectionConfig(): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
-    const result = await ElectionContract.dryRunViewConfig(contract, Parameter.empty());
-    return ElectionContract.parseReturnValueViewConfig(result);
+export function getElectionConfig(): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
+    return ElectionContract.getElectionConfig(contract);
 }

@@ -12,16 +12,12 @@
         "fmt-check": "yarn prettier --check"
     },
     "exports": {
-        "./election-contract/client": "./__generated__/election-contract/module_election.ts",
         "./election-contract/schema": "./__generated__/election-contract/election_schema.json",
         "./*": "./src/*.ts"
     },
     "dependencies": {
         "@concordium/web-sdk": "^7.1.0",
-        "@protobuf-ts/grpcweb-transport": "^2.9.1",
         "buffer": "^6.0.3",
-        "jotai": "^2.5.1",
-        "jotai-effect": "^0.2.3",
         "react": "^18.2.0"
     },
     "devDependencies": {
