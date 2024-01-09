@@ -12,5 +12,13 @@ export async function getElectionConfig(
     contract: ElectionContract.Type,
 ): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
     const result = await ElectionContract.dryRunViewConfig(contract, Parameter.empty());
-    return ElectionContract.parseReturnValueViewConfig(result);
+    const config = ElectionContract.parseReturnValueViewConfig(result);
+
+    if (config !== undefined) {
+        // All number values are parsed as bigints. These are byte arrays, and are expected to be passed as numbers to
+        // election guard.
+        config.guardian_keys = config.guardian_keys.map((key) => key.map((byte) => Number(byte)));
+    }
+
+    return config;
 }

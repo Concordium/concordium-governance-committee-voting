@@ -1,9 +1,8 @@
-import { RouterProvider } from 'react-router-dom';
 import { createStore } from 'jotai';
 import { Provider, useAtomValue } from 'jotai/react';
 
 import { electionConfigAtom } from '~/shared/store';
-import { router } from './router';
+import App from './App';
 
 const store = createStore();
 
@@ -23,7 +22,7 @@ export default function Root() {
     return (
         <Provider store={store}>
             <EnsureGlobalState />
-            <RouterProvider router={router} />
+            <App />
         </Provider>
     );
 }

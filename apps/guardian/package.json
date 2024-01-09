@@ -18,9 +18,11 @@
         "@concordium/web-sdk": "^7.1.0",
         "@tauri-apps/api": "^1.5.2",
         "ccd-bootstrap": "workspace:^",
+        "clsx": "^2.1.0",
         "jotai": "^2.5.1",
         "jotai-effect": "^0.2.3",
         "react": "^18.2.0",
+        "react-bootstrap": "^2.9.2",
         "react-dom": "^18.2.0",
         "react-router-dom": "^6.21.1",
         "shared": "workspace:^"

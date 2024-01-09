@@ -47,16 +47,13 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 
         const [manifest, parameters] = await Promise.all([electionManifestPromise, electionParametersPromise]);
 
-        // All number values are parsed as bigints. These are byte arrays, and are expected to be passed as numbers to
-        // election guard.
-        const guardianKeys = config.guardian_keys.map((key) => key.map((byte) => Number(byte)));
         const mappedConfig: ElectionConfig = {
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
             description: config.election_description,
             manifest,
             parameters,
-            guardianKeys,
+            guardianKeys: config.guardian_keys,
         };
 
         set(electionConfigBaseAtom, mappedConfig);
