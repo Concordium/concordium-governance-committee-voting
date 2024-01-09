@@ -171,6 +171,9 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             ...candidatePromises,
         ]);
 
+        // All number values are parsed as bigints. These are byte arrays, and are expected to be passed as numbers to
+        // election guard.
+        const guardianKeys = config.guardian_keys.map((key) => key.map((byte) => Number(byte)));
         const mappedConfig: ElectionConfig = {
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
@@ -179,8 +182,9 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             manifest,
             parameters,
             voters,
-            guardianKeys: config.guardian_keys,
+            guardianKeys,
         };
+
         set(electionConfigBaseAtom, mappedConfig);
     });
 });
