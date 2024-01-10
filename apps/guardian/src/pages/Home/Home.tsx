@@ -24,7 +24,6 @@ function App() {
                 <Form.Control onChange={(e) => setName(e.currentTarget.value)} placeholder="Enter a name..." />
                 <Button type="submit">Greet</Button>
             </Row>
-
             <p>{greetMsg}</p>
         </Container>
     );
