@@ -1,7 +1,8 @@
 import { WalletExportFormat, parseWallet } from '@concordium/web-sdk';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Container } from 'react-bootstrap';
 import { Buffer } from 'buffer/';
+import { invoke } from '@tauri-apps/api/tauri';
 
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
@@ -26,6 +27,12 @@ function App() {
         () => setError('File is not a valid wallet export'),
         [fileInput],
     );
+
+    useEffect(() => {
+        if (walletExport !== undefined) {
+            void invoke('import_wallet_account', { walletAccount: walletExport }).then(() => console.log('success'));
+        }
+    }, [walletExport]);
 
     console.log(walletExport);
 
