@@ -1,0 +1,17 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@assets/*": ["./src/assets/*"],
+            "@shell/*": ["./src/shell/*"],
+            "@pages/*": ["./src/pages/*"]
+        }
+    },
+    "include": ["src", "types"],
+    "references": [
+        {
+            "path": "./tsconfig.node.json"
+        }
+    ]
+}

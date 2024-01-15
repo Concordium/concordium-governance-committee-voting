@@ -4,11 +4,6 @@ body,
     height: 100%;
 }
 
-body {
-    background-image: $bg-gradient;
-    background-repeat: no-repeat;
-}
-
 #root {
     display: flex;
     flex-direction: column;
