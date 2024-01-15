@@ -1,5 +1,3 @@
-import { AccountAddress } from '@concordium/web-sdk';
-
 /**
  * Type predicate for checking if a value is defined.
  *
@@ -46,22 +44,6 @@ export function expectValue<T>(value: T | undefined, error: string): T {
     }
 
     return value;
-}
-
-/**
- * Helper for displaying account addresses in a concise manner (i.e. first/last `numChars/2` characters)
- *
- * @param account - The {@linkcode AccountAddress.Type} to display
- * @param [numChars] - The number of character of the account address to display. Defaults to `8`.
- *
- * @returns The account address format.
- */
-export function accountShowShort(account: AccountAddress.Type, numChars = 8): string {
-    const half = numChars / 2;
-    const start = Math.ceil(half);
-    const end = Math.floor(half);
-    const accountString = AccountAddress.toBase58(account);
-    return `${accountString.substring(0, start)}...${accountString.substring(accountString.length - end)}`;
 }
 
 /**

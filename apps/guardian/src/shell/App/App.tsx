@@ -1,32 +1,42 @@
 import { useAtomValue } from 'jotai';
 import { RouterProvider } from 'react-router-dom';
+import { clsx } from 'clsx';
 
-import { electionConfigAtom } from '~/shared/store';
+import { accountAtom, electionConfigAtom } from '~/shared/store';
 import { router } from '../router';
-import clsx from 'clsx';
+import { PropsWithChildren, useMemo } from 'react';
+import { accountShowShort } from 'shared/util';
+
+type ConfigurationItemProps = PropsWithChildren<{
+    className?: string;
+    connected: boolean;
+}>;
+
+function ConfigurationItem({ className, connected, children }: ConfigurationItemProps) {
+    return (
+        <div className={clsx(className)}>
+            <span className={clsx('app-configuration__status', connected && 'app-configuration__status--connected')} />
+            {children}
+        </div>
+    );
+}
 
 function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
+    const account = useAtomValue(accountAtom);
+    const showAccount = useMemo(() => (account === undefined ? undefined : accountShowShort(account)), [account]);
+
     return (
         <div className="app-configuration">
-            <div className="text-capitalize">
-                <span
-                    className={clsx(
-                        'app-configuration__status',
-                        electionConfig && 'app-configuration__status--connected',
-                    )}
-                />
+            <ConfigurationItem className='text-capitalize' connected={electionConfig !== undefined}>
                 {import.meta.env.CCD_ELECTION_NETWORK}
-            </div>
-            <div className="d-flex align-items-center">
-                <span
-                    className={clsx(
-                        'app-configuration__status',
-                        electionConfig && 'app-configuration__status--connected',
-                    )}
-                />
+            </ConfigurationItem>
+            <ConfigurationItem className='d-flex align-items-center' connected={electionConfig !== undefined}>
                 {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS}
-            </div>
+            </ConfigurationItem>
+            <ConfigurationItem connected={account !== undefined}>
+                {showAccount ?? 'No account found'}
+            </ConfigurationItem>
         </div>
     );
 }

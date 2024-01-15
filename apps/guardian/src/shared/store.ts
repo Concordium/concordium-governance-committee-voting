@@ -1,6 +1,6 @@
 import { atom } from 'jotai';
 import { atomEffect } from 'jotai-effect';
-import { Timestamp } from '@concordium/web-sdk/types';
+import { AccountAddress, Timestamp } from '@concordium/web-sdk/types';
 import { ElectionManifest, ElectionParameters, GuardianPublicKey } from 'shared/types';
 import { getChecksumResource } from 'shared/util';
 
@@ -68,3 +68,8 @@ export const electionConfigAtom = atom((get) => {
     get(ensureElectionConfigAtom);
     return get(electionConfigBaseAtom);
 });
+
+/**
+ * Holds the account the application is currently using.
+ */
+export const accountAtom = atom<AccountAddress.Type | undefined>(undefined);

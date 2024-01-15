@@ -1,6 +1,7 @@
 import { Buffer } from 'buffer/index.js';
 import { ChecksumUrl } from './types';
 import { useEffect, useState } from 'react';
+import { AccountAddress } from '@concordium/web-sdk/types';
 
 /**
  * Used to indicate failure to verify a remotely located resource
@@ -51,3 +52,19 @@ export const useAsyncMemo = <ReturnType>(
     }, deps);
     return result;
 };
+
+/**
+ * Helper for displaying account addresses in a concise manner (i.e. first/last `numChars/2` characters)
+ *
+ * @param account - The {@linkcode AccountAddress.Type} to display
+ * @param [numChars] - The number of character of the account address to display. Defaults to `8`.
+ *
+ * @returns The account address format.
+ */
+export function accountShowShort(account: AccountAddress.Type, numChars = 8): string {
+    const half = numChars / 2;
+    const start = Math.ceil(half);
+    const end = Math.floor(half);
+    const accountString = AccountAddress.toBase58(account);
+    return `${accountString.substring(0, start)}...${accountString.substring(accountString.length - end)}`;
+}

@@ -16,7 +16,8 @@ import {
     loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
 } from '~/shared/store';
-import { accountShowShort, commonDateTimeFormat } from '~/shared/util';
+import { commonDateTimeFormat } from '~/shared/util';
+import { accountShowShort } from 'shared/util';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.

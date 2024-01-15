@@ -1,4 +1,4 @@
-import { WalletExportFormat, parseWallet } from '@concordium/web-sdk';
+import { AccountAddress, WalletExportFormat, parseWallet } from '@concordium/web-sdk';
 import { useEffect, useState } from 'react';
 import { Container } from 'react-bootstrap';
 import { Buffer } from 'buffer/';
@@ -7,17 +7,23 @@ import { invoke } from '@tauri-apps/api/tauri';
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
+import { useSetAtom } from 'jotai';
+import { accountAtom } from '~/shared/store';
 
-// Attempts to parse/validate the given (encrypted) data.
+/**
+ * Attempts to parse/validate the data as {@linkcode WalletExportFormat}.
+ */
 async function processFile(file: File): Promise<WalletExportFormat> {
     const rawData = Buffer.from(await file.arrayBuffer());
     return parseWallet(rawData.toString('utf-8'));
 }
 
-function App() {
+function LoadWalletAccount() {
     const [fileInput, setFileInput] = useState<FileInputValue>(null);
     const [error, setError] = useState<string>();
-    const walletExport = useAsyncMemo(
+    const setAccount = useSetAtom(accountAtom);
+
+    const walletAccount = useAsyncMemo(
         async () => {
             setError(undefined);
             if (fileInput !== null) {
@@ -29,12 +35,14 @@ function App() {
     );
 
     useEffect(() => {
-        if (walletExport !== undefined) {
-            void invoke('import_wallet_account', { walletAccount: walletExport }).then(() => console.log('success'));
+        if (walletAccount !== undefined) {
+            void invoke('import_wallet_account', { walletAccount }).then(() =>
+                setAccount(AccountAddress.fromBase58(walletAccount.value.address)),
+            );
         }
-    }, [walletExport]);
+    }, [walletAccount, setAccount]);
 
-    console.log(walletExport);
+    console.log(walletAccount);
 
     return (
         <Container fluid>
@@ -49,4 +57,4 @@ function App() {
     );
 }
 
-export default App;
+export default LoadWalletAccount;
