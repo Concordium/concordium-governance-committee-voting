@@ -1,30 +1,43 @@
+import { WalletExportFormat, parseWallet } from '@concordium/web-sdk';
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
-import { Button, Container, Form, Row } from 'react-bootstrap';
+import { Container } from 'react-bootstrap';
+import { Buffer } from 'buffer/';
+
+import FileInput from '~/shared/FileInput';
+import { FileInputValue } from '~/shared/FileInput/FileInput';
+import { useAsyncMemo } from 'shared/util';
+
+// Attempts to parse/validate the given (encrypted) data.
+async function processFile(file: File): Promise<WalletExportFormat> {
+    const rawData = Buffer.from(await file.arrayBuffer());
+    return parseWallet(rawData.toString('utf-8'));
+}
 
 function App() {
-    const [greetMsg, setGreetMsg] = useState('');
-    const [name, setName] = useState('');
+    const [fileInput, setFileInput] = useState<FileInputValue>(null);
+    const [error, setError] = useState<string>();
+    const walletExport = useAsyncMemo(
+        async () => {
+            setError(undefined);
+            if (fileInput !== null) {
+                return processFile(fileInput[0]);
+            }
+        },
+        () => setError('File is not a valid wallet export'),
+        [fileInput],
+    );
 
-    async function greet() {
-        // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-        setGreetMsg(await invoke<string>('greet', { name }));
-    }
+    console.log(walletExport);
 
     return (
         <Container fluid>
-            <h1>Welcome to Tauri!</h1>
-            <Row
-                as={Form}
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    void greet();
-                }}
-            >
-                <Form.Control onChange={(e) => setName(e.currentTarget.value)} placeholder="Enter a name..." />
-                <Button type="submit">Greet</Button>
-            </Row>
-            <p>{greetMsg}</p>
+            <FileInput
+                placeholder="Drop Concordium Wallet export here"
+                buttonTitle="or click to browse"
+                onChange={setFileInput}
+                error={error}
+                value={fileInput}
+            />
         </Container>
     );
 }

@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer/index.js';
 import { ChecksumUrl } from './types';
+import { useEffect, useState } from 'react';
 
 /**
  * Used to indicate failure to verify a remotely located resource
@@ -36,3 +37,17 @@ export async function getChecksumResource<T>(
 
     return data;
 }
+
+export const useAsyncMemo = <ReturnType>(
+    getResult: () => Promise<ReturnType>,
+    handleError: (e: Error) => void = () => {},
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deps?: any[]
+): ReturnType | undefined => {
+    const [result, setResult] = useState<ReturnType>();
+    useEffect(() => {
+        getResult().then(setResult).catch(handleError);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, deps);
+    return result;
+};
