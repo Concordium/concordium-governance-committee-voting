@@ -1681,10 +1681,12 @@ name = "guardian"
 version = "0.0.0"
 dependencies = [
  "concordium-rust-sdk",
+ "rand 0.7.3",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "thiserror",
 ]
 
 [[package]]
