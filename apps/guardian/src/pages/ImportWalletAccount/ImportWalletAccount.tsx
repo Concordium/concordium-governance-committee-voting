@@ -1,6 +1,6 @@
-import { AccountAddress, WalletExportFormat, parseWallet } from '@concordium/web-sdk';
+import { WalletExportFormat, parseWallet } from '@concordium/web-sdk';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Container, Form, Modal } from 'react-bootstrap';
+import { Button, Form, Modal } from 'react-bootstrap';
 import { Buffer } from 'buffer/';
 import { useSetAtom } from 'jotai';
 import { useForm, Validate } from 'react-hook-form';
@@ -8,7 +8,7 @@ import { useForm, Validate } from 'react-hook-form';
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
-import { accountAtom } from '~/shared/store';
+import { selectedAccountAtom } from '~/shared/store';
 import { importWalletAccount } from '~/shared/ffi';
 
 type PasswordModalProps = {
@@ -56,7 +56,7 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
     }, []);
 
     return (
-        <Modal show={show} size="sm" centered onHide={onHide}>
+        <Modal show={show} size="sm" centered onHide={onHide} animation>
             <Modal.Header closeButton>Please select a password</Modal.Header>
             <Modal.Body>
                 <Form noValidate onSubmit={handleSubmit(submit)}>
@@ -98,12 +98,12 @@ async function processFile(file: File): Promise<WalletExportFormat> {
 }
 
 /**
-    * A component enabling users to import a wallet export into the application.
-    */
-function LoadWalletAccount() {
+ * A component enabling users to import a wallet export into the application.
+ */
+export default function ImportWalletAccount() {
     const [fileInput, setFileInput] = useState<FileInputValue>(null);
     const [error, setError] = useState<string>();
-    const setAccount = useSetAtom(accountAtom);
+    const setAccount = useSetAtom(selectedAccountAtom);
     const [password, setPassword] = useState<string>();
     const [showModal, setShowModal] = useState(false);
 
@@ -127,7 +127,7 @@ function LoadWalletAccount() {
     useEffect(() => {
         if (walletExport !== undefined && password !== undefined) {
             void importWalletAccount(walletExport, password).then((imported) => {
-                setAccount(AccountAddress.fromBase58(imported.address));
+                setAccount(imported);
                 setPassword(undefined);
             });
         }
@@ -136,17 +136,16 @@ function LoadWalletAccount() {
     console.log(walletExport);
 
     return (
-        <Container fluid>
+        <>
             <FileInput
                 placeholder="Drop Concordium Wallet export here"
                 buttonTitle="or click to browse"
                 onChange={setFileInput}
                 error={error}
                 value={fileInput}
+                className="col-16 import"
             />
             <PasswordModal show={showModal} onSubmit={setPassword} onHide={() => setShowModal(false)} />
-        </Container>
+        </>
     );
 }
-
-export default LoadWalletAccount;

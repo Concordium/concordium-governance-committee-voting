@@ -17,10 +17,9 @@
                 "open": true
             },
             "fs": {
-                "scope": [
-                    "$APPDATA/*"
-                ],
+                "scope": ["$APPDATA/*"],
                 "readFile": true,
+                "readDir": true,
                 "writeFile": true,
                 "exists": true
             }

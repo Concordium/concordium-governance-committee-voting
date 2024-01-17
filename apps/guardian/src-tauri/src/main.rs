@@ -1,10 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{convert::Infallible, fs::File, str::FromStr, sync::Mutex};
+use std::{convert::Infallible, str::FromStr, sync::Mutex};
 
 use concordium_rust_sdk::{
-    common::encryption::{encrypt, Password},
+    common::encryption::{decrypt, encrypt, EncryptedData, Password},
     smart_contracts::common::AccountAddress,
     types::WalletAccount,
 };
@@ -17,10 +17,14 @@ const WALLET_ACCOUNT_PATH: &str = "wallet-account.json";
 #[derive(serde::Deserialize)]
 struct GuardianAccount(WalletAccount);
 
+impl From<WalletAccount> for GuardianAccount {
+    fn from(value: WalletAccount) -> Self { GuardianAccount(value) }
+}
+
 /// Holds the currently selected account and corresponding password
 struct ActiveAccount {
     /// The selected account
-    account: AccountAddress,
+    account:  AccountAddress,
     /// The password used for encryption with the selected account
     password: Password,
 }
@@ -31,11 +35,10 @@ struct ActiveAccountState(Mutex<Option<ActiveAccount>>);
 impl serde::Serialize for GuardianAccount {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         let mut state = serializer.serialize_struct("GuardianAccount", 2)?;
         state.serialize_field("address", &self.0.address)?;
-        state.serialize_field("keys", &self.0.keys)?;
+        state.serialize_field("accountKeys", &self.0.keys)?;
         state.end()
     }
 }
@@ -48,7 +51,7 @@ enum ImportWalletError {
     InvalidPassword(#[from] Infallible),
     /// An error happened while trying to write to disk
     #[error("Could not write file to disk")]
-    WriteFileError,
+    WriteFileError(#[from] std::io::Error),
     /// Account has already been imported
     #[error("Account already exists")]
     Duplicate,
@@ -57,8 +60,7 @@ enum ImportWalletError {
 impl serde::Serialize for ImportWalletError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
@@ -69,10 +71,12 @@ fn use_account(account: AccountAddress, password: Password, state: State<ActiveA
     *active_account = Some(ActiveAccount { account, password });
 }
 
-/// Handle a wallet import. Creates a directory for storing data associated with the guardian
-/// account. Fails if the account has already been imported, or if the password is infallible.
+/// Handle a wallet import. Creates a directory for storing data associated with
+/// the guardian account. Fails if the account has already been imported, or if
+/// the password is infallible.
 ///
-/// This will create the data directory for the app if it does not already exist.
+/// This will create the data directory for the app if it does not already
+/// exist.
 #[tauri::command]
 fn import_wallet_account(
     wallet_account: GuardianAccount,
@@ -96,16 +100,97 @@ fn import_wallet_account(
     std::fs::create_dir_all(&guardian_dir).map_err(|_| ImportWalletError::Duplicate)?;
 
     let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_PATH);
-    std::fs::write(wallet_account_path, &encrypted_data).map_err(|_| ImportWalletError::WriteFileError)?;
+    std::fs::write(wallet_account_path, &encrypted_data)?;
 
     use_account(wallet_account.0.address, password, state);
     Ok(wallet_account)
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("Could not read app data")]
+struct GetAccountsError(#[from] std::io::Error);
+
+impl serde::Serialize for GetAccountsError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsError> {
+    let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
+    let entries = std::fs::read_dir(app_data_dir)?;
+
+    let accounts: Vec<_> = entries
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            if path.is_file() {
+                return None;
+            }
+
+            let folder_str = path.file_name()?.to_str()?;
+            AccountAddress::from_str(folder_str).ok()
+        })
+        .collect();
+
+    Ok(accounts)
+}
+
+/// Describes possible errors when importing an account.
+#[derive(thiserror::Error, Debug)]
+enum LoadWalletError {
+    /// The given password is incorrect.
+    #[error("Incorrect password")]
+    IncorrectPassword,
+    /// Error when trying to read wallet account file from disk.
+    #[error("Guardian account file corrupted")]
+    Corrupted,
+}
+
+impl serde::Serialize for LoadWalletError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+fn load_account(
+    account: AccountAddress,
+    password: &str,
+    handle: AppHandle,
+) -> Result<GuardianAccount, LoadWalletError> {
+    let account_path = handle
+        .path_resolver()
+        .app_data_dir()
+        .unwrap()
+        .join(format!("{}/{WALLET_ACCOUNT_PATH}", account.to_string()));
+    let password = Password::from_str(password).map_err(|_| LoadWalletError::IncorrectPassword)?;
+
+    let encrypted_bytes = std::fs::read(&account_path).map_err(|_| LoadWalletError::Corrupted)?;
+    let encrypted: EncryptedData =
+        serde_json::from_slice(&encrypted_bytes).map_err(|_| LoadWalletError::Corrupted)?;
+
+    let decrypted_bytes =
+        decrypt(&password, &encrypted).map_err(|_| LoadWalletError::IncorrectPassword)?;
+    let json_str = std::str::from_utf8(&decrypted_bytes).map_err(|_| LoadWalletError::Corrupted)?;
+    let wallet_account =
+        WalletAccount::from_json_str(json_str).map_err(|_| LoadWalletError::Corrupted)?;
+    Ok(wallet_account.into())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(ActiveAccountState::default())
-        .invoke_handler(tauri::generate_handler![import_wallet_account])
+        .invoke_handler(tauri::generate_handler![
+            import_wallet_account,
+            get_accounts,
+            load_account
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

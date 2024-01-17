@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
-import Home from '~/pages/Home';
+import SelectAccount from '~/pages/SelectAccount/SelectAccount';
+import ImportWalletAccount from '~/pages/ImportWalletAccount';
 
 type RoutePath = {
     path: string;
@@ -13,6 +14,9 @@ type RouteChildren = {
 const relativeRoutes = {
     root: {
         path: '/',
+    },
+    importAccount: {
+        path: '/import-account',
     },
 };
 
@@ -40,6 +44,7 @@ export const routes = buildAbsoluteRoutes(relativeRoutes);
 export const router = createBrowserRouter([
     {
         path: relativeRoutes.root.path,
-        element: <Home />,
+        element: <SelectAccount />,
     },
+    { path: relativeRoutes.importAccount.path, element: <ImportWalletAccount /> },
 ]);

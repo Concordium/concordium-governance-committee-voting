@@ -2,10 +2,11 @@ import { useAtomValue } from 'jotai';
 import { RouterProvider } from 'react-router-dom';
 import { clsx } from 'clsx';
 
-import { accountAtom, electionConfigAtom } from '~/shared/store';
+import { selectedAccountAtom, electionConfigAtom } from '~/shared/store';
 import { router } from '../router';
 import { PropsWithChildren, useMemo } from 'react';
 import { accountShowShort } from 'shared/util';
+import { AccountAddress } from '@concordium/web-sdk';
 
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
@@ -23,20 +24,21 @@ function ConfigurationItem({ className, connected, children }: ConfigurationItem
 
 function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
-    const account = useAtomValue(accountAtom);
-    const showAccount = useMemo(() => (account === undefined ? undefined : accountShowShort(account)), [account]);
+    const account = useAtomValue(selectedAccountAtom);
+    const showAccount = useMemo(
+        () => (account === undefined ? undefined : accountShowShort(AccountAddress.fromBase58(account.address))),
+        [account],
+    );
 
     return (
         <div className="app-configuration">
-            <ConfigurationItem className='text-capitalize' connected={electionConfig !== undefined}>
+            <ConfigurationItem className="text-capitalize" connected={electionConfig !== undefined}>
                 {import.meta.env.CCD_ELECTION_NETWORK}
             </ConfigurationItem>
-            <ConfigurationItem className='d-flex align-items-center' connected={electionConfig !== undefined}>
+            <ConfigurationItem className="d-flex align-items-center" connected={electionConfig !== undefined}>
                 {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS}
             </ConfigurationItem>
-            <ConfigurationItem connected={account !== undefined}>
-                {showAccount ?? 'No account found'}
-            </ConfigurationItem>
+            <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>
         </div>
     );
 }
