@@ -33,6 +33,7 @@ module.exports = {
             },
         ],
         '@typescript-eslint/consistent-type-definitions': 0,
+        'jsx-a11y/no-autofocus': 0,
     },
     parserOptions: {
         ecmaVersion: 'latest',

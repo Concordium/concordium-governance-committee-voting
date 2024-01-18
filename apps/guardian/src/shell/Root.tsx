@@ -1,7 +1,7 @@
 import { createStore } from 'jotai';
 import { Provider, useAtomValue } from 'jotai/react';
 
-import { accountsAtom, electionConfigAtom } from '~/shared/store';
+import { accountsAtom, electionConfigAtom, guardiansStateAtom } from '~/shared/store';
 import App from './App';
 
 const store = createStore();
@@ -12,6 +12,8 @@ const store = createStore();
 function EnsureGlobalState() {
     useAtomValue(electionConfigAtom);
     useAtomValue(accountsAtom);
+    useAtomValue(guardiansStateAtom);
+
     return null;
 }
 

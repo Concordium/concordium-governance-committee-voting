@@ -29,6 +29,7 @@
         "shared": "workspace:^"
     },
     "devDependencies": {
+        "@simbathesailor/use-what-changed": "^2.0.0",
         "@tauri-apps/cli": "^1.5.8",
         "@types/eslint": "^8",
         "@types/react": "^18.2.15",

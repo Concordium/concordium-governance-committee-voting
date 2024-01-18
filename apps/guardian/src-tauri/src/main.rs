@@ -50,10 +50,10 @@ enum ImportWalletError {
     #[error(transparent)]
     InvalidPassword(#[from] Infallible),
     /// An error happened while trying to write to disk
-    #[error("Could not write file to disk")]
-    WriteFileError(#[from] std::io::Error),
+    #[error("Could save account")]
+    Write(#[from] std::io::Error),
     /// Account has already been imported
-    #[error("Account already exists")]
+    #[error("Account already found in application")]
     Duplicate,
 }
 
@@ -77,7 +77,7 @@ fn use_account(account: AccountAddress, password: Password, state: State<ActiveA
 ///
 /// This will create the data directory for the app if it does not already
 /// exist.
-#[tauri::command]
+#[tauri::command(async)]
 fn import_wallet_account(
     wallet_account: GuardianAccount,
     password: &str,
@@ -97,7 +97,11 @@ fn import_wallet_account(
         .app_data_dir()
         .unwrap() // Path is available as declared in `tauri.conf.json`
         .join(format!("{}", account));
-    std::fs::create_dir_all(&guardian_dir).map_err(|_| ImportWalletError::Duplicate)?;
+
+    if guardian_dir.exists() {
+        return Err(ImportWalletError::Duplicate);
+    }
+    std::fs::create_dir_all(&guardian_dir)?;
 
     let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_PATH);
     std::fs::write(wallet_account_path, &encrypted_data)?;
@@ -118,7 +122,7 @@ impl serde::Serialize for GetAccountsError {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsError> {
     let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
     let entries = std::fs::read_dir(app_data_dir)?;
@@ -158,7 +162,7 @@ impl serde::Serialize for LoadWalletError {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn load_account(
     account: AccountAddress,
     password: &str,

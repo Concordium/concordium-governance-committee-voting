@@ -1,11 +1,12 @@
 import { AccountAddress, Base58String } from '@concordium/web-sdk';
 import { useAtom, useAtomValue } from 'jotai';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Form, Modal } from 'react-bootstrap';
+import { Form, Modal } from 'react-bootstrap';
 import { FormProvider, SubmitHandler, useForm, useFormContext } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { accountShowShort } from 'shared/util';
+import Button from '~/shared/Button';
 import { WalletAccount, loadAccount } from '~/shared/ffi';
 import { selectedAccountAtom, accountsAtom } from '~/shared/store';
 import { routes } from '~/shell/router';
@@ -22,36 +23,64 @@ type PasswordPromptForm = {
 
 function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
     const { getValues } = useFormContext<SelectAccountForm>();
-    const { handleSubmit, register } = useForm<PasswordPromptForm>({ mode: 'onTouched' });
-    const [error, setError] = useState(false);
+    const { handleSubmit, register, watch, formState, trigger, reset } = useForm<PasswordPromptForm>();
+    const [loadAccountError, setLoadAccountError] = useState<string>();
+    const [loading, setLoading] = useState(false);
+
+    const passwordValue = watch('password');
+    useEffect(() => {
+        setLoadAccountError(undefined);
+    }, [passwordValue]);
+
+    const close = useCallback(() => {
+        reset();
+        onHide();
+    }, [reset, onHide]);
 
     const submit: SubmitHandler<PasswordPromptForm> = useCallback(
         async ({ password }) => {
-            setError(false);
-            const account = await loadAccount(AccountAddress.fromBase58(getValues().account), password);
+            setLoading(true);
+            try {
+                const account = await loadAccount(AccountAddress.fromBase58(getValues().account), password);
 
-            onAccountLoad(account);
-            onHide();
+                onAccountLoad(account);
+                close();
+            } catch (e) {
+                setLoadAccountError((e as Error).message);
+                void trigger('password', { shouldFocus: true });
+            } finally {
+                setLoading(false);
+            }
         },
-        [setError, onHide, onAccountLoad, getValues],
+        [setLoadAccountError, close, onAccountLoad, getValues, trigger, setLoading],
     );
 
     return (
-        <Modal show={show} centered animation onHide={onHide}>
+        <Modal show={show} centered animation onHide={close} size="sm">
             <Modal.Header closeButton></Modal.Header>
             <Modal.Body>
-                <form onSubmit={handleSubmit(submit)}>
-                    <Form.Group controlId="password" className="mb-2">
+                <form
+                    onSubmit={handleSubmit((values) => {
+                        void submit(values);
+                    })}
+                >
+                    <Form.Group controlId="password" className="mb-3">
                         <Form.Label>Password</Form.Label>
                         <Form.Control
                             type="password"
                             placeholder="Select password"
-                            isInvalid={error}
-                            {...register('password', { required: 'Password required' })}
+                            isInvalid={formState.errors.password !== undefined}
+                            {...register('password', {
+                                required: 'Password required',
+                                validate: () => loadAccountError === undefined || loadAccountError,
+                            })}
+                            autoFocus
                         />
-                        <Form.Control.Feedback type="invalid">Incorrect password</Form.Control.Feedback>
+                        <Form.Control.Feedback type="invalid">
+                            {formState.errors.password?.message}
+                        </Form.Control.Feedback>
                     </Form.Group>
-                    <Button variant="secondary" type="submit">
+                    <Button variant="secondary" type="submit" loading={loading}>
                         Load account
                     </Button>
                 </form>
@@ -68,15 +97,14 @@ function AccountOption({ account }: AccountOptionProps) {
     const showAccount = useMemo(() => accountShowShort(account), [account]);
     const { register } = useFormContext();
     return (
-        <div className="account-option mb-2">
-            <Form.Check
-                type="radio"
-                label={showAccount}
-                id={`option-${account.address}`}
-                value={account.address}
-                {...register('account', { required: true })}
-            />
-        </div>
+        <Form.Check
+            className="account-option mb-2"
+            type="radio"
+            label={showAccount}
+            id={`option-${account.address}`}
+            value={account.address}
+            {...register('account', { required: true })}
+        />
     );
 }
 
@@ -93,7 +121,6 @@ export default function SelectAccount() {
     const [selectedAccount, setSelectedAccount] = useAtom(selectedAccountAtom);
 
     const submit = () => {
-        // Open password prompt
         setRequestPassword(true);
     };
 
@@ -110,6 +137,12 @@ export default function SelectAccount() {
             setValue('account', initialAccount);
         }
     }, [hasAccounts, accounts, setValue, selectedAccount]);
+
+    useEffect(() => {
+        if (selectedAccount !== undefined) {
+            nav(routes.actions.path);
+        }
+    }, [selectedAccount, nav]);
 
     if (accounts === undefined) {
         return null;

@@ -1,15 +1,18 @@
-import { WalletExportFormat, parseWallet } from '@concordium/web-sdk';
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Modal } from 'react-bootstrap';
+import { AccountAddress, WalletExportFormat, parseWallet } from '@concordium/web-sdk';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Form, Modal } from 'react-bootstrap';
 import { Buffer } from 'buffer/';
-import { useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { useForm, Validate } from 'react-hook-form';
 
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
-import { selectedAccountAtom } from '~/shared/store';
+import { guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
 import { importWalletAccount } from '~/shared/ffi';
+import { useNavigate } from 'react-router-dom';
+import { routes } from '~/shell/router';
+import Button from '~/shared/Button';
 
 type PasswordModalProps = {
     /** Whether to show the modal */
@@ -35,7 +38,13 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
         formState: { errors },
         register,
         handleSubmit,
+        reset,
     } = useForm<PasswordForm>({ mode: 'onTouched' });
+
+    const close = useCallback(() => {
+        reset();
+        onHide();
+    }, [reset, onHide]);
 
     /**
      * Submit handler for the form
@@ -43,9 +52,9 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
     const submit = useCallback(
         ({ password }: PasswordForm) => {
             onSubmit(password);
-            onHide();
+            close();
         },
-        [onSubmit, onHide],
+        [onSubmit, close],
     );
 
     /**
@@ -56,7 +65,7 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
     }, []);
 
     return (
-        <Modal show={show} size="sm" centered onHide={onHide} animation>
+        <Modal show={show} size="sm" centered onHide={close} animation>
             <Modal.Header closeButton>Please select a password</Modal.Header>
             <Modal.Body>
                 <Form noValidate onSubmit={handleSubmit(submit)}>
@@ -67,6 +76,7 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
                             placeholder="Select password"
                             {...register('password', { required: 'Field required' })}
                             isInvalid={errors.password !== undefined}
+                            autoFocus
                         />
                         <Form.Control.Feedback type="invalid">{errors.password?.message}</Form.Control.Feedback>
                     </Form.Group>
@@ -106,16 +116,30 @@ export default function ImportWalletAccount() {
     const setAccount = useSetAtom(selectedAccountAtom);
     const [password, setPassword] = useState<string>();
     const [showModal, setShowModal] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const guardiansState = useAtomValue(guardiansStateAtom);
+    const guardians = useMemo(
+        () => guardiansState?.map(([account]) => AccountAddress.toBase58(account)),
+        [guardiansState],
+    );
+    const nav = useNavigate();
 
     const walletExport = useAsyncMemo(
         async () => {
             setError(undefined);
-            if (fileInput !== null) {
-                return processFile(fileInput[0]);
+            if (fileInput === null || guardians === undefined) {
+                return undefined;
             }
+
+            const contents = await processFile(fileInput[0]);
+            if (guardians.includes(contents.value.address)) {
+                return contents;
+            }
+
+            setError('Imported account is not a guardian in the election');
         },
         () => setError('File is not a valid wallet export'),
-        [fileInput],
+        [fileInput, guardians],
     );
 
     useEffect(() => {
@@ -126,14 +150,21 @@ export default function ImportWalletAccount() {
 
     useEffect(() => {
         if (walletExport !== undefined && password !== undefined) {
-            void importWalletAccount(walletExport, password).then((imported) => {
-                setAccount(imported);
-                setPassword(undefined);
-            });
-        }
-    }, [walletExport, password, setAccount]);
+            setLoading(true);
 
-    console.log(walletExport);
+            void importWalletAccount(walletExport, password)
+                .then((imported) => {
+                    setAccount(imported);
+                    nav(routes.actions.path);
+                })
+                .catch((e: Error) => {
+                    setError(e.message);
+                })
+                .finally(() => {
+                    setLoading(false);
+                });
+        }
+    }, [walletExport, password, setAccount, nav]);
 
     return (
         <>
@@ -144,6 +175,7 @@ export default function ImportWalletAccount() {
                 error={error}
                 value={fileInput}
                 className="col-16 import"
+                loading={loading}
             />
             <PasswordModal show={showModal} onSubmit={setPassword} onHide={() => setShowModal(false)} />
         </>

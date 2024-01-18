@@ -1224,6 +1224,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@simbathesailor/use-what-changed@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "@simbathesailor/use-what-changed@npm:2.0.0"
+  peerDependencies:
+    react: ">=16"
+  checksum: c1045bdab724ad3186d6ccba0b16e9069bae46a5e9f8bcd6534c427e7a2abf0ef8f0503ac8c9a2eacf27132191ca65739082335bfa9b5ebff7a8906a031c2c5e
+  languageName: node
+  linkType: hard
+
 "@stablelib/aead@npm:^1.0.1":
   version: 1.0.1
   resolution: "@stablelib/aead@npm:1.0.1"
@@ -4313,6 +4322,7 @@ __metadata:
   resolution: "guardian@workspace:guardian"
   dependencies:
     "@concordium/web-sdk": "npm:^7.1.0"
+    "@simbathesailor/use-what-changed": "npm:^2.0.0"
     "@tauri-apps/api": "npm:^1.5.2"
     "@tauri-apps/cli": "npm:^1.5.8"
     "@types/eslint": "npm:^8"

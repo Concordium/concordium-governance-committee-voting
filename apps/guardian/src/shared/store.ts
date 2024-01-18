@@ -1,10 +1,10 @@
 import { atom } from 'jotai';
 import { atomEffect } from 'jotai-effect';
 import { AccountAddress, Timestamp } from '@concordium/web-sdk/types';
-import { ElectionManifest, ElectionParameters, GuardianPublicKey } from 'shared/types';
+import { ElectionManifest, ElectionParameters } from 'shared/types';
 import { getChecksumResource } from 'shared/util';
 
-import { getElectionConfig } from './election-contract';
+import { GuardiansState, getElectionConfig, getGuardiansState } from './election-contract';
 import { WalletAccount, getAccounts } from './ffi';
 
 /**
@@ -21,8 +21,6 @@ export interface ElectionConfig {
     manifest: ElectionManifest;
     /** The election parameters, used by election guard */
     parameters: ElectionParameters;
-    /** The registered public keys of the election guardians */
-    guardianKeys: GuardianPublicKey[];
 }
 
 /**
@@ -54,7 +52,6 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             description: config.election_description,
             manifest,
             parameters,
-            guardianKeys: config.guardian_keys,
         };
 
         set(electionConfigBaseAtom, mappedConfig);
@@ -68,6 +65,35 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 export const electionConfigAtom = atom((get) => {
     get(ensureElectionConfigAtom);
     return get(electionConfigBaseAtom);
+});
+
+const GUARDIANS_UPDATE_INTERVAL = 30000;
+const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
+const guardiansLoadingAtom = atom(false);
+
+const updateGuardiansStateAtom = atomEffect((get, set) => {
+    const value = get(guardiansStateBaseAtom);
+
+    const updateValue = () => {
+        set(guardiansLoadingAtom, true);
+        void getGuardiansState()
+            .then((guardiansState) => set(guardiansStateBaseAtom, guardiansState))
+            .finally(() => set(guardiansLoadingAtom, false));
+    };
+
+    if (value === undefined) {
+        updateValue();
+    }
+
+    const interval = setInterval(updateValue, GUARDIANS_UPDATE_INTERVAL);
+    return () => {
+        clearInterval(interval);
+    };
+});
+
+export const guardiansStateAtom = atom((get) => {
+    get(updateGuardiansStateAtom);
+    return get(guardiansStateBaseAtom);
 });
 
 /**

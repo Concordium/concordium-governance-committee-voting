@@ -1,6 +1,7 @@
 import { clsx } from 'clsx';
 import { forwardRef, InputHTMLAttributes, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Button } from 'react-bootstrap';
+import Button from '../Button';
+import { Spinner } from 'react-bootstrap';
 
 export interface FileInputRef {
     reset(): void;
@@ -19,6 +20,7 @@ export interface FileInputProps
     buttonTitle: string;
     onChange(files: FileInputValue): void;
     disableFileNames?: boolean;
+    loading?: boolean;
 }
 
 /**
@@ -30,15 +32,24 @@ export interface FileInputProps
  */
 const FileInput = forwardRef<FileInputRef, FileInputProps>(
     (
-        { value, onChange, error, placeholder, className, buttonTitle, disableFileNames = false, ...inputProps },
+        {
+            value,
+            onChange,
+            error,
+            placeholder,
+            className,
+            buttonTitle,
+            disableFileNames = false,
+            loading = false,
+            disabled,
+            ...inputProps
+        },
         ref,
     ): JSX.Element => {
         const inputRef = useRef<HTMLInputElement>(null);
         const [dragOver, setDragOver] = useState<boolean>(false);
         const files = useMemo(() => new Array(value?.length ?? 0).fill(0).map((_, i) => value?.item(i)), [value]);
         const isInvalid = error !== undefined;
-
-        const { disabled } = inputProps;
 
         useImperativeHandle(ref, () => ({
             reset: () => {
@@ -61,25 +72,25 @@ const FileInput = forwardRef<FileInputRef, FileInputProps>(
                 onDragLeave={() => setDragOver(false)}
             >
                 <div className="file-input__wrapper">
-                    {files.length === 0 || disableFileNames
+                    {files.length === 0 || disableFileNames || loading
                         ? placeholder && <div className="file-input__empty">{placeholder}</div>
                         : files.map((f, i) => (
-                              // eslint-disable-next-line react/no-array-index-key
-                              <div key={i} className="file-input__fileName">
-                                  {f?.name}
-                              </div>
-                          ))}
-                    <Button className="file-input__button" disabled={disabled} variant="secondary">
+                            // eslint-disable-next-line react/no-array-index-key
+                            <div key={i} className="file-input__file-name">
+                                {f?.name}
+                            </div>
+                        ))}
+                    <Button className="file-input__button" loading={loading} disabled={disabled} variant="secondary">
                         {buttonTitle}
                     </Button>
                     <input
                         className="file-input__input"
                         type="file"
                         onChange={(e) => {
-                            console.log(e);
                             onChange(e.target.files);
                         }}
                         ref={inputRef}
+                        disabled={loading || disabled}
                         {...inputProps}
                     />
                 </div>

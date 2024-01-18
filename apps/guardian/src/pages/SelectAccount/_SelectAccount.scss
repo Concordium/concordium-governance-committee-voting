@@ -1,11 +1,25 @@
 .account-option {
     width: 100%;
-    border: 2px solid $gray-300;
-    border-radius: 10px;
-    padding: 10px;
     background-color: $white;
+    text-align: center;
+    padding: 0;
 
-    &:has(input:checked) {
+    input {
+        opacity: 0;
+        position: absolute;
+        left: -9999px;
+    }
+
+    label {
+        width: 100%;
+        height: 100%;
+        border: 2px solid $gray-300;
+        border-radius: 10px;
+        padding: 10px;
+        cursor: pointer;
+    }
+
+    input:checked + label {
         border-color: $primary;
     }
 }
