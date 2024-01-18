@@ -12,17 +12,25 @@ use concordium_rust_sdk::{
         self as concordium_std, AccountAddress, Amount, OwnedEntrypointName,
     },
     types::{
-        hashes::TransactionHash, queries::BlockInfo, transactions::send::GivenEnergy,
-        AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
-        BlockItemSummaryDetails, ContractAddress, WalletAccount,
+        hashes::TransactionHash, queries::BlockInfo, smart_contracts::OwnedParameter,
+        transactions::send::GivenEnergy, AbsoluteBlockHeight, AccountAddressEq, AccountIndex,
+        AccountTransactionEffects, BlockItemSummaryDetails, ContractAddress, WalletAccount,
     },
     v2::{self as sdk, BlockIdentifier},
 };
 use concordium_std::schema::SchemaType;
+use contract::GuardiansState;
 use eg::{
-    election_manifest::ElectionManifest, election_parameters::ElectionParameters,
-    election_record::PreVotingData, guardian_public_key::GuardianPublicKey, hashes::Hashes,
-    hashes_ext::HashesExt, joint_election_public_key::JointElectionPublicKey,
+    election_manifest::{ContestIndex, ElectionManifest},
+    election_parameters::ElectionParameters,
+    election_record::PreVotingData,
+    guardian_public_key::GuardianPublicKey,
+    hashes::Hashes,
+    hashes_ext::HashesExt,
+    joint_election_public_key::{Ciphertext, JointElectionPublicKey},
+    verifiable_decryption::{
+        DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
+    },
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -71,6 +79,15 @@ enum Command {
     /// Collect votes.
     #[command(name = "tally")]
     Tally(#[clap(flatten)] TallyArgs),
+    FinalResult {
+        #[arg(long = "contract", help = "Address of the election contract.")]
+        contract:    ContractAddress,
+        #[arg(
+            long = "admin-keys",
+            help = "Location of the keys used to register election results in the contract."
+        )]
+        wallet_path: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -132,6 +149,10 @@ async fn main() -> anyhow::Result<()> {
             final_weights,
         } => handle_final_weights(endpoint, range, memo, initial_weights, final_weights).await,
         Command::Tally(tally) => handle_vote_collection(endpoint, tally).await,
+        Command::FinalResult {
+            contract,
+            wallet_path,
+        } => handle_decrypt(endpoint, contract, wallet_path).await,
     }
 }
 
@@ -145,6 +166,14 @@ async fn range_setup(
         "Need a non-empty interval to index. The start time must be earlier than end time."
     );
     let mut client = sdk::Client::new(endpoint.clone()).await?;
+    let info = client
+        .get_block_info(BlockIdentifier::LastFinal)
+        .await?
+        .response;
+    anyhow::ensure!(
+        end <= info.block_slot_time,
+        "End time not before the last finalized block."
+    );
     let first_block = client
         .find_first_finalized_block_no_earlier_than(.., start)
         .await?;
@@ -304,49 +333,210 @@ async fn handle_final_weights(
 
 enum ElectionContract {}
 
-/// Constructs the [`PreVotingData`] necessary for ballot verification with
-/// election guard.
-fn get_verification_context(
-    election_parameters: ElectionParameters,
-    election_manifest: ElectionManifest,
-    guardian_public_keys: &[GuardianPublicKey],
-) -> anyhow::Result<PreVotingData> {
-    let joint_election_public_key =
-        JointElectionPublicKey::compute(&election_parameters, guardian_public_keys)
-            .context("Could not compute joint election public key")?;
-
-    let hashes = Hashes::compute(&election_parameters, &election_manifest)
-        .context("Could not compute hashes from election context")?;
-
-    let hashes_ext = HashesExt::compute(
-        &election_parameters,
-        &hashes,
-        &joint_election_public_key,
-        guardian_public_keys,
-    );
-
-    let pre_voting_data = PreVotingData {
-        manifest: election_manifest,
-        parameters: election_parameters,
-        hashes,
-        hashes_ext,
-        public_key: joint_election_public_key,
-    };
-
-    Ok(pre_voting_data)
-}
-
-async fn handle_vote_collection(
+async fn handle_decrypt(
     endpoint: sdk::Endpoint,
-    TallyArgs {
-        target_address,
-        final_weights,
-        keys,
-    }: TallyArgs,
+    contract: ContractAddress,
+    wallet_path: Option<std::path::PathBuf>,
 ) -> anyhow::Result<()> {
     let client = sdk::Client::new(endpoint.clone()).await?;
     let mut contract_client =
-        contract_client::ContractClient::<ElectionContract>::create(client, target_address).await?;
+        contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
+
+    let mut guardians_state = contract_client
+        .view::<_, GuardiansState, ViewError>("viewGuardiansState", &(), BlockIdentifier::LastFinal)
+        .await?;
+    let election_data = get_election_data(&mut contract_client).await?;
+    let mut decryption_shares = Vec::new();
+    let mut proof_shares = Vec::new();
+
+    let encrypted_tally = contract_client
+        .view::<(), Option<Vec<u8>>, ViewError>(
+            "viewEncryptedTally",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
+    let Some(encrypted_tally) = encrypted_tally else {
+        anyhow::bail!("Encrypted tally not yet registered.")
+    };
+
+    let Ok(tally) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&encrypted_tally) else {
+        anyhow::bail!("Encrypted tally is not readable.")
+    };
+
+    guardians_state.sort_by_key(|g| g.1.index);
+
+    for (guardian_address, guardian_state) in guardians_state {
+        if let (Some(share), Some(proof)) = (
+            guardian_state.decryption_share,
+            guardian_state.decryption_share_proof,
+        ) {
+            let Ok(share) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<DecryptionShareResult>>>(&share) else {
+                eprintln!("The decryption share registered by {guardian_address} is not readable.");
+                continue;
+            };
+            let Ok(proof) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>>(&proof) else {
+                eprintln!("The decryption proof response share registered by {guardian_address} is not readable.");
+                continue;
+            };
+            decryption_shares.push(share);
+            proof_shares.push(proof);
+        }
+    }
+    let quorum = election_data
+        .parameters
+        .varying_parameters
+        .k
+        .get_zero_based_usize();
+    anyhow::ensure!(
+        decryption_shares.len() >= quorum,
+        "Not enough shares. Require {} but only have {quorum}.",
+        decryption_shares.len()
+    );
+
+    let mut decryption = {
+        let mut decrypted_tallies = BTreeMap::new();
+        for (contest, ciphertexts) in tally.into_iter() {
+            let mut ciphers = Vec::new();
+            for (i, ciphertext) in ciphertexts.into_iter().enumerate() {
+                // each guardian provides a decryption share of each of the options
+                // for each of the contests.
+                let mut decryption_shares_for_option = Vec::new();
+                for guardian_shares in &decryption_shares {
+                    let Some(decryption_share) = guardian_shares.get(&contest) else {
+                        anyhow::bail!("Missing decryption share for contest {contest}");
+                    };
+                    let Some(share) = decryption_share.get(i) else {
+                        anyhow::bail!("Missing decryption share for contest {contest} and option {i}");
+                    };
+                    decryption_shares_for_option.push(share);
+                }
+                let mut proof_shares_for_option = Vec::new();
+                for proof_shares in &proof_shares {
+                    let Some(proof_share) = proof_shares.get(&contest) else {
+                        anyhow::bail!("Missing proof share for contest {contest}");
+                    };
+                    let Some(share) = proof_share.get(i) else {
+                        anyhow::bail!("Missing proof share for contest {contest} and option {i}");
+                    };
+                    proof_shares_for_option.push(share);
+                }
+
+                let decrypted = VerifiableDecryption::compute(
+                    &election_data.manifest,
+                    &election_data.parameters,
+                    &election_data.guardian_public_keys,
+                    &ciphertext,
+                    decryption_shares_for_option,
+                    proof_shares_for_option,
+                )?;
+                ciphers.push(decrypted);
+            }
+            decrypted_tallies.insert(contest, ciphers);
+        }
+        decrypted_tallies
+    };
+
+    let contest = {
+        let mut contests = election_data.manifest.contests.indices();
+        let Some(contest) = contests.next() else {
+            anyhow::bail!("Need a contest in manifest.");
+        };
+        anyhow::ensure!(
+            contests.next().is_none(),
+            "Only a single contest is supported."
+        );
+        contest
+    };
+    let Some(results) = decryption.remove(&contest) else {
+        anyhow::bail!("No decryptions for contest.");
+    };
+
+    let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
+    for value in results {
+        let weight = value.plain_text.to_u64_digits();
+        eprintln!("{weight:?}");
+        anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
+        weights.push(weight.get(0).copied().unwrap_or(0));
+    }
+
+    let current_result = contract_client
+        .view::<_, contract::ViewElectionResultQueryResponse, ViewError>(
+            "viewElectionResult",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
+
+    if let Some(result) = current_result {
+        let current_weights = result
+            .iter()
+            .map(|x| x.cummulative_votes)
+            .collect::<Vec<_>>();
+        if current_weights != weights {
+            // TODO: Should we allow uploading again?
+            anyhow::bail!(
+                "The election results are already registered in the contract, but they are \
+                 different."
+            );
+        } else {
+            eprintln!(
+                "The election results are already registered in the contract, and they match."
+            );
+            for option in result {
+                println!("Option: {}", option.candidate.url);
+                println!("Number of votes: {}", option.cummulative_votes);
+            }
+            return Ok(());
+        }
+    }
+
+    if let Some(wallet_path) = wallet_path {
+        let wallet = WalletAccount::from_json_file(wallet_path)?;
+        let dry_run = contract_client
+            .dry_run_update::<_, ViewError>(
+                "postElectionResult",
+                Amount::zero(),
+                wallet.address,
+                &weights,
+            )
+            .await
+            .context("Failed to dry run")?;
+
+        let handle = dry_run.send(&wallet).await?;
+
+        if let Err(e) = handle.wait_for_finalization().await {
+            eprintln!("Transaction failed with {e:#?}");
+        } else {
+            eprintln!("Transaction successful and finalized.",);
+        }
+    } else {
+    }
+
+    Ok(())
+}
+
+struct ElectionData {
+    manifest:             ElectionManifest,
+    parameters:           ElectionParameters,
+    guardian_public_keys: Vec<GuardianPublicKey>,
+    start:                chrono::DateTime<chrono::Utc>,
+    end:                  chrono::DateTime<chrono::Utc>,
+}
+
+impl ElectionData {
+    pub fn verification_context(&self) -> anyhow::Result<PreVotingData> {
+        PreVotingData::compute(
+            self.manifest.clone(),
+            self.parameters.clone(),
+            &self.guardian_public_keys,
+        )
+    }
+}
+
+async fn get_election_data(
+    contract_client: &mut contract_client::ContractClient<ElectionContract>,
+) -> anyhow::Result<ElectionData> {
     let config = contract_client
         .view::<_, contract::ElectionConfig, contract_client::ViewError>(
             "viewConfig",
@@ -394,11 +584,33 @@ async fn handle_vote_collection(
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
 
-    let verification_context: PreVotingData = get_verification_context(
-        election_parameters,
-        election_manifest.clone(),
-        &guardian_public_keys,
-    )?;
+    Ok(ElectionData {
+        manifest: election_manifest,
+        parameters: election_parameters,
+        guardian_public_keys,
+        start,
+        end,
+    })
+}
+
+async fn handle_vote_collection(
+    endpoint: sdk::Endpoint,
+    TallyArgs {
+        target_address,
+        final_weights,
+        keys,
+    }: TallyArgs,
+) -> anyhow::Result<()> {
+    let client = sdk::Client::new(endpoint.clone()).await?;
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, target_address).await?;
+
+    let election_data = get_election_data(&mut contract_client).await?;
+
+    let verification_context: PreVotingData = election_data.verification_context()?;
+
+    let start = election_data.start;
+    let end = election_data.end;
 
     let (_, first_block, last_block) = range_setup(endpoint.clone(), start, end).await?;
 
@@ -438,6 +650,11 @@ async fn handle_vote_collection(
         } in txs
         {
             let param = execution_tree.parameter();
+            let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref()) else {
+                eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                continue;
+            };
+
             let Ok(ballot) = rmp_serde::from_slice::<eg::ballot::BallotEncrypted>(param.as_ref()) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
@@ -458,7 +675,7 @@ async fn handle_vote_collection(
     let mut final_weights =
         csv::Reader::from_path(final_weights).context("Unable to open final weights file.")?;
 
-    let mut tally = eg::ballot::BallotTallyBuilder::new(&election_manifest);
+    let mut tally = eg::ballot::BallotTallyBuilder::new(&election_data.manifest);
     for row in final_weights.deserialize() {
         let FinalWeightRow {
             account,

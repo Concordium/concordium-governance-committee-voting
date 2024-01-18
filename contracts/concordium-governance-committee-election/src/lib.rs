@@ -3,6 +3,7 @@
 //! # A Concordium V1 smart contract
 use concordium_std::*;
 
+pub use concordium_std::HashSha2256;
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
@@ -50,14 +51,19 @@ pub enum GuardianStatus {
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct GuardianState {
     /// Index of the guardian used for key-sharing. Not modifiable.
-    pub index:           u32,
+    pub index:                  u32,
     /// The public key of the guardian.
-    pub public_key:      Option<Vec<u8>>,
+    pub public_key:             Option<Vec<u8>>,
     /// The encrypted share of the guardian.
-    pub encrypted_share: Option<Vec<u8>>,
+    pub encrypted_share:        Option<Vec<u8>>,
+    /// The share of the decryption together with the
+    /// commitment share of a single guardian for a `DecryptionProof`.
+    pub decryption_share:       Option<Vec<u8>>,
+    /// The response share of a single guardian for a `DecryptionProof`.
+    pub decryption_share_proof: Option<Vec<u8>>,
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
-    pub status:          Option<GuardianStatus>,
+    pub status:                 Option<GuardianStatus>,
 }
 
 impl GuardianState {
@@ -67,6 +73,8 @@ impl GuardianState {
             public_key: None,
             encrypted_share: None,
             status: None,
+            decryption_share: None,
+            decryption_share_proof: None,
         }
     }
 }
@@ -293,16 +301,21 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 fn validate_guardian_context<'a>(
     ctx: &ReceiveContext,
     host: &'a mut Host<State>,
+    before: bool, // if true check we are before election start, otherwise check we are after.
 ) -> Result<StateRefMut<'a, GuardianState, ExternStateApi>, Error> {
     let Address::Account(sender) = ctx.sender() else {
         bail!(Error::Unauthorized);
     };
 
     let now = ctx.metadata().block_time();
-    ensure!(
-        now < host.state.election_start,
-        Error::IncorrectElectionPhase
-    );
+    if before {
+        ensure!(
+            now < host.state.election_start,
+            Error::IncorrectElectionPhase
+        );
+    } else {
+        ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
+    }
 
     host.state
         .guardians
@@ -323,7 +336,7 @@ pub type RegisterGuardianPublicKeyParameter = Vec<u8>;
     mutable
 )]
 fn register_guardian_public_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(guardian_state.public_key.is_none(), Error::DuplicateEntry);
 
     let parameter: RegisterGuardianPublicKeyParameter = ctx.parameter_cursor().get()?;
@@ -344,7 +357,7 @@ pub type RegisterGuardianEncryptedShareParameter = Vec<u8>;
     mutable
 )]
 fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(
         guardian_state.encrypted_share.is_none(),
         Error::DuplicateEntry
@@ -352,6 +365,53 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
 
     let parameter: RegisterGuardianEncryptedShareParameter = ctx.parameter_cursor().get()?;
     guardian_state.encrypted_share = Some(parameter);
+    Ok(())
+}
+
+/// Entrypoint for registering the share of the decryption.
+/// The parameter is meant to be Msgpack serialization of the
+/// `DecryptionShareResult` type of electionguard.
+#[receive(
+    contract = "election",
+    name = "postDecryptionShare",
+    parameter = "Vec<u8>",
+    error = "Error",
+    mutable
+)]
+fn post_decryption_share(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(
+        guardian_state.decryption_share.is_none(),
+        Error::DuplicateEntry
+    );
+
+    let parameter: Vec<u8> = ctx.parameter_cursor().get()?;
+    guardian_state.decryption_share = Some(parameter);
+    Ok(())
+}
+
+/// Entrypoint for registering the proof that the decryption share is correct.
+/// The parameter is meant to be Msgpack serialization of the
+/// `DecryptionProofResponseShare` type of electionguard.
+#[receive(
+    contract = "election",
+    name = "postDecryptionProofResponseShare",
+    parameter = "Vec<u8>",
+    error = "Error",
+    mutable
+)]
+fn post_decryption_proof_response_share(
+    ctx: &ReceiveContext,
+    host: &mut Host<State>,
+) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(
+        guardian_state.decryption_share_proof.is_none(),
+        Error::DuplicateEntry
+    );
+
+    let parameter: Vec<u8> = ctx.parameter_cursor().get()?;
+    guardian_state.decryption_share_proof = Some(parameter);
     Ok(())
 }
 
@@ -365,7 +425,7 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
     mutable
 )]
 fn register_guardian_status(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(guardian_state.status.is_none(), Error::DuplicateEntry);
 
     let status: GuardianStatus = ctx.parameter_cursor().get()?;
