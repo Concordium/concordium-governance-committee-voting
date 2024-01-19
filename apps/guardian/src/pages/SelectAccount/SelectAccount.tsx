@@ -6,6 +6,7 @@ import { FormProvider, SubmitHandler, useForm, useFormContext } from 'react-hook
 import { Link, useNavigate } from 'react-router-dom';
 
 import { accountShowShort } from 'shared/util';
+import { MainLocationState } from '~/layouts/Main/Main';
 import Button from '~/shared/Button';
 import { WalletAccount, loadAccount } from '~/shared/ffi';
 import { selectedAccountAtom, accountsAtom } from '~/shared/store';
@@ -156,7 +157,9 @@ export default function SelectAccount() {
                     <Button variant="primary" type="submit" className="me-4">
                         Select
                     </Button>
-                    <Link to={routes.importAccount.path}>Import new</Link>
+                    <Link to={routes.importAccount.path} state={{ canBack: true } as MainLocationState}>
+                        Import new
+                    </Link>
                 </div>
             </form>
             <PasswordPrompt

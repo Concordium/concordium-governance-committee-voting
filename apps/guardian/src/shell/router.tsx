@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import SelectAccount from '~/pages/SelectAccount/SelectAccount';
 import ImportWalletAccount from '~/pages/ImportWalletAccount';
 import Actions from '~/pages/Actions';
+import Main from '~/layouts/Main';
 
 type RoutePath = {
     path: string;
@@ -20,7 +21,7 @@ const relativeRoutes = {
         path: '/import-account',
     },
     actions: {
-        path: '/actions'
+        path: '/actions',
     },
 };
 
@@ -47,9 +48,15 @@ export const routes = buildAbsoluteRoutes(relativeRoutes);
 
 export const router = createBrowserRouter([
     {
-        path: relativeRoutes.selectAccount.path,
-        element: <SelectAccount />,
+        path: '/',
+        element: <Main />,
+        children: [
+            {
+                path: relativeRoutes.selectAccount.path,
+                element: <SelectAccount />,
+            },
+            { path: relativeRoutes.importAccount.path, element: <ImportWalletAccount /> },
+            { path: relativeRoutes.actions.path, element: <Actions /> },
+        ],
     },
-    { path: relativeRoutes.importAccount.path, element: <ImportWalletAccount /> },
-    { path: relativeRoutes.actions.path, element: <Actions /> },
 ]);

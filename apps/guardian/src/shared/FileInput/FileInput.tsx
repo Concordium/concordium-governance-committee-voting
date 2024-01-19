@@ -75,11 +75,11 @@ const FileInput = forwardRef<FileInputRef, FileInputProps>(
                     {files.length === 0 || disableFileNames || loading
                         ? placeholder && <div className="file-input__empty">{placeholder}</div>
                         : files.map((f, i) => (
-                            // eslint-disable-next-line react/no-array-index-key
-                            <div key={i} className="file-input__file-name">
-                                {f?.name}
-                            </div>
-                        ))}
+                              // eslint-disable-next-line react/no-array-index-key
+                              <div key={i} className="file-input__file-name">
+                                  {f?.name}
+                              </div>
+                          ))}
                     <Button className="file-input__button" loading={loading} disabled={disabled} variant="secondary">
                         {buttonTitle}
                     </Button>

@@ -15,10 +15,12 @@ export default function Button(props: Props) {
             disabled={loading || disabled}
             className={clsx('button', loading && 'button--loading', className)}
         >
-            <span className='button__text'>
-                {children}
-            </span>
-            {loading && <div className='button__spinner'><Spinner animation="border" size='sm' /></div>}
+            <span className="button__text">{children}</span>
+            {loading && (
+                <div className="button__spinner">
+                    <Spinner animation="border" size="sm" />
+                </div>
+            )}
         </RBButton>
     );
 }
