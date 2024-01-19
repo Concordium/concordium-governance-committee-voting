@@ -98,26 +98,28 @@ pub struct RegisteredData {
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:   StateBox<AccountAddress, S>,
+    pub admin_account:     StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:      StateSet<ChecksumUrl, S>,
+    pub candidates:        StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:       StateMap<AccountAddress, GuardianState, S>,
+    pub guardians:         StateMap<AccountAddress, GuardianState, S>,
     /// Data registered upon contract instantiation which is used by off-chain
     /// applications
-    pub registered_data: StateBox<RegisteredData, S>,
+    pub registered_data:   StateBox<RegisteredData, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:  Timestamp,
+    pub election_start:    Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:    Timestamp,
+    pub election_end:      Timestamp,
+    /// The string that should be used when delegating a vote.
+    pub delegation_string: StateBox<String, S>,
     /// The encrypted tally posted by the operator for convenience of guardians.
-    pub encrypted_tally: StateBox<Option<Vec<u8>>, S>,
+    pub encrypted_tally:   StateBox<Option<Vec<u8>>, S>,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result: StateBox<Option<ElectionResult>, S>,
+    pub election_result:   StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -127,15 +129,18 @@ impl State {
     fn new_checked(
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
-        admin_account: AccountAddress,
-        candidates: Vec<ChecksumUrl>,
-        guardians: Vec<AccountAddress>,
-        eligible_voters: ChecksumUrl,
-        election_manifest: ChecksumUrl,
-        election_parameters: ChecksumUrl,
-        election_description: String,
-        election_start: Timestamp,
-        election_end: Timestamp,
+        InitParameter {
+            admin_account,
+            candidates,
+            guardians,
+            eligible_voters,
+            election_manifest,
+            election_parameters,
+            election_description,
+            election_start,
+            election_end,
+            delegation_string,
+        }: InitParameter,
     ) -> Result<Self, Error> {
         let now = ctx.metadata().block_time();
 
@@ -178,6 +183,7 @@ impl State {
             election_end,
             encrypted_tally: state_builder.new_box(None),
             election_result: state_builder.new_box(None),
+            delegation_string: state_builder.new_box(delegation_string),
         };
         Ok(config)
     }
@@ -208,32 +214,8 @@ pub struct InitParameter {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
-}
-
-impl InitParameter {
-    /// Converts the init parameter to [`State`] with a supplied function for
-    /// getting a fallback admin account if none is specified. The function
-    /// consumes the parameter in the process.
-    fn into_state(
-        self,
-        ctx: &InitContext,
-        state_builder: &mut StateBuilder,
-    ) -> Result<State, Error> {
-        let state = State::new_checked(
-            ctx,
-            state_builder,
-            self.admin_account,
-            self.candidates,
-            self.guardians,
-            self.eligible_voters,
-            self.election_manifest,
-            self.election_parameters,
-            self.election_description,
-            self.election_start,
-            self.election_end,
-        )?;
-        Ok(state)
-    }
+    /// A string that should be used when delegating a vote to another account.
+    pub delegation_string:    String,
 }
 
 #[derive(Serialize, SchemaType, Debug)]
@@ -260,6 +242,8 @@ pub struct ElectionConfig {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// A string that should be used when delegating a vote to another account.
+    pub delegation_string:    String,
 }
 
 impl From<&State> for ElectionConfig {
@@ -282,6 +266,7 @@ impl From<&State> for ElectionConfig {
             election_parameters: registered_data.election_parameters.clone(),
             candidates,
             guardian_keys,
+            delegation_string: value.delegation_string.clone(),
         }
     }
 }
@@ -291,7 +276,7 @@ impl From<&State> for ElectionConfig {
 #[init(contract = "election", parameter = "InitParameter", error = "Error")]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
     let parameter: InitParameter = ctx.parameter_cursor().get()?;
-    let initial_state = parameter.into_state(ctx, state_builder)?;
+    let initial_state = State::new_checked(ctx, state_builder, parameter)?;
     Ok(initial_state)
 }
 

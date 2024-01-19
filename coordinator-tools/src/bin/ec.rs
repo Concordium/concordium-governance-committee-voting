@@ -5,16 +5,15 @@ use anyhow::Context;
 use clap::Parser;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
-    common::types::TransactionTime,
-    contract_client::{self, ContractTransactionMetadata, ViewError},
+    contract_client::{self, ViewError},
     indexer,
     smart_contracts::common::{
         self as concordium_std, AccountAddress, Amount, OwnedEntrypointName,
     },
     types::{
-        hashes::TransactionHash, queries::BlockInfo, smart_contracts::OwnedParameter,
-        transactions::send::GivenEnergy, AbsoluteBlockHeight, AccountAddressEq, AccountIndex,
-        AccountTransactionEffects, BlockItemSummaryDetails, ContractAddress, WalletAccount,
+        hashes::TransactionHash, queries::BlockInfo, AbsoluteBlockHeight, AccountAddressEq,
+        AccountIndex, AccountTransactionEffects, BlockItemSummaryDetails, ContractAddress,
+        WalletAccount,
     },
     v2::{self as sdk, BlockIdentifier},
 };
@@ -25,9 +24,7 @@ use eg::{
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
     guardian_public_key::GuardianPublicKey,
-    hashes::Hashes,
-    hashes_ext::HashesExt,
-    joint_election_public_key::{Ciphertext, JointElectionPublicKey},
+    joint_election_public_key::Ciphertext,
     verifiable_decryption::{
         DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
     },
@@ -457,7 +454,7 @@ async fn handle_decrypt(
         let weight = value.plain_text.to_u64_digits();
         eprintln!("{weight:?}");
         anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
-        weights.push(weight.get(0).copied().unwrap_or(0));
+        weights.push(weight.first().copied().unwrap_or(0));
     }
 
     let current_result = contract_client
@@ -683,6 +680,7 @@ async fn handle_vote_collection(
             delegators,
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
+            eprintln!("Scaling the ballot cast by transaction {hash}.");
             // TODO: Scale the ballot for this account.
             tally.update(ballot);
         } // else the account did not vote, so nothing to do.
@@ -715,54 +713,25 @@ async fn handle_vote_collection(
     } else if let Some(keys) = keys {
         let wallet = WalletAccount::from_json_file(keys)?;
         eprintln!("Registering tally in the smart contract.");
-        let nonce = contract_client
-            .client
-            .get_next_account_sequence_number(&wallet.address)
-            .await?;
         let dry_run = contract_client
-            .invoke_raw::<ViewError>(
+            .dry_run_update_raw::<ViewError>(
                 "postEncryptedTally",
                 Amount::zero(),
-                Some(wallet.address.into()),
+                wallet.address,
                 param,
-                BlockIdentifier::LastFinal,
             )
             .await
-            .context("Failed to dry run")?;
-        let energy = match dry_run {
-            concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Success {
-                used_energy,
-                ..
-            } => (used_energy.energy + 100).into(),
-            concordium_rust_sdk::types::smart_contracts::InvokeContractResult::Failure {
-                reason,
-                ..
-            } => {
-                anyhow::bail!("Failed to dry run contract update due to {reason:#?}");
-            }
-        };
+            .context("Failed to dry run postEncryptedTally")?;
 
-        let metadata = ContractTransactionMetadata {
-            sender_address: wallet.address,
-            nonce:          nonce.nonce,
-            expiry:         TransactionTime::hours_after(1),
-            energy:         GivenEnergy::Add(energy),
-            amount:         Amount::zero(),
-        };
-
-        let tx_hash = contract_client
-            .update::<_, anyhow::Error>(&wallet, &metadata, "postEncryptedTally", &serialized_tally)
+        let tx = dry_run
+            .send(&wallet)
             .await
             .context("Failed to send transaction to post the tally.")?;
-        eprintln!("Transaction {tx_hash} sent. Await finalization.");
-        let (block_hash, outcome) = contract_client
-            .client
-            .wait_until_finalized(&tx_hash)
-            .await?;
-        if let Some(reason) = outcome.is_rejected_account_transaction() {
+        eprintln!("Transaction {tx} sent. Await finalization.");
+        if let Err(reason) = tx.wait_for_finalization().await {
             eprintln!("Transaction failed with {reason:#?}");
         } else {
-            eprintln!("Transaction successful and finalized in block {block_hash}.");
+            eprintln!("Transaction successful and finalized.");
         }
     } else {
         eprintln!(

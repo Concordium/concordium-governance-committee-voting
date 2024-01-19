@@ -66,6 +66,7 @@ fn test_init_errors() {
         eligible_voters: eligible_voters.clone(),
         election_manifest: election_manifest.clone(),
         election_parameters: election_parameters.clone(),
+        delegation_string: "Something".into(),
     };
 
     let init_param = get_init_param();
@@ -168,6 +169,7 @@ fn test_init_config() {
         eligible_voters,
         election_manifest,
         election_parameters,
+        delegation_string: "Something".into(),
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
@@ -757,6 +759,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         eligible_voters,
         election_manifest,
         election_parameters,
+        delegation_string: "Something".into(),
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
 
