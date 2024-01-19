@@ -90,7 +90,6 @@ async fn main() -> anyhow::Result<()> {
             .context("Unable to read account keys")??;
         eprintln!("Using account {} as the admin account.", admin.address);
         let guardian_keys: Vec<WalletAccount> = accounts
-            .into_iter()
             .map(|a| {
                 let wallet = a??;
                 eprintln!("Using {} as a guardian.", wallet.address);
@@ -215,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
             })
             .collect();
         let eligible_voters = contract::ChecksumUrl {
-            url:  format!("http://localhost:7000/voters"),
+            url:  "http://localhost:7000/voters".to_string(),
             hash: contract::HashSha2256([1u8; 32]), // TODO
         };
         let init_param = contract::InitParameter {
@@ -234,6 +233,7 @@ async fn main() -> anyhow::Result<()> {
             election_description: "Test election".into(),
             election_start,
             election_end,
+            delegation_string: "Delegation string".into(),
         };
         let nonce = client
             .get_next_account_sequence_number(&admin.address)
@@ -289,18 +289,20 @@ async fn main() -> anyhow::Result<()> {
             );
             let public_key = key.make_public_key();
 
-            let tx_dry_run = contract_client.dry_run_update::<RegisterGuardianPublicKeyParameter, ViewError>("registerGuardianPublicKey", Amount::zero(), g_acc.address, &rmp_serde::to_vec(&public_key)?).await?;
+            let tx_dry_run = contract_client
+                .dry_run_update::<RegisterGuardianPublicKeyParameter, ViewError>(
+                    "registerGuardianPublicKey",
+                    Amount::zero(),
+                    g_acc.address,
+                    &rmp_serde::to_vec(&public_key)?,
+                )
+                .await?;
 
             let tx_hash = tx_dry_run.send(g_acc).await?;
 
             eprintln!("Submitted guardian {g} key application with transaction hash {tx_hash}");
 
-            if let Some(err) = client
-                .wait_until_finalized(&tx_hash)
-                .await?
-                .1
-                .is_rejected_account_transaction()
-            {
+            if let Err(err) = tx_hash.wait_for_finalization().await {
                 anyhow::bail!("Registering public key failed: {err:#?}");
             }
 
@@ -384,7 +386,7 @@ async fn main() -> anyhow::Result<()> {
                 drop(shares);
                 let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
                 if let Err(e) =
-                    share.decrypt_and_validate(&parameters, &dealer_public_key, secret_key)
+                    share.decrypt_and_validate(&parameters, dealer_public_key, secret_key)
                 {
                     anyhow::bail!(
                         "Failed to decrypt and validate share for guardian {} using dealer {}. \
@@ -557,12 +559,7 @@ async fn main() -> anyhow::Result<()> {
 
             eprintln!("Submitted decryption share with transaction {tx_hash}");
 
-            if let Some(err) = client
-                .wait_until_finalized(&tx_hash)
-                .await?
-                .1
-                .is_rejected_account_transaction()
-            {
+            if let Err(err) = tx_hash.wait_for_finalization().await {
                 anyhow::bail!("Registering decryption share failed: {err:#?}");
             }
 
@@ -596,7 +593,7 @@ async fn main() -> anyhow::Result<()> {
             for (index, ciphertexts_state) in &secret_states {
                 // gather all decryption shares for a specific ciphertext.
                 let mut response_shares_i = Vec::new();
-                for (i, ciphertext_state) in ciphertexts_state.into_iter().enumerate() {
+                for (i, ciphertext_state) in ciphertexts_state.iter().enumerate() {
                     let mut commit_shares = Vec::new();
                     let mut decryption_shares = Vec::new();
                     for gs in &guardians_state {
@@ -608,14 +605,14 @@ async fn main() -> anyhow::Result<()> {
                         >(share_result)
                         .context("Unable to parse decryption share result.")?;
                         let result = &share_result
-                            .get(&index)
+                            .get(index)
                             .context("Contest index not present")?[i];
                         commit_shares.push(result.proof_commit.clone());
                         decryption_shares.push(result.share.clone());
                     }
                     let combined_decryption =
                         CombinedDecryptionShare::combine(&parameters, decryption_shares.iter())?;
-                    let ciphertext = &ciphertexts.get(&index).context("Unknown contest")?[i];
+                    let ciphertext = &ciphertexts.get(index).context("Unknown contest")?[i];
                     let proof = DecryptionProof::generate_response_share(
                         &parameters.fixed_parameters,
                         &context.hashes_ext,
@@ -647,12 +644,7 @@ async fn main() -> anyhow::Result<()> {
 
             eprintln!("Submitted response share with transaction hash {tx_hash}");
 
-            if let Some(err) = client
-                .wait_until_finalized(&tx_hash)
-                .await?
-                .1
-                .is_rejected_account_transaction()
-            {
+            if let Err(err) = tx_hash.wait_for_finalization().await {
                 anyhow::bail!("Registering response failed: {err:#?}");
             }
 

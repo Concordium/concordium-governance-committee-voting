@@ -57,14 +57,10 @@ enum Command {
     /// Look for delegations of the vote in the supplied period
     #[command(name = "final-weights")]
     FinalWeights {
-        #[clap(flatten)]
-        range:           RangeWithOutput,
-        #[arg(
-            long = "memo",
-            help = "The memo to look for.",
-            default_value = "Delegate vote for governance committee election"
-        )]
-        memo:            String,
+        #[arg(long = "out", help = "File to output data into.")]
+        out:             Option<std::path::PathBuf>,
+        #[arg(long = "contract", help = "Address of the election contract.")]
+        contract:        ContractAddress,
         #[arg(long = "initial-weights", help = "The CSV file with initial weights.")]
         initial_weights: std::path::PathBuf,
         #[arg(
@@ -140,11 +136,11 @@ async fn main() -> anyhow::Result<()> {
     match app.command {
         Command::InitialWeights(accds) => handle_gather_average_balance(endpoint, accds).await,
         Command::FinalWeights {
-            range,
-            memo,
+            out,
+            contract,
             initial_weights,
             final_weights,
-        } => handle_final_weights(endpoint, range, memo, initial_weights, final_weights).await,
+        } => handle_final_weights(endpoint, out, contract, initial_weights, final_weights).await,
         Command::Tally(tally) => handle_vote_collection(endpoint, tally).await,
         Command::FinalResult {
             contract,
@@ -154,15 +150,14 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn range_setup(
-    endpoint: sdk::Endpoint,
+    client: &mut sdk::Client,
     start: chrono::DateTime<chrono::Utc>,
     end: chrono::DateTime<chrono::Utc>,
-) -> anyhow::Result<(sdk::Client, BlockInfo, BlockInfo)> {
+) -> anyhow::Result<(BlockInfo, BlockInfo)> {
     anyhow::ensure!(
         start < end,
         "Need a non-empty interval to index. The start time must be earlier than end time."
     );
-    let mut client = sdk::Client::new(endpoint.clone()).await?;
     let info = client
         .get_block_info(BlockIdentifier::LastFinal)
         .await?
@@ -200,7 +195,7 @@ async fn range_setup(
         last_block.block_hash,
         last_block.block_slot_time
     );
-    Ok((client, first_block, last_block))
+    Ok((first_block, last_block))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -226,13 +221,22 @@ struct FinalWeightRow {
 
 async fn handle_final_weights(
     endpoint: sdk::Endpoint,
-    accds: RangeWithOutput,
-    expected_memo: String,
+    out: Option<std::path::PathBuf>,
+    target_address: ContractAddress,
     initial_weights: std::path::PathBuf,
     final_weights_path: std::path::PathBuf,
 ) -> anyhow::Result<()> {
-    let (_, first_block, last_block) =
-        range_setup(endpoint.clone(), accds.start, accds.end).await?;
+    let client = sdk::Client::new(endpoint.clone()).await?;
+
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, target_address).await?;
+
+    let config = get_election_data(&mut contract_client)
+        .await
+        .context("Unable to get election data.")?;
+
+    let (first_block, last_block) =
+        range_setup(&mut contract_client.client, config.start, config.end).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -248,7 +252,7 @@ async fn handle_final_weights(
     while let Some((block, txs)) = receiver.recv().await {
         bar.set_message(block.block_slot_time.to_string());
         bar.inc(1);
-        if block.block_slot_time > accds.end {
+        if block.block_slot_time > config.end {
             drop(receiver);
             cancel_handle.abort();
             drop(cancel_handle);
@@ -265,7 +269,7 @@ async fn handle_final_weights(
             let Ok(value) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
                 continue; // invalid CBOR is ignored.
             };
-            if value == expected_memo {
+            if value == config.delegation_string {
                 // Override any previous mapping from the same account (accounting for aliases
                 // as well)
                 mapping.insert(AccountAddressEq::from(atx.sender), (tx.hash, to));
@@ -273,7 +277,7 @@ async fn handle_final_weights(
         }
     }
     {
-        let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = accds.out {
+        let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = out {
             csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
         } else {
             csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
@@ -519,6 +523,7 @@ struct ElectionData {
     guardian_public_keys: Vec<GuardianPublicKey>,
     start:                chrono::DateTime<chrono::Utc>,
     end:                  chrono::DateTime<chrono::Utc>,
+    delegation_string:    String,
 }
 
 impl ElectionData {
@@ -587,6 +592,7 @@ async fn get_election_data(
         guardian_public_keys,
         start,
         end,
+        delegation_string: config.delegation_string,
     })
 }
 
@@ -609,7 +615,7 @@ async fn handle_vote_collection(
     let start = election_data.start;
     let end = election_data.end;
 
-    let (_, first_block, last_block) = range_setup(endpoint.clone(), start, end).await?;
+    let (first_block, last_block) = range_setup(&mut contract_client.client, start, end).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -745,8 +751,10 @@ async fn handle_gather_average_balance(
     endpoint: sdk::Endpoint,
     accds: RangeWithOutput,
 ) -> anyhow::Result<()> {
-    let (mut client, first_block, last_block) =
-        range_setup(endpoint.clone(), accds.start, accds.end).await?;
+    let mut client = sdk::Client::new(endpoint.clone())
+        .await
+        .context("Unable to connect.")?;
+    let (first_block, last_block) = range_setup(&mut client, accds.start, accds.end).await?;
     let initial_block_ident: BlockIdentifier = first_block.block_height.into();
     let initial_account_number = client
         .get_account_list(initial_block_ident)
