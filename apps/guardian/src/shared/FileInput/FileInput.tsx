@@ -1,12 +1,15 @@
 import { clsx } from 'clsx';
 import { forwardRef, InputHTMLAttributes, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Button from '../Button';
-import { Spinner } from 'react-bootstrap';
 
 export interface FileInputRef {
+    /** Resets the form control */
     reset(): void;
 }
 
+/**
+ * The possible values of the form control
+ */
 export type FileInputValue = FileList | null;
 
 export interface FileInputProps
@@ -24,7 +27,6 @@ export interface FileInputProps
 }
 
 /**
- * @description
  * Component for handling file input. Parsing of file should be done externally. Supports drag and drop + click to browse.
  *
  * @example
@@ -75,7 +77,6 @@ const FileInput = forwardRef<FileInputRef, FileInputProps>(
                     {files.length === 0 || disableFileNames || loading
                         ? placeholder && <div className="file-input__empty">{placeholder}</div>
                         : files.map((f, i) => (
-                              // eslint-disable-next-line react/no-array-index-key
                               <div key={i} className="file-input__file-name">
                                   {f?.name}
                               </div>

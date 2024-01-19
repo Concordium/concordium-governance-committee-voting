@@ -4536,6 +4536,7 @@ __metadata:
     "@types/react": "npm:^18.2.15"
     "@types/react-dom": "npm:^18.2.7"
     "@vitejs/plugin-react": "npm:^4.2.1"
+    buffer: "npm:^6.0.3"
     ccd-bootstrap: "workspace:^"
     clsx: "npm:^2.1.0"
     eslint: "npm:^8.56.0"

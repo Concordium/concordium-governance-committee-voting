@@ -12,8 +12,10 @@ use rand::thread_rng;
 use serde::ser::SerializeStruct;
 use tauri::{AppHandle, State};
 
-const WALLET_ACCOUNT_PATH: &str = "wallet-account.json";
+/// The file name of the encrypted wallet account.
+const WALLET_ACCOUNT_FILE: &str = "wallet-account.json";
 
+/// Wrapper around [`WalletAccount`]
 #[derive(serde::Deserialize)]
 struct GuardianAccount(WalletAccount);
 
@@ -24,8 +26,10 @@ impl From<WalletAccount> for GuardianAccount {
 /// Holds the currently selected account and corresponding password
 struct ActiveAccount {
     /// The selected account
-    account:  AccountAddress,
+    #[allow(dead_code)] // TODO: remove when it is used
+    account: AccountAddress,
     /// The password used for encryption with the selected account
+    #[allow(dead_code)] // TODO: remove when it is used
     password: Password,
 }
 
@@ -103,13 +107,14 @@ fn import_wallet_account(
     }
     std::fs::create_dir_all(&guardian_dir)?;
 
-    let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_PATH);
-    std::fs::write(wallet_account_path, &encrypted_data)?;
+    let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_FILE);
+    std::fs::write(wallet_account_path, encrypted_data)?;
 
     use_account(wallet_account.0.address, password, state);
     Ok(wallet_account)
 }
 
+/// Represents an IO error happening while loading accounts from disk.
 #[derive(thiserror::Error, Debug)]
 #[error("Could not read app data")]
 struct GetAccountsError(#[from] std::io::Error);
@@ -122,6 +127,7 @@ impl serde::Serialize for GetAccountsError {
     }
 }
 
+/// Gets the accounts which have previously been imported into the application.
 #[tauri::command(async)]
 fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsError> {
     let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
@@ -143,7 +149,7 @@ fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsErr
     Ok(accounts)
 }
 
-/// Describes possible errors when importing an account.
+/// Describes possible errors when loading an account from disk.
 #[derive(thiserror::Error, Debug)]
 enum LoadWalletError {
     /// The given password is incorrect.
@@ -162,6 +168,8 @@ impl serde::Serialize for LoadWalletError {
     }
 }
 
+/// Load a [`GuardianAccount`] from disk, decrypting the contents with
+/// `password`
 #[tauri::command(async)]
 fn load_account(
     account: AccountAddress,
@@ -172,10 +180,10 @@ fn load_account(
         .path_resolver()
         .app_data_dir()
         .unwrap()
-        .join(format!("{}/{WALLET_ACCOUNT_PATH}", account.to_string()));
+        .join(format!("{}/{WALLET_ACCOUNT_FILE}", account));
     let password = Password::from_str(password).map_err(|_| LoadWalletError::IncorrectPassword)?;
 
-    let encrypted_bytes = std::fs::read(&account_path).map_err(|_| LoadWalletError::Corrupted)?;
+    let encrypted_bytes = std::fs::read(account_path).map_err(|_| LoadWalletError::Corrupted)?;
     let encrypted: EncryptedData =
         serde_json::from_slice(&encrypted_bytes).map_err(|_| LoadWalletError::Corrupted)?;
 

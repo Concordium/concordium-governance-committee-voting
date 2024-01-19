@@ -41,9 +41,10 @@ export async function getChecksumResource<T>(
 
 export const useAsyncMemo = <ReturnType>(
     getResult: () => Promise<ReturnType>,
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     handleError: (e: Error) => void = () => {},
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deps?: any[]
+    deps?: any[],
 ): ReturnType | undefined => {
     const [result, setResult] = useState<ReturnType>();
     useEffect(() => {

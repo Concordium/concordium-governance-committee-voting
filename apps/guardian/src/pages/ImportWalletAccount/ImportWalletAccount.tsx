@@ -10,7 +10,7 @@ import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
 import { guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
 import { importWalletAccount } from '~/shared/ffi';
-import { Link, Location, useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { routes } from '~/shell/router';
 import Button from '~/shared/Button';
 
@@ -41,6 +41,9 @@ function PasswordModal({ onSubmit, show, onHide }: PasswordModalProps) {
         reset,
     } = useForm<PasswordForm>({ mode: 'onTouched' });
 
+    /**
+     * Closes the modal
+     */
     const close = useCallback(() => {
         reset();
         onHide();

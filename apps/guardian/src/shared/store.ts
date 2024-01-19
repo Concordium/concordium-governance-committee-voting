@@ -67,10 +67,16 @@ export const electionConfigAtom = atom((get) => {
     return get(electionConfigBaseAtom);
 });
 
+/** The interval at which the guardians state will refresh from the contract */
 const GUARDIANS_UPDATE_INTERVAL = 30000;
+/** The base atom holding the {@linkcode GuardiansState} */
 const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
+/** Whether the guardians state is currently refreshing */
 const guardiansLoadingAtom = atom(false);
 
+/**
+ * Refreshes the guardians state from the election contract at the interval specified by {@linkcode GUARDIANS_UPDATE_INTERVAL}
+ */
 const updateGuardiansStateAtom = atomEffect((get, set) => {
     const value = get(guardiansStateBaseAtom);
 
@@ -91,6 +97,9 @@ const updateGuardiansStateAtom = atomEffect((get, set) => {
     };
 });
 
+/**
+ * Exposes the guardians state.
+ */
 export const guardiansStateAtom = atom((get) => {
     get(updateGuardiansStateAtom);
     return get(guardiansStateBaseAtom);
@@ -101,14 +110,23 @@ export const guardiansStateAtom = atom((get) => {
  */
 export const selectedAccountAtom = atom<WalletAccount | undefined>(undefined);
 
+/**
+ * Base atom holding the list of accounts imported into the application
+ */
 const accountsBaseAtom = atom<AccountAddress.Type[] | undefined>(undefined);
 
+/**
+ * Loads the accounts imported into the application.
+ */
 const loadAccountsAtom = atomEffect((get, set) => {
     if (get(accountsBaseAtom) === undefined) {
         void getAccounts().then((accounts) => set(accountsBaseAtom, accounts));
     }
 });
 
+/**
+ * Exposes the accounts imported into the application.
+ */
 export const accountsAtom = atom((get) => {
     get(loadAccountsAtom);
     return get(accountsBaseAtom);

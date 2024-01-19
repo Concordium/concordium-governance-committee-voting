@@ -13,15 +13,22 @@ import { selectedAccountAtom, accountsAtom } from '~/shared/store';
 import { routes } from '~/shell/router';
 
 type PasswordPromptProps = {
+    /** Whether the modal should show */
     show: boolean;
+    /** Request to hide the modal */
     onHide(): void;
+    /** Called when an account is successfully loaded from disk */
     onAccountLoad(walletAccount: WalletAccount): void;
 };
 
 type PasswordPromptForm = {
+    /** The password to use for decryption */
     password: string;
 };
 
+/**
+ * Component to get password to use for decrypting the details stored for an account.
+ */
 function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
     const { getValues } = useFormContext<SelectAccountForm>();
     const { handleSubmit, register, watch, formState, trigger, reset } = useForm<PasswordPromptForm>();
@@ -91,9 +98,13 @@ function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
 }
 
 type AccountOptionProps = {
+    /** The account to represent */
     account: AccountAddress.Type;
 };
 
+/**
+ * Represents an account which can be selected.
+ */
 function AccountOption({ account }: AccountOptionProps) {
     const showAccount = useMemo(() => accountShowShort(account), [account]);
     const { register } = useFormContext();
@@ -110,9 +121,13 @@ function AccountOption({ account }: AccountOptionProps) {
 }
 
 type SelectAccountForm = {
+    /** The account to select */
     account: Base58String;
 };
 
+/**
+ * Component which enables the user to select from the list of accounts which have already been imported.
+ */
 export default function SelectAccount() {
     const accounts = useAtomValue(accountsAtom);
     const nav = useNavigate();

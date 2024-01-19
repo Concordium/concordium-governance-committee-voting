@@ -17,6 +17,7 @@
     "dependencies": {
         "@concordium/web-sdk": "^7.1.0",
         "@tauri-apps/api": "^1.5.2",
+        "buffer": "^6.0.3",
         "ccd-bootstrap": "workspace:^",
         "clsx": "^2.1.0",
         "jotai": "^2.5.1",

@@ -16,6 +16,9 @@ export function getElectionConfig(): Promise<ElectionContract.ReturnValueViewCon
     return ElectionContract.getElectionConfig(contract);
 }
 
+/**
+ * Gets the current {@linkcode GuardiansState} as registered in the contract
+ */
 export async function getGuardiansState(): Promise<GuardiansState | undefined> {
     const result = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
     return ElectionContract.parseReturnValueViewGuardiansState(result);

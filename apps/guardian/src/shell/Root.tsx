@@ -18,7 +18,7 @@ function EnsureGlobalState() {
 }
 
 /**
- * The application root. This is in charge of setting up global contexts to be available from {@linkcode router} and
+ * The application root. This is in charge of setting up global contexts to be available from {@linkcode App} and
  * below (in the component tree).
  */
 export default function Root() {

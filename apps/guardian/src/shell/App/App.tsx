@@ -10,9 +10,13 @@ import { AccountAddress } from '@concordium/web-sdk';
 
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
+    /** Whether the configuration item should render as "connected" */
     connected: boolean;
 }>;
 
+/**
+ * Renders a configuration item.
+ */
 function ConfigurationItem({ className, connected, children }: ConfigurationItemProps) {
     return (
         <div className={clsx(className)}>
@@ -22,6 +26,9 @@ function ConfigurationItem({ className, connected, children }: ConfigurationItem
     );
 }
 
+/**
+ * Renders the application configuration, i.e. the chain, contract, and the guardian account selected.
+ */
 function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const account = useAtomValue(selectedAccountAtom);
@@ -43,6 +50,9 @@ function Configuration() {
     );
 }
 
+/**
+ * The root layout component of the application.
+ */
 export default function App() {
     return (
         <>

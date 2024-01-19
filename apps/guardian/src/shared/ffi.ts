@@ -40,11 +40,24 @@ export function importWalletAccount(walletExport: WalletExportFormat, password: 
     return ensureErrors(invoke<WalletAccount>('import_wallet_account', { walletAccount: walletExport, password }));
 }
 
+/**
+ * Wraps `get_accounts` invocation. Gets the list of accounts which have already been imported into the application.
+ *
+ * @returns The list of {@linkcode AccountAddress.Type} found.
+ */
 export async function getAccounts(): Promise<AccountAddress.Type[]> {
     const accounts = await ensureErrors(invoke<Base58String[]>('get_accounts'));
     return accounts.map(AccountAddress.fromBase58);
 }
 
+/**
+ * Wraps `load_account` invocation, which loads the {@linkcode WalletAccount} from disk.
+ *
+ * @param account - The account to load
+ * @param password - The password to use for decrypting the data file associated with the account.
+ *
+ * @returns The {@linkcode WalletAccount}.
+ */
 export function loadAccount(account: AccountAddress.Type, password: string): Promise<WalletAccount> {
     return ensureErrors(invoke<WalletAccount>('load_account', { account: AccountAddress.toBase58(account), password }));
 }
