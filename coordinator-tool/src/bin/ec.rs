@@ -582,12 +582,16 @@ async fn get_election_data(
             .context("Unable to parse election parameters.")?
     };
 
-    let guardian_public_keys = config
+    let mut guardian_public_keys = config
         .guardian_keys
         .iter()
         .map(|bytes| rmp_serde::from_slice(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
+
+    // Sort to make sure the public keys are in the order of indices
+    // since some verification commands depend on it.
+    guardian_public_keys.sort_by_key(|g| g.i);
 
     Ok(ElectionData {
         manifest: election_manifest,
@@ -644,7 +648,7 @@ async fn handle_vote_collection(
             drop(receiver);
             cancel_handle.abort();
             drop(cancel_handle);
-            eprintln!("Done indexing");
+            eprintln!("Done indexing.");
             break;
         }
 
@@ -689,9 +693,10 @@ async fn handle_vote_collection(
             delegators,
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
-            eprintln!("Scaling the ballot cast by transaction {hash}.");
-            // TODO: Scale the ballot for this account.
-            tally.update(ballot);
+            let factor = amount.micro_ccd().into();
+            eprintln!("Scaling the ballot cast by transaction {hash} by a factor {factor}.");
+            // TODO: After benchmarks are complete adjust the factor
+            tally.update(ballot.scale(&verification_context.parameters.fixed_parameters, factor));
         } // else the account did not vote, so nothing to do.
     }
     let tally = tally.finalize();

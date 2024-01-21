@@ -44,22 +44,28 @@ struct Args {
         default_value = "http://localhost:20001",
         global = true
     )]
-    node_endpoint: concordium_rust_sdk::v2::Endpoint,
+    node_endpoint:     concordium_rust_sdk::v2::Endpoint,
     #[arg(
         long = "module",
         help = "Source module from which to initialize the contract instances."
     )]
-    module:        std::path::PathBuf,
+    module:            std::path::PathBuf,
     #[arg(long = "keys", help = "Directory with account keys.")]
-    keys:          std::path::PathBuf,
+    keys:              std::path::PathBuf,
     #[arg(
         long = "num-options",
         help = "Number of options to vote for.",
         default_value = "5"
     )]
-    num_options:   usize,
+    num_options:       usize,
+    #[arg(
+        long = "election-duration",
+        help = "Duration of the election in minutes. Should be at least 1.",
+        default_value = "2"
+    )]
+    election_duration: i64,
     #[arg(long = "out", help = "Output directory for all the artifacts.")]
-    out:           std::path::PathBuf,
+    out:               std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -103,9 +109,10 @@ async fn main() -> anyhow::Result<()> {
         (admin, guardian_keys)
     };
 
-    let out_dir = {
-        std::fs::create_dir_all(&args.out)?;
-        args.out
+    let (params_out, guardian_out) = {
+        let params_out = args.out.join("static").join("electionguard");
+        std::fs::create_dir_all(&params_out)?;
+        (params_out, args.out)
     };
 
     let (manifest, manifest_digest) = {
@@ -131,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let manifest_json = serde_json::to_vec_pretty(&manifest)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&manifest_json).into();
-        std::fs::write(out_dir.join("manifest.json"), manifest_json)?;
+        std::fs::write(params_out.join("election-manifest.json"), manifest_json)?;
         (manifest, digest)
     };
 
@@ -156,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let parameters_json = serde_json::to_vec_pretty(&parameters)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&parameters_json).into();
-        std::fs::write(out_dir.join("parameters.json"), parameters_json)?;
+        std::fs::write(params_out.join("election-parameters.json"), parameters_json)?;
         (parameters, digest)
     };
 
@@ -201,7 +208,7 @@ async fn main() -> anyhow::Result<()> {
             .context("Time overflow.")?;
         let election_start = start_timestamp.try_into()?;
         let end_timestamp = chrono::Utc::now()
-            .checked_add_signed(chrono::Duration::minutes(4))
+            .checked_add_signed(chrono::Duration::minutes(args.election_duration + 2))
             .context("Time overflow")?;
 
         let election_end = end_timestamp.try_into()?;
@@ -223,11 +230,11 @@ async fn main() -> anyhow::Result<()> {
             guardians: guardians.iter().map(|g| g.address).collect(),
             eligible_voters,
             election_manifest: contract::ChecksumUrl {
-                url:  "http://localhost:7000/manifest.json".into(),
+                url:  "http://localhost:7000/static/electionguard/election-manifest.json".into(),
                 hash: contract::HashSha2256(manifest_digest),
             },
             election_parameters: contract::ChecksumUrl {
-                url:  "http://localhost:7000/parameters.json".into(),
+                url:  "http://localhost:7000/static/electionguard/election-parameters.json".into(),
                 hash: contract::HashSha2256(parameters_digest),
             },
             election_description: "Test election".into(),
@@ -288,6 +295,11 @@ async fn main() -> anyhow::Result<()> {
                 Some(format!("Test guardian {g}.")),
             );
             let public_key = key.make_public_key();
+            std::fs::write(
+                guardian_out.join(format!("guardian-{g}.json")),
+                serde_json::to_string_pretty(&key)?,
+            )
+            .context("Unable to write guardian keys.")?;
 
             let tx_dry_run = contract_client
                 .dry_run_update::<RegisterGuardianPublicKeyParameter, ViewError>(
@@ -363,13 +375,14 @@ async fn main() -> anyhow::Result<()> {
     // Now all the key shares are registered. Check all of them.
     let guardian_secret_shares = {
         let mut guardian_secret_shares = Vec::new();
-        let guardians_state = contract_client
+        let mut guardians_state = contract_client
             .view::<_, GuardiansState, ViewError>(
                 "viewGuardiansState",
                 &(),
                 BlockIdentifier::LastFinal,
             )
             .await?;
+        guardians_state.sort_by_key(|(_, g)| g.index);
         for (g_i, secret_key) in (1..).zip(&guardian_secret_keys) {
             let mut guardian_key_shares = Vec::new();
             for (_, guardian_state) in &guardians_state {
@@ -407,13 +420,45 @@ async fn main() -> anyhow::Result<()> {
         guardian_secret_shares
     };
 
-    // TODO: Register "Verified" in the contract state.
+    // Post that each guardian is happy.
+    {
+        eprintln!("Publishing that each guardian is happy with all the other guardian's shares.");
+        for guardian in &guardians {
+            let tx_dry_run = contract_client
+                .dry_run_update::<contract::GuardianStatus, ViewError>(
+                    "registerGuardianStatus",
+                    Amount::zero(),
+                    guardian.address,
+                    &contract::GuardianStatus::VerificationSuccessful,
+                )
+                .await?;
+
+            let tx_hash = tx_dry_run.send(guardian).await?;
+
+            eprintln!(
+                "Submitted approval for guardian {} application with transaction hash {tx_hash}",
+                guardian.address
+            );
+
+            if let Err(err) = tx_hash.wait_for_finalization().await {
+                anyhow::bail!("Registering verification status failed: {err:#?}");
+            } else {
+                eprintln!(
+                    "Registered verification successful for guardian {}",
+                    guardian.address
+                );
+            }
+        }
+    }
 
     {
         let to_wait = start_timestamp.signed_duration_since(chrono::Utc::now());
         let num_millis = to_wait.num_milliseconds();
         if num_millis > 0 {
-            eprintln!("Waiting for {} seconds.", num_millis / 1000);
+            eprintln!(
+                "Waiting for {} seconds for the election to start.",
+                num_millis / 1000
+            );
             tokio::time::sleep(std::time::Duration::from_millis(num_millis as u64)).await;
         }
     }

@@ -42,7 +42,7 @@ parameters.
 To build the tool make sure you have the repository submodules initialized
 
 ```console
-git submodul update --init --recursive
+git submodule update --init --recursive
 ```
 
 The tool can be built by running
