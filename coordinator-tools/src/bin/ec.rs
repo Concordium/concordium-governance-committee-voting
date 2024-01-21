@@ -35,11 +35,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Command line configuration of the application.
 #[derive(Debug, clap::Parser)]
+#[command(author, version, about)]
 struct Args {
     /// The node used for querying
     #[arg(
         long = "node",
-        help = "The endpoints are expected to point to concordium node grpc v2 API's.",
+        help = "The node endpoint.",
         default_value = "http://localhost:20001",
         global = true
     )]
@@ -54,7 +55,7 @@ enum Command {
     /// during the period.
     #[command(name = "initial-weights")]
     InitialWeights(RangeWithOutput),
-    /// Look for delegations of the vote in the supplied period
+    /// Look for delegations of the vote during the election period.
     #[command(name = "final-weights")]
     FinalWeights {
         #[arg(long = "out", help = "File to output data into.")]
@@ -69,9 +70,11 @@ enum Command {
         )]
         final_weights:   std::path::PathBuf,
     },
-    /// Collect votes.
+    /// Tally all the votes.
     #[command(name = "tally")]
     Tally(#[clap(flatten)] TallyArgs),
+    /// Compute and optionally post the final result of the election in the
+    /// contract.
     FinalResult {
         #[arg(long = "contract", help = "Address of the election contract.")]
         contract:    ContractAddress,
