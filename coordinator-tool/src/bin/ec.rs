@@ -693,13 +693,16 @@ async fn handle_vote_collection(
             delegators,
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
-            let factor = amount.micro_ccd().into();
+            let factor = amount.micro_ccd() / 1_000_000u64;
             eprintln!(
                 "Scaling the ballot cast by transaction {hash} by a factor {factor}. Delegators \
                  {delegators}."
             );
             // TODO: After benchmarks are complete adjust the factor
-            tally.update(ballot.scale(&verification_context.parameters.fixed_parameters, factor));
+            tally.update(ballot.scale(
+                &verification_context.parameters.fixed_parameters,
+                factor.into(),
+            ));
         } // else the account did not vote, so nothing to do.
     }
     let tally = tally.finalize();
