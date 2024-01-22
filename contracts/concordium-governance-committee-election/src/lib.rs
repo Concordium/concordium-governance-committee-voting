@@ -577,13 +577,13 @@ fn view_election_result(
     return_value = "Option<Vec<u8>>",
     error = "Error"
 )]
-fn view_encrypted_tally<'a>(
+fn view_encrypted_tally(
     _ctx: &ReceiveContext,
-    host: &'a Host<State>,
+    host: &Host<State>,
 ) -> ReceiveResult<Option<Vec<u8>>> {
     if let Some(result) = &host.state.encrypted_tally.get() {
         Ok(Some(result.clone()))
     } else {
-        return Ok(None);
+        Ok(None)
     }
 }

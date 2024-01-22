@@ -39,7 +39,7 @@ fn test_init_errors() {
     let now = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::seconds(5))
         .unwrap();
-    let future_1d = now.clone().checked_add_days(chrono::Days::new(1)).unwrap();
+    let future_1d = now.checked_add_days(chrono::Days::new(1)).unwrap();
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = ChecksumUrl {
@@ -81,7 +81,7 @@ fn test_init_errors() {
 
     // `election_start` is in the past
     let mut init_param = get_init_param();
-    let past_1d = now.clone().checked_sub_days(chrono::Days::new(1)).unwrap();
+    let past_1d = now.checked_sub_days(chrono::Days::new(1)).unwrap();
     init_param.election_start = past_1d.try_into().expect("Valid datetime");
     initialize(&module_ref, &init_param, &mut chain).expect_err("Start time must be in the future");
 
