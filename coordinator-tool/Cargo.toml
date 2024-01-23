@@ -9,7 +9,7 @@ edition = "2021"
 anyhow = "1.0"
 chrono = "0.4.31"
 clap = { version = "4.4", features = ["env", "derive"] }
-concordium-rust-sdk = { path = "../deps/concordium-rust-smart-contracts/concordium-rust-sdk/", version = "3" } # TODO: Use published version once new version is published.
+concordium-rust-sdk = { path = "../deps/concordium-rust-smart-contracts/concordium-rust-sdk/", version = "4" } # TODO: Use published version once new version is published.
 concordium_governance_committee_election = { version = "0.1.0", path = "../contracts/concordium-governance-committee-election" }
 csv = "1.3"
 eg = { version = "0.1", path = "../deps/electionguard-rust/src/eg" }
