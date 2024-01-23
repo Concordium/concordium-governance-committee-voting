@@ -30,6 +30,7 @@ use eg::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
+use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
 use std::collections::BTreeMap;
@@ -286,6 +287,7 @@ async fn main() -> anyhow::Result<()> {
         let mut guardian_keys = Vec::with_capacity(guardians.len());
         let mut guardian_public_keys = Vec::with_capacity(guardians.len());
         // create new guardians
+        let futs = FuturesUnordered::new();
         for (g, g_acc) in (1..=guardians.len()).zip(&guardians) {
             let index = GuardianIndex::from_one_based_index(g as u32)?;
             let key = GuardianSecretKey::generate(
@@ -301,28 +303,40 @@ async fn main() -> anyhow::Result<()> {
             )
             .context("Unable to write guardian keys.")?;
 
-            let tx_dry_run = contract_client
-                .dry_run_update::<RegisterGuardianPublicKeyParameter, ViewError>(
-                    "registerGuardianPublicKey",
-                    Amount::zero(),
-                    g_acc.address,
-                    &rmp_serde::to_vec(&public_key)?,
-                )
-                .await?;
+            let param = rmp_serde::to_vec(&public_key)?;
+            let mut contract_client = contract_client.clone();
+            let fut = async move {
+                let tx_dry_run = contract_client
+                    .dry_run_update::<RegisterGuardianPublicKeyParameter, ViewError>(
+                        "registerGuardianPublicKey",
+                        Amount::zero(),
+                        g_acc.address,
+                        &param,
+                    )
+                    .await?;
 
-            let tx_hash = tx_dry_run.send(g_acc).await?;
+                let tx_hash = tx_dry_run.send(g_acc).await?;
 
-            eprintln!("Submitted guardian {g} key application with transaction hash {tx_hash}");
+                eprintln!("Submitted guardian {g} key application with transaction hash {tx_hash}");
 
-            if let Err(err) = tx_hash.wait_for_finalization().await {
-                anyhow::bail!("Registering public key failed: {err:#?}");
-            }
+                if let Err(err) = tx_hash.wait_for_finalization().await {
+                    anyhow::bail!("Registering public key failed: {err:#?}");
+                }
+                Ok(g)
+            };
+            futs.push(fut);
 
-            eprintln!("Public key for guardian {g} is registered");
             guardian_public_keys.push(public_key);
             guardian_keys.push(key);
         }
 
+        futs.try_for_each(|g| async move {
+            eprintln!("Public key for guardian {g} is registered");
+            Ok(())
+        })
+        .await?;
+
+        let futs = FuturesUnordered::new();
         for ((g, g_acc), dealer_private_key) in (1..).zip(&guardians).zip(&guardian_keys) {
             let mut shares = Vec::new();
             for dealer_public_key in &guardian_public_keys {
@@ -335,40 +349,37 @@ async fn main() -> anyhow::Result<()> {
                 shares.push(share);
             }
 
-            let nonce = client
-                .get_next_account_sequence_number(&g_acc.address)
-                .await?;
+            let param = rmp_serde::to_vec(&shares)?;
 
-            let metadata = ContractTransactionMetadata {
-                sender_address: g_acc.address,
-                nonce:          nonce.nonce,
-                expiry:         TransactionTime::hours_after(1),
-                energy:         transactions::send::GivenEnergy::Add(20000.into()),
-                amount:         Amount::zero(),
+            let mut contract_client = contract_client.clone();
+            let fut = async move {
+                let dry_run = contract_client
+                    .dry_run_update::<Vec<u8>, ViewError>(
+                        "registerGuardianEncryptedShare",
+                        Amount::zero(),
+                        g_acc.address,
+                        &param,
+                    )
+                    .await?;
+
+                let tx_hash = dry_run.send(g_acc).await?;
+
+                eprintln!("Submitted guardian's key shares with transaction hash {tx_hash}");
+
+                if let Err(err) = tx_hash.wait_for_finalization().await {
+                    anyhow::bail!("Registering key shares failed: {err:#?}");
+                }
+                Ok(g)
             };
-
-            let tx_hash = contract_client
-                .update::<Vec<u8>, anyhow::Error>(
-                    g_acc,
-                    &metadata,
-                    "registerGuardianEncryptedShare",
-                    &rmp_serde::to_vec(&shares)?,
-                )
-                .await?;
-
-            eprintln!("Submitted guardian's key shares with transaction hash {tx_hash}");
-
-            if let Some(err) = client
-                .wait_until_finalized(&tx_hash)
-                .await?
-                .1
-                .is_rejected_account_transaction()
-            {
-                anyhow::bail!("Registering key shares failed: {err:#?}");
-            }
-
-            eprintln!("Key shares for guardian {g} registered");
+            futs.push(fut);
         }
+
+        futs.try_for_each(|g| async move {
+            eprintln!("Key shares for guardian {g} registered");
+            Ok(())
+        })
+        .await?;
+
         (guardian_keys, guardian_public_keys)
     };
 
@@ -423,32 +434,40 @@ async fn main() -> anyhow::Result<()> {
     // Post that each guardian is happy.
     {
         eprintln!("Publishing that each guardian is happy with all the other guardian's shares.");
+        let futs = FuturesUnordered::new();
         for guardian in &guardians {
-            let tx_dry_run = contract_client
-                .dry_run_update::<contract::GuardianStatus, ViewError>(
-                    "registerGuardianStatus",
-                    Amount::zero(),
-                    guardian.address,
-                    &contract::GuardianStatus::VerificationSuccessful,
-                )
-                .await?;
+            let mut contract_client = contract_client.clone();
+            let fut = async move {
+                let tx_dry_run = contract_client
+                    .dry_run_update::<contract::GuardianStatus, ViewError>(
+                        "registerGuardianStatus",
+                        Amount::zero(),
+                        guardian.address,
+                        &contract::GuardianStatus::VerificationSuccessful,
+                    )
+                    .await?;
 
-            let tx_hash = tx_dry_run.send(guardian).await?;
+                let tx_hash = tx_dry_run.send(guardian).await?;
 
-            eprintln!(
-                "Submitted approval for guardian {} application with transaction hash {tx_hash}",
-                guardian.address
-            );
-
-            if let Err(err) = tx_hash.wait_for_finalization().await {
-                anyhow::bail!("Registering verification status failed: {err:#?}");
-            } else {
                 eprintln!(
-                    "Registered verification successful for guardian {}",
+                    "Submitted approval for guardian {} application with transaction hash \
+                     {tx_hash}",
                     guardian.address
                 );
-            }
+
+                if let Err(err) = tx_hash.wait_for_finalization().await {
+                    anyhow::bail!("Registering verification status failed: {err:#?}");
+                } else {
+                    eprintln!(
+                        "Registered verification successful for guardian {}",
+                        guardian.address
+                    );
+                }
+                Ok::<(), anyhow::Error>(())
+            };
+            futs.push(fut);
         }
+        futs.try_collect::<()>().await?;
     }
 
     {
@@ -487,7 +506,7 @@ async fn main() -> anyhow::Result<()> {
                 &[(contest, selections)].into(),
             );
             let ballot_data = rmp_serde::to_vec(&ballot)?;
-
+            eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client
                 .get_next_account_sequence_number(&voter.address)
                 .await?;
