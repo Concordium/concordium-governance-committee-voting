@@ -5,10 +5,12 @@ use eg::{
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
+    guardian_public_key::GuardianPublicKey,
     hashes::Hashes,
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
+use election_common::ByteConvert;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, convert::TryFrom};
@@ -62,19 +64,6 @@ export type ElectionParameters = {
     };
 };"#;
 
-/// Bytes representation of a guardian public key
-#[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
-pub struct GuardianPublicKey(Vec<u8>);
-
-impl TryFrom<GuardianPublicKey> for eg::guardian_public_key::GuardianPublicKey {
-    type Error = JsError;
-
-    fn try_from(value: GuardianPublicKey) -> Result<Self, Self::Error> {
-        let pub_key = rmp_serde::from_slice::<Self>(&value.0)?;
-        Ok(pub_key)
-    }
-}
-
 /// The contextual parameters necessary to generate the encrypted ballot
 #[derive(Debug, Serialize, Deserialize, Clone, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -86,17 +75,17 @@ pub struct EncryptedBallotContext {
     /// election.
     pub election_parameters:  ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
-    pub guardian_public_keys: Vec<GuardianPublicKey>,
+    pub guardian_public_keys: Vec<Vec<u8>>,
 }
 
 impl TryFrom<EncryptedBallotContext> for PreVotingData {
     type Error = JsError;
 
     fn try_from(value: EncryptedBallotContext) -> Result<Self, Self::Error> {
-        let guardian_public_keys: Vec<eg::guardian_public_key::GuardianPublicKey> = value
+        let guardian_public_keys: Vec<GuardianPublicKey> = value
             .guardian_public_keys
             .into_iter()
-            .map(eg::guardian_public_key::GuardianPublicKey::try_from)
+            .map(GuardianPublicKey::decode)
             .collect::<Result<_, _>>()?;
         let joint_election_public_key =
             JointElectionPublicKey::compute(&value.election_parameters, &guardian_public_keys)
@@ -182,7 +171,7 @@ pub fn get_encrypted_ballot(
         primary_nonce.as_ref(),
         &selections.into(),
     );
-    let bytes = rmp_serde::to_vec(&ballot)?;
-    let js_value = js_sys::Uint8Array::from(bytes.as_slice());
+
+    let js_value = js_sys::Uint8Array::from(ballot.encode()?.as_slice());
     Ok(js_value)
 }

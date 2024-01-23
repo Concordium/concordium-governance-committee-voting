@@ -18,6 +18,7 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
+use election_common::ByteConvert;
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::BallotSubmission,
@@ -328,10 +329,8 @@ fn get_ballot_submission(
 
     let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
         .context("Failed to parse ballot from transaction message")
-        .and_then(|ballot| {
-            rmp_serde::from_slice::<BallotEncrypted>(&ballot)
-                .context("Failed to parse ballot from transaction parameter")
-        }) {
+        .and_then(|bytes| BallotEncrypted::decode(bytes).context("Failed parse encrypted ballot"))
+    {
         Ok(ballot) => ballot,
         Err(err) => {
             tracing::warn!("Could not parse ballot: {}", err);
@@ -655,8 +654,8 @@ async fn main() -> anyhow::Result<()> {
     let contract_config = get_contract_config(&mut client, &config.contract_address).await?;
     let guardian_public_keys = contract_config
         .guardian_keys
-        .iter()
-        .map(|bytes| rmp_serde::from_slice(bytes))
+        .into_iter()
+        .map(GuardianPublicKey::decode)
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
     let verification_context =
