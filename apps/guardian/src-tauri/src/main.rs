@@ -8,9 +8,15 @@ use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress,
     types::WalletAccount,
 };
-use rand::thread_rng;
+use eg::{
+    election_manifest::ElectionManifest, election_parameters::ElectionParameters,
+    guardian::GuardianIndex, guardian_public_key::GuardianPublicKey,
+    guardian_secret_key::GuardianSecretKey,
+};
+use rand::{thread_rng, Rng};
 use serde::ser::SerializeStruct;
 use tauri::{AppHandle, State};
+use util::csprng::Csprng;
 
 /// The file name of the encrypted wallet account.
 const WALLET_ACCOUNT_FILE: &str = "wallet-account.json";
@@ -23,18 +29,37 @@ impl From<WalletAccount> for GuardianAccount {
     fn from(value: WalletAccount) -> Self { GuardianAccount(value) }
 }
 
+/// The data stored for a guardian.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Guardian {
+    /// The guardian account
+    account: GuardianAccount,
+    /// The guardian index used by election guard
+    index:   GuardianIndex,
+}
+
 /// Holds the currently selected account and corresponding password
 struct ActiveAccount {
     /// The selected account
-    #[allow(dead_code)] // TODO: remove when it is used
-    account: AccountAddress,
+    account:        AccountAddress,
     /// The password used for encryption with the selected account
     #[allow(dead_code)] // TODO: remove when it is used
     password: Password,
+    /// The guardian index of the guardian.
+    guardian_index: GuardianIndex,
 }
 
 #[derive(Default)]
 struct ActiveAccountState(Mutex<Option<ActiveAccount>>);
+
+struct ElectionGuardConfig {
+    #[allow(dead_code)] // TODO: remove when it is used
+    manifest: ElectionManifest,
+    parameters: ElectionParameters,
+}
+
+#[derive(Default)]
+struct ElectionGuardState(Mutex<Option<ElectionGuardConfig>>);
 
 impl serde::Serialize for GuardianAccount {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -70,9 +95,18 @@ impl serde::Serialize for ImportWalletError {
 }
 
 /// Stores the account in global state.
-fn use_account(account: AccountAddress, password: Password, state: State<ActiveAccountState>) {
+fn use_account(
+    account: AccountAddress,
+    password: Password,
+    guardian_index: GuardianIndex,
+    state: State<ActiveAccountState>,
+) {
     let mut active_account = state.0.lock().unwrap(); // Only errors on panic from other threads
-    *active_account = Some(ActiveAccount { account, password });
+    *active_account = Some(ActiveAccount {
+        account,
+        password,
+        guardian_index,
+    });
 }
 
 /// Handle a wallet import. Creates a directory for storing data associated with
@@ -84,14 +118,19 @@ fn use_account(account: AccountAddress, password: Password, state: State<ActiveA
 #[tauri::command(async)]
 fn import_wallet_account(
     wallet_account: GuardianAccount,
+    guardian_index: GuardianIndex,
     password: &str,
     state: State<ActiveAccountState>,
     handle: AppHandle,
 ) -> Result<GuardianAccount, ImportWalletError> {
     let account = wallet_account.0.address;
     let password = Password::from_str(password)?;
+    let guardian_data = Guardian {
+        account: wallet_account,
+        index:   guardian_index,
+    };
     // Serialization will not fail.
-    let plaintext = serde_json::to_string(&wallet_account).unwrap();
+    let plaintext = serde_json::to_string(&guardian_data).unwrap();
     let mut rng = thread_rng();
     // Serialization will not fail.
     let encrypted_data = serde_json::to_vec(&encrypt(&password, &plaintext, &mut rng)).unwrap();
@@ -110,8 +149,8 @@ fn import_wallet_account(
     let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_FILE);
     std::fs::write(wallet_account_path, encrypted_data)?;
 
-    use_account(wallet_account.0.address, password, state);
-    Ok(wallet_account)
+    use_account(account, password, guardian_index, state);
+    Ok(guardian_data.account)
 }
 
 /// Represents an IO error happening while loading accounts from disk.
@@ -195,13 +234,75 @@ fn load_account(
     Ok(wallet_account.into())
 }
 
+#[tauri::command(async)]
+fn set_eg_config(
+    manifest: ElectionManifest,
+    parameters: ElectionParameters,
+    state: State<ElectionGuardState>,
+) {
+    let mut active_account = state.0.lock().unwrap(); // Only errors on panic from other threads
+    *active_account = Some(ElectionGuardConfig {
+        manifest,
+        parameters,
+    });
+}
+
+/// Describes possible errors when loading an account from disk.
+#[derive(thiserror::Error, Debug)]
+enum GenerateKeyPairError {
+    /// Internal error; should not happen.
+    #[error("{0}")]
+    Internal(String),
+}
+
+impl serde::Serialize for GenerateKeyPairError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command(async)]
+fn generate_key_pair(
+    account_state: State<ActiveAccountState>,
+    eg_state: State<ElectionGuardState>,
+) -> Result<GuardianPublicKey, GenerateKeyPairError> {
+    let seed: [u8; 32] = thread_rng().gen();
+    let mut csprng = Csprng::new(&seed);
+    let election_config_guard = eg_state.0.lock().unwrap();
+    let election_config = election_config_guard
+        .as_ref()
+        .ok_or(GenerateKeyPairError::Internal(
+            "Election config not set".to_string(),
+        ))?;
+    let active_account_guard = account_state.0.lock().unwrap();
+    let active_account = active_account_guard
+        .as_ref()
+        .ok_or(GenerateKeyPairError::Internal(
+            "Active account not set".to_string(),
+        ))?;
+
+    let secret_key = GuardianSecretKey::generate(
+        &mut csprng,
+        &election_config.parameters,
+        active_account.guardian_index,
+        active_account.account.to_string().into(),
+    );
+    let public_key = secret_key.make_public_key();
+    Ok(public_key)
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(ActiveAccountState::default())
+        .manage(ElectionGuardState::default())
         .invoke_handler(tauri::generate_handler![
             import_wallet_account,
             get_accounts,
-            load_account
+            load_account,
+            set_eg_config,
+            generate_key_pair,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

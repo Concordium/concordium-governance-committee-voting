@@ -1,5 +1,6 @@
 import { AccountAddress, AccountKeys, Base58String, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
+import { ElectionManifest, ElectionParameters } from 'shared/types';
 
 /**
  * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
@@ -36,8 +37,14 @@ export type WalletAccount = {
  * @returns The {@linkcode WalletAccount} when import is successful.
  * @throws If the account has already been imported or if the password is infallible
  */
-export function importWalletAccount(walletExport: WalletExportFormat, password: string): Promise<WalletAccount> {
-    return ensureErrors(invoke<WalletAccount>('import_wallet_account', { walletAccount: walletExport, password }));
+export function importWalletAccount(
+    walletExport: WalletExportFormat,
+    guardianIndex: number,
+    password: string,
+): Promise<WalletAccount> {
+    return ensureErrors(
+        invoke<WalletAccount>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password }),
+    );
 }
 
 /**
@@ -60,4 +67,13 @@ export async function getAccounts(): Promise<AccountAddress.Type[]> {
  */
 export function loadAccount(account: AccountAddress.Type, password: string): Promise<WalletAccount> {
     return ensureErrors(invoke<WalletAccount>('load_account', { account: AccountAddress.toBase58(account), password }));
+}
+
+export function setElectionGuardConfig(manifest: ElectionManifest, parameters: ElectionParameters) {
+    return ensureErrors(invoke('load_account', { manifest, parameters }));
+}
+
+export async function generateKeyPair(): Promise<unknown> {
+    const byteArray = await ensureErrors(invoke<unknown>('generate_key_pair'));
+    return byteArray;
 }

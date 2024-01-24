@@ -5,7 +5,7 @@ import { ElectionManifest, ElectionParameters } from 'shared/types';
 import { getChecksumResource } from 'shared/util';
 
 import { GuardiansState, getElectionConfig, getGuardiansState } from './election-contract';
-import { WalletAccount, getAccounts } from './ffi';
+import { setElectionGuardConfig, WalletAccount, getAccounts } from './ffi';
 
 /**
  * Representation of the election configration.
@@ -17,10 +17,6 @@ export interface ElectionConfig {
     end: Date;
     /** The election description */
     description: string;
-    /** The election manifest, used by election guard */
-    manifest: ElectionManifest;
-    /** The election parameters, used by election guard */
-    parameters: ElectionParameters;
 }
 
 /**
@@ -46,12 +42,12 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 
         const [manifest, parameters] = await Promise.all([electionManifestPromise, electionParametersPromise]);
 
+        void setElectionGuardConfig(manifest, parameters);
+
         const mappedConfig: ElectionConfig = {
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
             description: config.election_description,
-            manifest,
-            parameters,
         };
 
         set(electionConfigBaseAtom, mappedConfig);

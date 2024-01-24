@@ -13,6 +13,8 @@ edition = "2021"
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
+eg = {path = "../../../deps/electionguard-rust/src/eg"}
+util = {path = "../../../deps/electionguard-rust/src/util"}
 tauri = { version = "1.5", features = [ "fs-read-dir", "fs-exists", "fs-write-file", "fs-read-file", "shell-open"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

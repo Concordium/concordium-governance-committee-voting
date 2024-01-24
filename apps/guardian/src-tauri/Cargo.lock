@@ -1263,6 +1263,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "eg"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.5",
+ "digest",
+ "hex-literal",
+ "hmac",
+ "lazy_static",
+ "num-bigint",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "sha2",
+ "static_assertions",
+ "thiserror",
+ "util",
+]
+
+[[package]]
 name = "either"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1843,12 +1863,14 @@ name = "guardian"
 version = "0.0.0"
 dependencies = [
  "concordium-rust-sdk",
+ "eg",
  "rand 0.8.5",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "thiserror",
+ "util",
 ]
 
 [[package]]
@@ -1930,6 +1952,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hmac"
@@ -2521,6 +2549,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -3743,6 +3772,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "string_cache"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4532,6 +4567,21 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "util"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.5",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha3",
+]
 
 [[package]]
 name = "uuid"
