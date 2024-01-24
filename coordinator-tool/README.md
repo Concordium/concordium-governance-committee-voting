@@ -51,4 +51,4 @@ The tool can be built by running
 cargo build --release
 ```
 
-This will produce a single binary `ec` in `target/release` directory.
+This will produce a single binary `election-coordinator` in `target/release` directory.
