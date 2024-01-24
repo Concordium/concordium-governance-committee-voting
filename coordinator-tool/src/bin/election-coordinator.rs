@@ -478,11 +478,17 @@ async fn handle_decrypt(
             .map(|x| x.cummulative_votes)
             .collect::<Vec<_>>();
         if current_weights != weights {
-            // TODO: Should we allow uploading again?
-            anyhow::bail!(
-                "The election results are already registered in the contract, but they are \
-                 different."
+            eprintln!(
+                "The election results are already registered in the contract are \
+                 {current_weights:?}."
             );
+            eprintln!("But the newly computed results are {weights:?}");
+            let confirm = dialoguer::Confirm::new()
+                .report(true)
+                .wait_for_newline(true)
+                .with_prompt("Do you want to overwrite the published results?")
+                .interact()?;
+            anyhow::ensure!(confirm, "Aborting.");
         } else {
             eprintln!(
                 "The election results are already registered in the contract, and they match."
