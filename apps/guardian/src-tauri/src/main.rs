@@ -1,8 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{convert::Infallible, str::FromStr, sync::Mutex};
-
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     smart_contracts::common::AccountAddress,
@@ -10,6 +8,7 @@ use concordium_rust_sdk::{
 };
 use rand::thread_rng;
 use serde::ser::SerializeStruct;
+use std::{convert::Infallible, str::FromStr, sync::Mutex};
 use tauri::{AppHandle, State};
 
 /// The file name of the encrypted wallet account.

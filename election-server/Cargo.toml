@@ -12,11 +12,11 @@ axum = { version = "0.7", features = ["macros"] }
 axum-prometheus = "0.5"
 chrono = "0.4"
 clap = { version = "4.4", features = ["derive", "env"] }
-concordium-rust-sdk = "3.2"
-concordium-std = { version = "8.1", default-features = false }
-concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election" }
+concordium-rust-sdk = {path = "../deps/concordium-rust-smart-contracts/concordium-rust-sdk"}
+concordium-std = { path = "../deps/concordium-rust-smart-contracts/concordium-std" }
+concordium_governance_committee_election = { path = "../contracts/concordium-governance-committee-election" }
 deadpool-postgres = "0.11"
-eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
+eg = { path = "../deps/electionguard-rust/src/eg" }
 futures = "0.3"
 handlebars = "4.5"
 rmp-serde = "1.1"
