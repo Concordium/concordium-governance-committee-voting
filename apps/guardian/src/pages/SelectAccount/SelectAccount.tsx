@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { accountShowShort } from 'shared/util';
 import { MainLocationState } from '~/layouts/Main/Main';
 import Button from '~/shared/Button';
-import { WalletAccount, loadAccount } from '~/shared/ffi';
+import { GuardianData, loadAccount } from '~/shared/ffi';
 import { selectedAccountAtom, accountsAtom } from '~/shared/store';
 import { routes } from '~/shell/router';
 
@@ -18,7 +18,7 @@ type PasswordPromptProps = {
     /** Request to hide the modal */
     onHide(): void;
     /** Called when an account is successfully loaded from disk */
-    onAccountLoad(walletAccount: WalletAccount): void;
+    onAccountLoad(walletAccount: GuardianData): void;
 };
 
 type PasswordPromptForm = {
@@ -149,7 +149,7 @@ export default function SelectAccount() {
     const hasAccounts = useMemo(() => accounts !== undefined && accounts.length !== 0, [accounts]);
     useEffect(() => {
         if (hasAccounts) {
-            const initialAccount = selectedAccount?.address ?? accounts![0].address;
+            const initialAccount = selectedAccount?.account ?? accounts![0].address;
             setValue('account', initialAccount);
         }
     }, [hasAccounts, accounts, setValue, selectedAccount]);

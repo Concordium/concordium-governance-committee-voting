@@ -5,7 +5,7 @@ import { ElectionManifest, ElectionParameters } from 'shared/types';
 import { getChecksumResource } from 'shared/util';
 
 import { GuardiansState, getElectionConfig, getGuardiansState } from './election-contract';
-import { setElectionGuardConfig, WalletAccount, getAccounts } from './ffi';
+import { setElectionGuardConfig, GuardianData, getAccounts } from './ffi';
 
 /**
  * Representation of the election configration.
@@ -104,7 +104,7 @@ export const guardiansStateAtom = atom((get) => {
 /**
  * Holds the account the application is currently using.
  */
-export const selectedAccountAtom = atom<WalletAccount | undefined>(undefined);
+export const selectedAccountAtom = atom<GuardianData | undefined>(undefined);
 
 /**
  * Base atom holding the list of accounts imported into the application

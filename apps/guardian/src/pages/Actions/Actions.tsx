@@ -17,7 +17,8 @@ const enum GenerateStep {
 type StepProps = PropsWithChildren<{
     activeStep: GenerateStep;
     step: GenerateStep;
-    hasError: boolean;
+    error?: string;
+    note?: string;
 }>;
 
 const enum StepStatus {
@@ -27,7 +28,8 @@ const enum StepStatus {
     Error,
 }
 
-function Step({ step, activeStep, hasError, children }: StepProps) {
+function Step({ step, activeStep, error, children, note }: StepProps) {
+    const ownError = step === activeStep ? error : undefined;
     const status = useMemo(() => {
         if (step > activeStep) {
             return StepStatus.Inactive;
@@ -36,10 +38,8 @@ function Step({ step, activeStep, hasError, children }: StepProps) {
             return StepStatus.Success;
         }
 
-        return hasError ? StepStatus.Error : StepStatus.Active;
-    }, [hasError, step, activeStep]);
-
-    console.log(step, activeStep, hasError, children);
+        return ownError !== undefined ? StepStatus.Error : StepStatus.Active;
+    }, [ownError, step, activeStep]);
 
     return (
         <li
@@ -55,7 +55,12 @@ function Step({ step, activeStep, hasError, children }: StepProps) {
                 {status === StepStatus.Error && <ErrorIcon width="20" />}
                 {status === StepStatus.Success && <SuccessIcon width="20" />}
             </div>
-            <div>{children}</div>
+            <div>
+                {children}
+                <div className={clsx('generate__step-note', ownError ? 'text-danger' : 'text-muted')}>
+                    {ownError ?? note}
+                </div>
+            </div>
         </li>
     );
 }
@@ -93,14 +98,19 @@ function GenerateGuardianKey() {
                 <Modal.Header>Generating guardian key</Modal.Header>
                 <Modal.Body>
                     <ul className="generate__steps">
-                        <Step step={GenerateStep.Generate} activeStep={step} hasError={error !== undefined}>
+                        <Step step={GenerateStep.Generate} activeStep={step} error={error}>
                             Generating guardian key pair
                         </Step>
-                        <Step step={GenerateStep.ApproveTransaction} activeStep={step} hasError={error !== undefined}>
+                        <Step
+                            step={GenerateStep.ApproveTransaction}
+                            activeStep={step}
+                            error={error}
+                            note="Transaction fee: 230 CCD"
+                        >
                             Awaiting transaction approval
-                            <div className="generate__step-note text-muted">Transaction fee: 230 CCD</div>
+                            <div className="generate__step-note text-muted"></div>
                         </Step>
-                        <Step step={GenerateStep.UpdateConctract} activeStep={step} hasError={error !== undefined}>
+                        <Step step={GenerateStep.UpdateConctract} activeStep={step} error={error}>
                             Updating election contract
                         </Step>
                     </ul>

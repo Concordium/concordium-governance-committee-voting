@@ -127,7 +127,7 @@ export default function ImportWalletAccount() {
     );
     const nav = useNavigate();
 
-    const walletExport = useAsyncMemo(
+    const guardianData = useAsyncMemo(
         async () => {
             setError(undefined);
             if (fileInput === null || guardians === undefined) {
@@ -135,8 +135,9 @@ export default function ImportWalletAccount() {
             }
 
             const contents = await processFile(fileInput[0]);
-            if (guardians.includes(contents.value.address)) {
-                return contents;
+            const index = guardians.findIndex((address) => contents.value.address === address);
+            if (index !== -1) {
+                return { walletExport: contents, index: index + 1 };
             }
 
             setError('Imported account is not a guardian in the election');
@@ -146,16 +147,16 @@ export default function ImportWalletAccount() {
     );
 
     useEffect(() => {
-        if (walletExport !== undefined) {
+        if (guardianData !== undefined) {
             setShowModal(true);
         }
-    }, [walletExport]);
+    }, [guardianData]);
 
     useEffect(() => {
-        if (walletExport !== undefined && password !== undefined) {
+        if (guardianData !== undefined && password !== undefined) {
             setLoading(true);
 
-            void importWalletAccount(walletExport, password)
+            void importWalletAccount(guardianData.walletExport, guardianData.index, password)
                 .then((imported) => {
                     setAccount(imported);
                     nav(routes.actions.path);
@@ -167,7 +168,7 @@ export default function ImportWalletAccount() {
                     setLoading(false);
                 });
         }
-    }, [walletExport, password, setAccount, nav]);
+    }, [guardianData, password, setAccount, nav]);
 
     return (
         <>

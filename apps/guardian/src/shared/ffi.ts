@@ -1,6 +1,7 @@
 import { AccountAddress, AccountKeys, Base58String, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
 import { ElectionManifest, ElectionParameters } from 'shared/types';
+import {Buffer} from 'buffer/';
 
 /**
  * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
@@ -21,29 +22,32 @@ async function ensureErrors<T>(promise: Promise<T>): Promise<T> {
 /**
  * The wallet account as returned from the rust backend process.
  */
-export type WalletAccount = {
+export type GuardianData = {
     /** The account address */
-    address: Base58String;
+    account: Base58String;
     /** The keys for the account */
     keys: AccountKeys;
+    /** The guardian index associated with the account */
+    index: number;
 };
 
 /**
  * Wraps `import_wallet_account` invocation.
  *
  * @param walletExport - The wallet export to import
+ * @param guardianIndex - The guardian index associated with the account
  * @param password - The password to use for encrypting the data file associated with the account.
  *
- * @returns The {@linkcode WalletAccount} when import is successful.
+ * @returns The {@linkcode GuardianData} when import is successful.
  * @throws If the account has already been imported or if the password is infallible
  */
 export function importWalletAccount(
     walletExport: WalletExportFormat,
     guardianIndex: number,
     password: string,
-): Promise<WalletAccount> {
+): Promise<GuardianData> {
     return ensureErrors(
-        invoke<WalletAccount>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password }),
+        invoke<GuardianData>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password }),
     );
 }
 
@@ -58,22 +62,35 @@ export async function getAccounts(): Promise<AccountAddress.Type[]> {
 }
 
 /**
- * Wraps `load_account` invocation, which loads the {@linkcode WalletAccount} from disk.
+ * Wraps `load_account` invocation, which loads the {@linkcode GuardianData} from disk.
  *
  * @param account - The account to load
  * @param password - The password to use for decrypting the data file associated with the account.
  *
- * @returns The {@linkcode WalletAccount}.
+ * @returns The {@linkcode GuardianData}.
  */
-export function loadAccount(account: AccountAddress.Type, password: string): Promise<WalletAccount> {
-    return ensureErrors(invoke<WalletAccount>('load_account', { account: AccountAddress.toBase58(account), password }));
+export function loadAccount(account: AccountAddress.Type, password: string): Promise<GuardianData> {
+    return ensureErrors(invoke<GuardianData>('load_account', { account: AccountAddress.toBase58(account), password }));
 }
 
+/**
+ * Wraps `set_eg_config` invocation, storing the election guard config required for construction of election guard
+ * entities.
+ *
+ * @param manifest - The election guard manifest
+ * @param parameters - The election guard parameters
+ */
 export function setElectionGuardConfig(manifest: ElectionManifest, parameters: ElectionParameters) {
-    return ensureErrors(invoke('load_account', { manifest, parameters }));
+    return ensureErrors(invoke('set_eg_config', { manifest, parameters }));
 }
 
-export async function generateKeyPair(): Promise<unknown> {
-    const byteArray = await ensureErrors(invoke<unknown>('generate_key_pair'));
-    return byteArray;
+/**
+ * Wraps `generate_key_pair` invocation, which generates a key pair to be used by the active guardian account.
+ *
+ * @returns A {@linkcode Uint8Array} corresponding to an election guard `GuardianPublicKey` serialized with msgpack
+ * @throws If the key pair could not be generated
+ */
+export async function generateKeyPair(): Promise<Uint8Array> {
+    const byteArray = await ensureErrors(invoke<number[]>('generate_key_pair'));
+    return Buffer.from(byteArray);
 }

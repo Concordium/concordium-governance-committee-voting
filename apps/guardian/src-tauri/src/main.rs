@@ -3,54 +3,53 @@
 
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
+    id::types::AccountKeys,
     smart_contracts::common::AccountAddress,
     types::WalletAccount,
 };
 use eg::{
     election_manifest::ElectionManifest, election_parameters::ElectionParameters,
-    guardian::GuardianIndex, guardian_public_key::GuardianPublicKey,
-    guardian_secret_key::GuardianSecretKey,
+    guardian::GuardianIndex, guardian_secret_key::GuardianSecretKey,
 };
+use election_common::ByteConvert;
 use rand::{thread_rng, Rng};
-use serde::ser::SerializeStruct;
-use std::{str::FromStr, sync::Mutex};
-use tauri::{AppHandle, State};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Mutex,
+};
+use tauri::{App, AppHandle, State};
 use util::csprng::Csprng;
 
 /// The file name of the encrypted wallet account.
-const WALLET_ACCOUNT_FILE: &str = "wallet-account.json";
-
-/// Wrapper around [`WalletAccount`]
-#[derive(serde::Deserialize)]
-struct GuardianAccount(WalletAccount);
-
-impl From<WalletAccount> for GuardianAccount {
-    fn from(value: WalletAccount) -> Self { GuardianAccount(value) }
-}
+const WALLET_ACCOUNT_FILE: &str = "guardian-data.json.aes";
+const SECRET_KEY_FILE: &str = "secret-key.json.aes";
 
 /// The data stored for a guardian.
 #[derive(serde::Serialize, serde::Deserialize)]
-struct Guardian {
+struct GuardianData {
     /// The guardian account
-    account: GuardianAccount,
+    account: AccountAddress,
+    /// The keys for the `account`
+    keys: AccountKeys,
     /// The guardian index used by election guard
-    index:   GuardianIndex,
+    index: GuardianIndex,
 }
-impl serde::Serialize for GuardianAccount {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        let mut state = serializer.serialize_struct("GuardianAccount", 2)?;
-        state.serialize_field("address", &self.0.address)?;
-        state.serialize_field("accountKeys", &self.0.keys)?;
-        state.end()
+
+impl GuardianData {
+    fn create(wallet_account: WalletAccount, index: GuardianIndex) -> Self {
+        Self {
+            account: wallet_account.address,
+            keys: wallet_account.keys,
+            index,
+        }
     }
 }
 
 /// Holds the currently selected account and corresponding password
-struct ActiveAccount {
+struct ActiveGuardian {
     /// The selected account
-    account:        AccountAddress,
+    account: AccountAddress,
     /// The password used for encryption with the selected account
     #[allow(dead_code)] // TODO: remove when it is used
     password: Password,
@@ -59,7 +58,7 @@ struct ActiveAccount {
 }
 
 #[derive(Default)]
-struct ActiveAccountState(Mutex<Option<ActiveAccount>>);
+struct ActiveGuardianState(Mutex<Option<ActiveGuardian>>);
 
 struct ElectionGuardConfig {
     #[allow(dead_code)] // TODO: remove when it is used
@@ -70,38 +69,64 @@ struct ElectionGuardConfig {
 #[derive(Default)]
 struct ElectionGuardState(Mutex<Option<ElectionGuardConfig>>);
 
-/// Describes possible errors when importing an account.
-#[derive(thiserror::Error, Debug)]
-enum ImportWalletError {
-    /// An error happened while trying to write to disk
-    #[error("Could not save account: {0}")]
-    Write(#[from] std::io::Error),
-    /// Account has already been imported
-    #[error("Account already found in application")]
-    Duplicate,
-}
-
 impl serde::Serialize for ImportWalletError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
 
 /// Stores the account in global state.
-fn use_account(
-    account: AccountAddress,
-    password: Password,
-    guardian_index: GuardianIndex,
-    state: State<ActiveAccountState>,
-) {
+fn use_guardian(guardian: &GuardianData, password: Password, state: State<ActiveGuardianState>) {
     let mut active_account = state.0.lock().unwrap(); // Only errors on panic from other threads
-    *active_account = Some(ActiveAccount {
-        account,
+    *active_account = Some(ActiveGuardian {
+        account: guardian.account,
         password,
-        guardian_index,
+        guardian_index: guardian.index,
     });
+}
+
+fn guardian_data_dir(app_handle: &AppHandle, account: AccountAddress) -> PathBuf {
+    app_handle
+        .path_resolver()
+        .app_data_dir()
+        .unwrap() // Path is available as declared in `tauri.conf.json`
+        .join(account.to_string())
+}
+
+#[derive(thiserror::Error, Debug)]
+enum WriteError {
+    #[error("Serialization of data type failed")]
+    Serialize(#[from] serde_json::Error),
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
+}
+
+fn write_encrypted_file<D: serde::Serialize>(
+    password: &Password,
+    data: &D,
+    file_path: &Path,
+) -> Result<(), WriteError> {
+    let plaintext = serde_json::to_string(&data)?;
+    let mut rng = thread_rng();
+    // Serialization will not fail at this point.
+    let encrypted_data = serde_json::to_vec(&encrypt(&password, &plaintext, &mut rng)).unwrap();
+    std::fs::write(file_path, encrypted_data)?;
+
+    Ok(())
+}
+
+/// Describes possible errors when importing an account.
+#[derive(thiserror::Error, Debug)]
+enum ImportWalletError {
+    /// An error happened while trying to write to disk
+    #[error("Could not save account: {0}")]
+    Write(#[from] WriteError),
+    /// Account has already been imported
+    #[error("Account already found in application")]
+    Duplicate,
 }
 
 /// Handle a wallet import. Creates a directory for storing data associated with
@@ -111,40 +136,30 @@ fn use_account(
 /// exist.
 #[tauri::command(async)]
 fn import_wallet_account(
-    wallet_account: GuardianAccount,
+    wallet_account: WalletAccount,
     guardian_index: GuardianIndex,
     password: String,
-    active_account_state: State<ActiveAccountState>,
+    active_guardian_state: State<ActiveGuardianState>,
     app_handle: AppHandle,
-) -> Result<GuardianAccount, ImportWalletError> {
-    let account = wallet_account.0.address;
-    let password = Password::from(password);
-    let guardian_data = Guardian {
-        account: wallet_account,
-        index:   guardian_index,
-    };
-    // Serialization will not fail.
-    let plaintext = serde_json::to_string(&guardian_data).unwrap();
-    let mut rng = thread_rng();
-    // Serialization will not fail.
-    let encrypted_data = serde_json::to_vec(&encrypt(&password, &plaintext, &mut rng)).unwrap();
+) -> Result<GuardianData, ImportWalletError> {
+    let account = wallet_account.address;
 
-    let guardian_dir = app_handle
-        .path_resolver()
-        .app_data_dir()
-        .unwrap() // Path is available as declared in `tauri.conf.json`
-        .join(account.to_string());
-
+    let guardian_dir = guardian_data_dir(&app_handle, account);
     if guardian_dir.exists() {
         return Err(ImportWalletError::Duplicate);
     }
-    std::fs::create_dir_all(&guardian_dir)?;
+    std::fs::create_dir(&guardian_dir).map_err(WriteError::from)?;
 
-    let wallet_account_path = guardian_dir.join(WALLET_ACCOUNT_FILE);
-    std::fs::write(wallet_account_path, encrypted_data)?;
+    let password = Password::from(password);
+    let guardian_data = GuardianData::create(wallet_account, guardian_index);
+    write_encrypted_file(
+        &password,
+        &guardian_data,
+        &guardian_dir.join(WALLET_ACCOUNT_FILE),
+    )?;
+    use_guardian(&guardian_data, password, active_guardian_state);
 
-    use_account(account, password, guardian_index, active_account_state);
-    Ok(guardian_data.account)
+    Ok(guardian_data)
 }
 
 /// Represents an IO error happening while loading accounts from disk.
@@ -155,7 +170,8 @@ struct GetAccountsError(#[from] std::io::Error);
 impl serde::Serialize for GetAccountsError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
@@ -196,7 +212,8 @@ enum LoadWalletError {
 impl serde::Serialize for LoadWalletError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
@@ -208,27 +225,21 @@ fn load_account(
     account: AccountAddress,
     password: String,
     app_handle: AppHandle,
-    active_account_state: State<ActiveAccountState>,
-) -> Result<GuardianAccount, LoadWalletError> {
-    let account_path = app_handle
-        .path_resolver()
-        .app_data_dir()
-        .unwrap() // As declared in `tauri.conf.json`, we have access
-        .join(account.to_string())
-        .join(WALLET_ACCOUNT_FILE);
-    let password = Password::from(password);
-
+    active_guardian_state: State<ActiveGuardianState>,
+) -> Result<GuardianData, LoadWalletError> {
+    let account_path = guardian_data_dir(&app_handle, account).join(WALLET_ACCOUNT_FILE);
     let encrypted_bytes = std::fs::read(account_path).map_err(|_| LoadWalletError::Corrupted)?;
     let encrypted: EncryptedData =
         serde_json::from_slice(&encrypted_bytes).map_err(|_| LoadWalletError::Corrupted)?;
 
+    let password = Password::from(password);
     let decrypted_bytes =
         decrypt(&password, &encrypted).map_err(|_| LoadWalletError::Decryption)?;
-    let wallet_account = WalletAccount::from_json_reader(&decrypted_bytes[..])
-        .map_err(|_| LoadWalletError::Decryption)?;
-    use_account(wallet_account.address, password, active_account_state);
+    let guardian_data: GuardianData =
+        serde_json::from_reader(&decrypted_bytes[..]).map_err(|_| LoadWalletError::Decryption)?;
+    use_guardian(&guardian_data, password, active_guardian_state);
 
-    Ok(wallet_account.into())
+    Ok(guardian_data)
 }
 
 #[tauri::command(async)]
@@ -248,51 +259,82 @@ fn set_eg_config(
 #[derive(thiserror::Error, Debug)]
 enum GenerateKeyPairError {
     /// Internal error; should not happen.
-    #[error("{0}")]
+    #[error("Internal error: {0}")]
     Internal(String),
+    /// The guardian has already generated a key.
+    #[error("Key pair already generated for guardian")]
+    Duplicate,
+}
+
+impl From<WriteError> for GenerateKeyPairError {
+    fn from(value: WriteError) -> Self {
+        GenerateKeyPairError::Internal(value.to_string())
+    }
 }
 
 impl serde::Serialize for GenerateKeyPairError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
 
+/// Generate a key pair for the selected guardian, storing it on disk.
 #[tauri::command(async)]
 fn generate_key_pair(
-    account_state: State<ActiveAccountState>,
+    active_guardian_state: State<ActiveGuardianState>,
     eg_state: State<ElectionGuardState>,
-) -> Result<GuardianPublicKey, GenerateKeyPairError> {
-    let seed: [u8; 32] = thread_rng().gen();
-    let mut csprng = Csprng::new(&seed);
+    app_handle: AppHandle,
+) -> Result<Vec<u8>, GenerateKeyPairError> {
+    let active_guardian_guard = active_guardian_state.0.lock().unwrap();
+    let active_guardian = active_guardian_guard
+        .as_ref()
+        .ok_or(GenerateKeyPairError::Internal(
+            "Active account not set".to_string(),
+        ))?;
+    let account = active_guardian.account;
+    let secret_key_path = guardian_data_dir(&app_handle, account).join(SECRET_KEY_FILE);
+    if secret_key_path.exists() {
+        return Err(GenerateKeyPairError::Duplicate);
+    }
+
     let election_config_guard = eg_state.0.lock().unwrap();
     let election_config = election_config_guard
         .as_ref()
         .ok_or(GenerateKeyPairError::Internal(
             "Election config not set".to_string(),
         ))?;
-    let active_account_guard = account_state.0.lock().unwrap();
-    let active_account = active_account_guard
-        .as_ref()
-        .ok_or(GenerateKeyPairError::Internal(
-            "Active account not set".to_string(),
-        ))?;
-
+    let seed: [u8; 32] = thread_rng().gen();
+    let mut csprng = Csprng::new(&seed);
     let secret_key = GuardianSecretKey::generate(
         &mut csprng,
         &election_config.parameters,
-        active_account.guardian_index,
-        active_account.account.to_string().into(),
+        active_guardian.guardian_index,
+        account.to_string().into(),
     );
+    write_encrypted_file(&active_guardian.password, &secret_key, &secret_key_path)?;
+
     let public_key = secret_key.make_public_key();
-    Ok(public_key)
+    let bytes = public_key.encode().unwrap(); // Serialization will not fail
+    Ok(bytes)
+}
+
+fn setup_app(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    // Will not fail due to being declared accessible in `tauri.conf.json`
+    let app_data_dir = app.path_resolver().app_data_dir().unwrap();
+    if !app_data_dir.exists() {
+        std::fs::create_dir(&app_data_dir)?;
+    }
+
+    Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
-        .manage(ActiveAccountState::default())
+        .setup(setup_app)
+        .manage(ActiveGuardianState::default())
         .manage(ElectionGuardState::default())
         .invoke_handler(tauri::generate_handler![
             import_wallet_account,

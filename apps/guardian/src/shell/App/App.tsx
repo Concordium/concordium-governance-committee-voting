@@ -33,7 +33,7 @@ function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const account = useAtomValue(selectedAccountAtom);
     const showAccount = useMemo(
-        () => (account === undefined ? undefined : accountShowShort(AccountAddress.fromBase58(account.address))),
+        () => (account === undefined ? undefined : accountShowShort(AccountAddress.fromBase58(account.account))),
         [account],
     );
 
