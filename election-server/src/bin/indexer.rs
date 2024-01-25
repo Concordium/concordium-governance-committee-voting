@@ -480,7 +480,7 @@ async fn find_election_start_height(
 
     let query_range = creation_height..;
     let mut result = client
-        .find_first_finalized_block_no_later_than(query_range.clone(), election_start)
+        .find_first_finalized_block_no_earlier_than(query_range.clone(), election_start)
         .await;
 
     // If the result is an error, it means that the block we're waiting for has not
@@ -489,7 +489,7 @@ async fn find_election_start_height(
     while result.is_err() {
         tokio::time::sleep(Duration::from_secs(2)).await;
         result = client
-            .find_first_finalized_block_no_later_than(query_range.clone(), election_start)
+            .find_first_finalized_block_no_earlier_than(query_range.clone(), election_start)
             .await;
     }
 
