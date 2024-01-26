@@ -153,14 +153,14 @@ async fn main() -> anyhow::Result<()> {
     .timeout(std::time::Duration::from_secs(10));
 
     match app.command {
-        Command::InitialWeights(accds) => handle_gather_average_balance(endpoint, accds).await,
+        Command::InitialWeights(accds) => handle_initial_weights(endpoint, accds).await,
         Command::FinalWeights {
             out,
             contract,
             initial_weights,
             final_weights,
         } => handle_final_weights(endpoint, out, contract, initial_weights, final_weights).await,
-        Command::Tally(tally) => handle_vote_collection(endpoint, tally).await,
+        Command::Tally(tally) => handle_tally(endpoint, tally).await,
         Command::FinalResult {
             contract,
             wallet_path,
@@ -168,6 +168,9 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Figure out which blocks to use as start and end blocks given the time range.
+/// The return blocks are the first block no earlier than the start time, and
+/// the last block no (strictly) later than the provided end time.
 async fn range_setup(
     client: &mut sdk::Client,
     start: chrono::DateTime<chrono::Utc>,
@@ -238,9 +241,11 @@ struct FinalWeightRow {
     delegators: String,
 }
 
+/// Compute the final weights given the initial weights.
+/// The time range is taken from the provided contract.
 async fn handle_final_weights(
     endpoint: sdk::Endpoint,
-    out: Option<std::path::PathBuf>,
+    delegations_out: Option<std::path::PathBuf>,
     target_address: ContractAddress,
     initial_weights: std::path::PathBuf,
     final_weights_path: std::path::PathBuf,
@@ -296,11 +301,12 @@ async fn handle_final_weights(
         }
     }
     {
-        let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = out {
-            csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
-        } else {
-            csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
-        };
+        let mut out_handle: csv::Writer<Box<dyn std::io::Write>> =
+            if let Some(file) = delegations_out {
+                csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
+            } else {
+                csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
+            };
         for (from, (hash, to)) in &mapping {
             out_handle.serialize(DelegationRow {
                 hash: *hash,
@@ -353,6 +359,8 @@ async fn handle_final_weights(
 
 enum ElectionContract {}
 
+/// Handle decryption of the final result, and checking or publishing the result
+/// in the contract.
 async fn handle_decrypt(
     endpoint: sdk::Endpoint,
     contract: ContractAddress,
@@ -542,12 +550,14 @@ async fn handle_decrypt(
     Ok(())
 }
 
+/// Election data retrieved from the contract and processed.
 struct ElectionData {
     manifest:             ElectionManifest,
     parameters:           ElectionParameters,
     guardian_public_keys: Vec<GuardianPublicKey>,
     start:                chrono::DateTime<chrono::Utc>,
     end:                  chrono::DateTime<chrono::Utc>,
+    /// String that is used to detect delegations.
     delegation_string:    String,
 }
 
@@ -561,6 +571,8 @@ impl ElectionData {
     }
 }
 
+/// Retrieve the election data from the contract and data linked from the
+/// contract.
 async fn get_election_data(
     contract_client: &mut contract_client::ContractClient<ElectionContract>,
 ) -> anyhow::Result<ElectionData> {
@@ -625,7 +637,9 @@ async fn get_election_data(
     })
 }
 
-async fn handle_vote_collection(
+/// Handle tallying of votes during the election phase.
+/// Note that this assumes access to final weights already.
+async fn handle_tally(
     endpoint: sdk::Endpoint,
     TallyArgs {
         target_address,
@@ -782,7 +796,8 @@ async fn handle_vote_collection(
     Ok(())
 }
 
-async fn handle_gather_average_balance(
+/// Handle collection of initial weights.
+async fn handle_initial_weights(
     endpoint: sdk::Endpoint,
     accds: RangeWithOutput,
 ) -> anyhow::Result<()> {
