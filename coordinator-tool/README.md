@@ -52,3 +52,41 @@ cargo build --release
 ```
 
 This will produce a single binary `election-coordinator` in `target/release` directory.
+
+
+## Example commands
+
+### Get the list of initial weights
+
+```console
+election-coordinator --node http://localhost:20001 initial-weights  --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z --out initial-weights.csv
+```
+
+The weights are stored in the `initial-weights.csv` file.
+
+### Get the final weights
+
+
+```console
+election-coordinator --node http://localhost:20001 final-weights --contract '<7795,0>' --initial-weights initial-weights.csv --final-weights final-weights.csv
+```
+
+To take the output of the previous command (`initial-weights.csv`) and compute final weights, outputting the result to `final-weights.csv`.
+
+
+### Tally the votes and register the encrypted tally in the contract
+
+```
+election-coordinator --node http://localhost:20001 tally --contract '<7795,0>' --final-weights final-weights.csv --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
+```
+
+The same command without the `--admin-keys` will tally the votes and check that the tally matches what is registered in the contract.
+
+### Decrypt the final result
+
+```console
+election-coordinator  --node http://localhost:20001 final-result --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export```
+
+This will look up all the decryption shares provided by the guardians, check that they are valid, and if there are enough of the valid ones it will decrypt the final result and publish it in the contract.
+
+If the `admin-keys` are not provided the command will do everything else as with the keys, except it will check if the result in the contract matches or not, and report the result.

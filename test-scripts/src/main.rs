@@ -65,6 +65,12 @@ struct Args {
         default_value = "2"
     )]
     election_duration: i64,
+    #[arg(
+        long = "base-url",
+        help = "Base url where the election data is accessible. This is recorded in the contract.",
+        default_value = "http://localhost:7000/"
+    )]
+    base_url:          url::Url,
     #[arg(long = "out", help = "Output directory for all the artifacts.")]
     out:               std::path::PathBuf,
 }
@@ -202,6 +208,13 @@ async fn main() -> anyhow::Result<()> {
         mod_ref
     };
 
+    let url = &args.base_url;
+    let make_url = move |path| {
+        let mut url = url.clone();
+        url.set_path(path);
+        url.to_string()
+    };
+
     // initialize new instance
     let (start_timestamp, end_timestamp, mut contract_client) = {
         let start_timestamp = chrono::Utc::now()
@@ -215,14 +228,16 @@ async fn main() -> anyhow::Result<()> {
         let election_end = end_timestamp.try_into()?;
         let candidates = (0..args.num_options)
             .map(|c| {
+                let mut url = args.base_url.clone();
+                url.set_path(&c.to_string());
                 contract::ChecksumUrl {
-                    url:  format!("http://localhost:7000/{c}"),
+                    url:  url.to_string(),
                     hash: contract::HashSha2256([0u8; 32]), // TODO
                 }
             })
             .collect();
         let eligible_voters = contract::ChecksumUrl {
-            url:  "http://localhost:7000/voters".to_string(),
+            url:  make_url("voters"),
             hash: contract::HashSha2256([1u8; 32]), // TODO
         };
         let init_param = contract::InitParameter {
@@ -231,11 +246,11 @@ async fn main() -> anyhow::Result<()> {
             guardians: guardians.iter().map(|g| g.address).collect(),
             eligible_voters,
             election_manifest: contract::ChecksumUrl {
-                url:  "http://localhost:7000/static/electionguard/election-manifest.json".into(),
+                url:  make_url("static/electionguard/election-manifest.json"),
                 hash: contract::HashSha2256(manifest_digest),
             },
             election_parameters: contract::ChecksumUrl {
-                url:  "http://localhost:7000/static/electionguard/election-parameters.json".into(),
+                url:  make_url("static/electionguard/election-parameters.json"),
                 hash: contract::HashSha2256(parameters_digest),
             },
             election_description: "Test election".into(),
@@ -557,6 +572,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Wait until the encrypted tally is registered.
     let (guardian_secret_states, ciphertexts) = {
+        let spinner = indicatif::ProgressBar::new_spinner();
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
         let serialized_tally = loop {
             interval.tick().await;
@@ -570,7 +586,8 @@ async fn main() -> anyhow::Result<()> {
             if let Some(serialized_tally) = r {
                 break serialized_tally;
             } else {
-                eprintln!("Waiting until the encrypted tally is registered.");
+                spinner.set_message("Waiting until the encrypted tally is registered.");
+                spinner.tick();
             }
         };
         eprintln!("Retrieved encrypted tally.");

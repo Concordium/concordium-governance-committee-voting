@@ -58,9 +58,17 @@ enum Command {
     /// Look for delegations of the vote during the election period.
     #[command(name = "final-weights")]
     FinalWeights {
-        #[arg(long = "out", help = "File to output data into.")]
+        #[arg(
+            long = "out",
+            help = "File to output auxiliary data into. For each account there is a list of \
+                    delegators for that account. This is different from the final weights file \
+                    which contains only the summary."
+        )]
         out:             Option<std::path::PathBuf>,
-        #[arg(long = "contract", help = "Address of the election contract.")]
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>."
+        )]
         contract:        ContractAddress,
         #[arg(long = "initial-weights", help = "The CSV file with initial weights.")]
         initial_weights: std::path::PathBuf,
@@ -76,7 +84,10 @@ enum Command {
     /// Compute and optionally post the final result of the election in the
     /// contract.
     FinalResult {
-        #[arg(long = "contract", help = "Address of the election contract.")]
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>"
+        )]
         contract:    ContractAddress,
         #[arg(
             long = "admin-keys",
@@ -88,7 +99,10 @@ enum Command {
 
 #[derive(Debug, Parser)]
 struct TallyArgs {
-    #[arg(long = "contract", help = "Address of the election contract.")]
+    #[arg(
+        long = "contract",
+        help = "Address of the election contract in the format <index, subindex>."
+    )]
     target_address: ContractAddress,
     #[arg(
         long = "final-weights",
@@ -106,12 +120,14 @@ struct TallyArgs {
 struct RangeWithOutput {
     #[arg(
         long = "start",
-        help = "The start time of the collection. This is inclusive."
+        help = "The start time of the collection. This is inclusive. The format is ISO-8601, e.g. \
+                2024-01-23T12:13:14Z."
     )]
     start: chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "end",
-        help = "The end time of the collection. This is also inclusive."
+        help = "The end time of the collection. This is also inclusive. The format is ISO-8601, \
+                e.g. 2024-01-23T12:13:14Z."
     )]
     end:   chrono::DateTime<chrono::Utc>,
     #[arg(long = "out", help = "File to output data into.")]
