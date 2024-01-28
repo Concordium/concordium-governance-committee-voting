@@ -17,17 +17,23 @@ The tool has the following subcommands
   an account in the given period. The intention is that this command is used to
   produce the initial weights of each account prior to the election starting.
   The output of this command is a CSV file used in the `final-weights` command.
-  
-- `final-weights` is used to compute the final weights taking into account the 
+
+- `new-election` is the command to create the necessary files and the contract
+  for a new election. In particular it will
+  - create a election manifest based on the inputs
+  - create election parameters based on the inputs
+  - create a new smart contract instance.
+
+- `final-weights` is used to compute the final weights taking into account the
   delegation. It takes initial weights into account and any delegations during
   the election period. The output of this command is used in the `tally`
   command.
-  
+
 - `tally` taking into account the `final-weights` compute the encrypted tally of
   the election and optionally post it in the contract. This sums up all the
   votes during the election period and scales them according to the specified
   weights.
-  
+
 - `final-result` after the guardians have each decrypted their share of the
   encrypted tally this command can be used to combine the shares and post the
   result in the contract, or if the result is already posted to check that it
@@ -63,6 +69,35 @@ election-coordinator --node http://localhost:20001 initial-weights  --start 2024
 ```
 
 The weights are stored in the `initial-weights.csv` file.
+
+
+### Create a new election instance
+
+```
+election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --delegation-string 'This is how you delegate' --manifest-out election-manifest.json --parameters-out election-parameters.json --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate 'http://localhost:7000/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000'`
+```
+
+The options are the following
+
+- `--admin` is the path to the keys that will be used to create the contract, and serve as the admin
+- `--module` is the path to the compiled election smart contract in `wasm.v1` format
+- `--threshold` is the threshold for the number of guardians needed
+- `--election-start` and `--election-end` are clear
+- `--delegation-string` is the string that will be used to determine vote delegations
+- `--voters-file` is intended to be the `initial-weights.csv` file for the election
+- `--guardian` (repeated) is guardian account addresses. At least one is needed.
+- `--candidate` (repeated) is a URL to a candidate. The order here matters, since that will be the order
+  of selections in the election. The link should be to the candidate metadata. The hash of the metadata will be
+  embedded in the contract.
+
+The tool generates three things
+- An election manifest which is output to the location specified by `--manifest-out`
+- Election parameters which are output to the location specified by `--parameters-out`
+- A new smart contract instance which is printed to stderr, for example
+
+```
+Deployed new contract instance with address <7838,0> using transaction hash 3b3e61a01fd3ecefddecbe6760c6ba3d951f4d0a8947d63990ffe9219249de27.
+```
 
 ### Get the final weights
 
