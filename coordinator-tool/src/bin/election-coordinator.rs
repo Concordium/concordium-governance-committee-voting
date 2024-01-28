@@ -71,8 +71,7 @@ struct NewElectionArgs {
     module:            std::path::PathBuf,
     #[arg(
         long = "base-url",
-        help = "Base url where the election data is accessible. This is recorded in the contract.",
-        default_value = "http://localhost:7000/"
+        help = "Base url where the election data is accessible. This is recorded in the contract."
     )]
     base_url:          url::Url,
     #[arg(

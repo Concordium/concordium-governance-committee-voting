@@ -74,7 +74,7 @@ The weights are stored in the `initial-weights.csv` file.
 ### Create a new election instance
 
 ```
-election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --delegation-string 'This is how you delegate' --manifest-out election-manifest.json --parameters-out election-parameters.json --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate 'http://localhost:7000/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000'`
+election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --delegation-string 'This is how you delegate' --manifest-out election-manifest.json --parameters-out election-parameters.json --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate 'http://localhost:7000/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000' --base-url https://gcvoting.testnet.concordium.com`
 ```
 
 The options are the following
@@ -89,6 +89,7 @@ The options are the following
 - `--candidate` (repeated) is a URL to a candidate. The order here matters, since that will be the order
   of selections in the election. The link should be to the candidate metadata. The hash of the metadata will be
   embedded in the contract.
+- `--base-url` the URL where the election server is accessible, e.g., https://gcvoting.testnet.concordium.com
 
 The tool generates three things
 - An election manifest which is output to the location specified by `--manifest-out`
