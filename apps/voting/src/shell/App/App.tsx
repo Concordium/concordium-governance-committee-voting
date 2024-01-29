@@ -1,11 +1,11 @@
 import { Container } from 'react-bootstrap';
 import { useAtomValue } from 'jotai';
 
-import { electionConfigAtom } from '@shared/store';
-import Home from '@pages/Home';
+import { electionConfigAtom } from '~/shared/store';
+import Home from '~/pages/Home';
 import { WalletConnection } from './WalletConnection';
-import { commonDateTimeFormat } from '@shared/util';
-import { ElectionOpenState, useIsElectionOpen } from '@shared/hooks';
+import { commonDateTimeFormat } from '~/shared/util';
+import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 
 import pkg from '../../../package.json';
 

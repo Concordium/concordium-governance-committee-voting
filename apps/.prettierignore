@@ -3,4 +3,4 @@
 *.md
 *.yml
 
-voting/src/__generated__
+shared/__generated__

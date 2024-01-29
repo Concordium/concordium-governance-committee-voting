@@ -1,0 +1,16 @@
+.button {
+    position: relative;
+
+    &__text {
+        .button--loading & {
+            opacity: 0;
+        }
+    }
+
+    &__spinner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}

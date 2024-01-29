@@ -1,0 +1,33 @@
+{
+    "name": "shared",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build-election-contract": "cargo concordium build --schema-embed --schema-json-out ./__generated__/election-contract --out ./tmp/module.wasm.v1 -- --manifest-path ../../contracts/concordium-governance-committee-election/Cargo.toml",
+        "generate-contract-client": "yarn build-election-contract && tsx ./scripts/generate-election-contract-client.ts",
+        "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "lint-fix": "yarn lint --fix",
+        "prettier": "prettier . --ignore-path ../.gitignore --ignore-path ../.prettierignore --ignore-path .gitignore",
+        "fmt": "yarn prettier --write",
+        "fmt-check": "yarn prettier --check"
+    },
+    "exports": {
+        "./election-contract/schema": "./__generated__/election-contract/election_schema.json",
+        "./*": "./src/*.ts"
+    },
+    "dependencies": {
+        "@concordium/web-sdk": "^7.1.0",
+        "buffer": "^6.0.3",
+        "react": "^18.2.0"
+    },
+    "devDependencies": {
+        "@concordium/ccd-js-gen": "^1.0.1",
+        "@types/react": "^18.2.15",
+        "commander": "^11.1.0",
+        "eslint": "^8.52.0",
+        "glob": "^10.3.10",
+        "prettier": "^3.0.3",
+        "tsx": "^4.1.3",
+        "typescript": "^5.2.2"
+    }
+}

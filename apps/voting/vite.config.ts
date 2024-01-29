@@ -67,7 +67,7 @@ const viteConfig: UserConfig = {
         topLevelAwait(), // For legacy browser compatibility
     ],
     worker: {
-        plugins: [topLevelAwait(), wasm() as PluginOption],
+        plugins: () => [topLevelAwait(), wasm() as PluginOption],
     },
     define: {
         DEVICE_NAME: JSON.stringify(uuid()),

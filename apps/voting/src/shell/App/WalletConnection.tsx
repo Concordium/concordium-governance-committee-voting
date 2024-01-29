@@ -5,9 +5,9 @@ import { RESET } from 'jotai/utils';
 import { AccountAddress, TransactionHash } from '@concordium/web-sdk';
 import { clsx } from 'clsx';
 
-import { useBrowserWallet, useWalletConnect } from '@shared/wallet-connection';
-import WalletConnectIcon from '@assets/walletconnect.svg';
-import ConcordiumIcon from '@assets/ccd.svg';
+import { useBrowserWallet, useWalletConnect } from '~/shared/wallet-connection';
+import WalletConnectIcon from '~/assets/walletconnect.svg';
+import ConcordiumIcon from '~/assets/ccd.svg';
 import {
     BallotSubmissionStatus,
     Wallet,
@@ -15,8 +15,9 @@ import {
     connectionViewAtom,
     loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
-} from '@shared/store';
-import { accountShowShort, commonDateTimeFormat } from '@shared/util';
+} from '~/shared/store';
+import { commonDateTimeFormat } from '~/shared/util';
+import { accountShowShort } from 'shared/util';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.
