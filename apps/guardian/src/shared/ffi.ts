@@ -2,6 +2,7 @@ import { AccountAddress, AccountKeys, Base58String, WalletExportFormat } from '@
 import { invoke } from '@tauri-apps/api';
 import { ElectionManifest, ElectionParameters } from 'shared/types';
 import {Buffer} from 'buffer/';
+import { appWindow } from '@tauri-apps/api/window';
 
 /**
  * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
@@ -93,4 +94,12 @@ export function setElectionGuardConfig(manifest: ElectionManifest, parameters: E
 export async function generateKeyPair(): Promise<Uint8Array> {
     const byteArray = await ensureErrors(invoke<number[]>('generate_key_pair'));
     return Buffer.from(byteArray);
+}
+
+export function sendPublicKeyRegistration(): void {
+    void appWindow.once('test-request', () => {
+        void appWindow.emit('test-response');
+    });
+
+    return void ensureErrors(invoke<void>('send_public_key_registration'));
 }

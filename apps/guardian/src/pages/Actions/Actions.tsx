@@ -5,7 +5,7 @@ import { Modal, Spinner } from 'react-bootstrap';
 import Button from '~/shared/Button';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
-import { generateKeyPair } from '~/shared/ffi';
+import { generateKeyPair, sendPublicKeyRegistration } from '~/shared/ffi';
 
 const enum GenerateStep {
     Generate,
@@ -88,6 +88,10 @@ function GenerateGuardianKey() {
                 });
         }
     }, [show]);
+
+    useEffect(() => {
+        sendPublicKeyRegistration();
+    }, []);
 
     return (
         <>
