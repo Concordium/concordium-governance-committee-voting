@@ -174,7 +174,7 @@ dependencies = [
  "ark-std",
  "derivative",
  "hashbrown 0.13.2",
- "itertools 0.10.5",
+ "itertools",
  "num-traits",
  "zeroize",
 ]
@@ -191,7 +191,7 @@ dependencies = [
  "ark-std",
  "derivative",
  "digest",
- "itertools 0.10.5",
+ "itertools",
  "num-bigint",
  "num-traits",
  "paste",
@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.0"
+version = "9.0.1"
 dependencies = [
  "concordium-contracts-common",
 ]
@@ -722,7 +722,7 @@ dependencies = [
  "ff",
  "hex",
  "hmac",
- "itertools 0.10.5",
+ "itertools",
  "leb128",
  "libc",
  "nom",
@@ -1025,7 +1025,6 @@ dependencies = [
  "digest",
  "hex-literal",
  "hmac",
- "itertools 0.12.0",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -1513,15 +1512,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1945,7 +1935,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efb6c9a1dd1def8e2124d17e83a20af56f1570d6c2d2bd9e266ccb768df3840e"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 2.0.48",
@@ -2800,7 +2790,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
- "itertools 0.12.0",
  "num-bigint",
  "num-integer",
  "num-traits",

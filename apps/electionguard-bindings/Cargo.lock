@@ -96,7 +96,6 @@ dependencies = [
  "digest",
  "hex-literal",
  "hmac",
- "itertools",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -107,12 +106,6 @@ dependencies = [
  "thiserror",
  "util",
 ]
-
-[[package]]
-name = "either"
-version = "1.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 
 [[package]]
 name = "electionguard-bindings"
@@ -180,15 +173,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "itertools"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -524,7 +508,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
- "itertools",
  "num-bigint",
  "num-integer",
  "num-traits",
