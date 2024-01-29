@@ -3,15 +3,14 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
 use concordium_rust_sdk::{
+    contract_client::{ContractClient, ViewError},
     smart_contracts::common::{self as contracts_common},
     types::{
-        hashes::BlockHash,
-        smart_contracts::{ContractContext, InstanceInfo, InvokeContractResult},
-        AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree, ExecutionTreeV1,
+        hashes::BlockHash, smart_contracts::InstanceInfo, AbsoluteBlockHeight, BlockItemSummary,
+        ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
     v2::{BlockIdentifier, Client, Endpoint},
 };
-use concordium_std::{HashSha2256, OwnedReceiveName};
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
     election_parameters::ElectionParameters, election_record::PreVotingData,
@@ -26,8 +25,7 @@ use election_server::{
 use futures::{future, TryStreamExt};
 use std::{
     fs,
-    path::PathBuf,
-    str::FromStr,
+    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -36,7 +34,7 @@ use std::{
 };
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
-const CONFIG_VIEW: &str = "election.viewConfig";
+const CONFIG_VIEW: &str = "viewConfig";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
@@ -94,12 +92,17 @@ struct AppConfig {
 }
 
 /// Verify the digest of `file` matches the expected `checksum`.
-fn verify_checksum(file: &PathBuf, checksum: HashSha2256) -> anyhow::Result<()> {
-    let hash = sha256::try_digest(file)
-        .with_context(|| format!("Could not digest file at location: {:?}", file))?;
-    let hash = HashSha2256::from_str(&hash).context("Could not parse hash")?;
-
-    ensure!(hash == checksum, "Hash of file did not match checksum");
+fn verify_checksum(file: &Path, expected_checksum: [u8; 32]) -> anyhow::Result<()> {
+    use sha2::Digest;
+    let computed_hash: [u8; 32] = sha2::Sha256::digest(
+        std::fs::read(file)
+            .with_context(|| format!("Could not digest file at location: {:?}", file))?,
+    )
+    .into();
+    ensure!(
+        computed_hash == expected_checksum,
+        "Hash of file did not match checksum"
+    );
     Ok(())
 }
 
@@ -113,7 +116,7 @@ impl AppConfig {
     ) -> Result<(ElectionManifest, ElectionParameters), anyhow::Error> {
         verify_checksum(
             &self.eg_manifest_file,
-            contract_config.election_manifest.hash,
+            contract_config.election_manifest.hash.0,
         )?;
         let election_manifest: ElectionManifest = serde_json::from_reader(
             fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
@@ -121,7 +124,7 @@ impl AppConfig {
 
         verify_checksum(
             &self.eg_parameters_file,
-            contract_config.election_parameters.hash,
+            contract_config.election_parameters.hash.0,
         )?;
         let election_parameters: ElectionParameters = serde_json::from_reader(
             fs::File::open(&self.eg_parameters_file)
@@ -404,17 +407,17 @@ async fn process_block(
 /// any transactions made to the contract due to either listening to
 /// transactions made to the wrong contract of a wrong contract entrypoint.
 async fn verify_contract(
-    node: &mut Client,
-    contract_address: &ContractAddress,
-) -> anyhow::Result<()> {
+    mut node: Client,
+    contract_address: ContractAddress,
+) -> anyhow::Result<ElectionContract> {
     let instance_info = node
-        .get_instance_info(*contract_address, BlockIdentifier::LastFinal)
+        .get_instance_info(contract_address, BlockIdentifier::LastFinal)
         .await
         .context("Could not get instance info for election contract")?
         .response;
-    let methods = match instance_info {
+    let (name, methods) = match instance_info {
         InstanceInfo::V0 { .. } => anyhow::bail!("Expected V1 contract"),
-        InstanceInfo::V1 { methods, .. } => methods,
+        InstanceInfo::V1 { methods, name, .. } => (name, methods),
     };
 
     anyhow::ensure!(
@@ -423,31 +426,18 @@ async fn verify_contract(
         REGISTER_VOTES_RECEIVE
     );
 
-    Ok(())
+    Ok(ElectionContract::new(node, contract_address, name))
 }
 
+enum ElectionContractMarker {}
+
+type ElectionContract = ContractClient<ElectionContractMarker>;
+
 /// Gets the [`ElectionConfig`] from the contract.
-async fn get_contract_config(
-    client: &mut concordium_rust_sdk::v2::Client,
-    contract_address: &ContractAddress,
-) -> anyhow::Result<ElectionConfig> {
-    let context = ContractContext::new(
-        *contract_address,
-        OwnedReceiveName::new_unchecked(CONFIG_VIEW.to_string()),
-    );
-    let InvokeContractResult::Success {
-        return_value: Some(election_config),
-        ..
-    } = client
-        .invoke_instance(BlockIdentifier::LastFinal, &context)
-        .await?
-        .response
-    else {
-        anyhow::bail!("Expected to be able to query election config");
-    };
-    let election_config: ElectionConfig =
-        contracts_common::from_bytes(election_config.value.as_ref())
-            .context("Failed to parse election config from contract invocation result")?;
+async fn get_election_config(client: &mut ElectionContract) -> anyhow::Result<ElectionConfig> {
+    let election_config = client
+        .view::<_, ElectionConfig, ViewError>(CONFIG_VIEW, &(), BlockIdentifier::LastFinal)
+        .await?;
     Ok(election_config)
 }
 
@@ -456,10 +446,9 @@ async fn get_contract_config(
 /// thread until the election has started, after which it will return the block
 /// height corresponding to the latest finalized block.
 async fn find_election_start_height(
-    client: &mut Client,
-    contract_address: &ContractAddress,
+    client: &mut ElectionContract,
 ) -> anyhow::Result<AbsoluteBlockHeight> {
-    let contract_config = get_contract_config(client, contract_address).await?;
+    let contract_config = get_election_config(client).await?;
     let election_start: DateTime<Utc> = contract_config.election_start.try_into()?;
 
     let now = Utc::now();
@@ -474,12 +463,14 @@ async fn find_election_start_height(
     }
 
     let (creation_height, ..) = client
-        .find_instance_creation(.., *contract_address)
+        .client
+        .find_instance_creation(.., client.address)
         .await
         .context("Could not find contract instance creation block")?;
 
     let query_range = creation_height..;
     let mut result = client
+        .client
         .find_first_finalized_block_no_earlier_than(query_range.clone(), election_start)
         .await;
 
@@ -489,6 +480,7 @@ async fn find_election_start_height(
     while result.is_err() {
         tokio::time::sleep(Duration::from_secs(2)).await;
         result = client
+            .client
             .find_first_finalized_block_no_earlier_than(query_range.clone(), election_start)
             .await;
     }
@@ -556,7 +548,7 @@ fn get_verification_context(
     guardian_public_keys: Vec<GuardianPublicKey>,
 ) -> anyhow::Result<PreVotingData> {
     let joint_election_public_key =
-        JointElectionPublicKey::compute(&election_parameters, guardian_public_keys.as_slice())
+        JointElectionPublicKey::compute(&election_parameters, &guardian_public_keys)
             .context("Could not compute joint election public key")?;
 
     let hashes = Hashes::compute(&election_parameters, &election_manifest)
@@ -600,12 +592,12 @@ async fn main() -> anyhow::Result<()> {
         .node_endpoints
         .get(0)
         .context("Expected endpoint to be defined")?;
-    let mut client = Client::new(ep.clone())
+    let client = Client::new(ep.clone())
         .await
         .context("Could not create node client")?;
 
-    verify_contract(&mut client, &config.contract_address).await?;
-    let contract_config = get_contract_config(&mut client, &config.contract_address).await?;
+    let mut contract_client = verify_contract(client, config.contract_address).await?;
+    let contract_config = get_election_config(&mut contract_client).await?;
     let (election_manifest, election_parameters) =
         config.read_and_verify_config_files(&contract_config)?;
 
@@ -645,13 +637,13 @@ async fn main() -> anyhow::Result<()> {
         height.next()
     } else {
         // after this point, we're sure the election is in the "voting" phase.
-        find_election_start_height(&mut client, &config.contract_address).await?
+        find_election_start_height(&mut contract_client).await?
     };
 
     // The election has moved from the "setup" phase to the "voting" phase, i.e. all
     // election guardians should have registered their keys needed for ballot
     // verification at this point.
-    let contract_config = get_contract_config(&mut client, &config.contract_address).await?;
+    let contract_config = get_election_config(&mut contract_client).await?;
     let guardian_public_keys = contract_config
         .guardian_keys
         .into_iter()

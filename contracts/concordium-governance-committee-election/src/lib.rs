@@ -3,6 +3,7 @@
 //! # A Concordium V1 smart contract
 use concordium_std::*;
 
+pub use concordium_std::HashSha2256;
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
@@ -47,15 +48,35 @@ pub enum GuardianStatus {
 }
 
 /// State associated with each guardian.
-#[derive(Serialize, SchemaType, Default, Clone, Debug, PartialEq)]
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct GuardianState {
+    /// Index of the guardian used for key-sharing. Not modifiable.
+    pub index:                  u32,
     /// The public key of the guardian.
-    pub public_key:      Option<Vec<u8>>,
+    pub public_key:             Option<Vec<u8>>,
     /// The encrypted share of the guardian.
-    pub encrypted_share: Option<Vec<u8>>,
+    pub encrypted_share:        Option<Vec<u8>>,
+    /// The share of the decryption together with the
+    /// commitment share of a single guardian for a `DecryptionProof`.
+    pub decryption_share:       Option<Vec<u8>>,
+    /// The response share of a single guardian for a `DecryptionProof`.
+    pub decryption_share_proof: Option<Vec<u8>>,
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
-    pub status:          Option<GuardianStatus>,
+    pub status:                 Option<GuardianStatus>,
+}
+
+impl GuardianState {
+    pub fn new(index: u32) -> Self {
+        Self {
+            index,
+            public_key: None,
+            encrypted_share: None,
+            status: None,
+            decryption_share: None,
+            decryption_share_proof: None,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -77,24 +98,28 @@ pub struct RegisteredData {
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:   StateBox<AccountAddress, S>,
+    pub admin_account:     StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:      StateSet<ChecksumUrl, S>,
+    pub candidates:        StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:       StateMap<AccountAddress, GuardianState, S>,
+    pub guardians:         StateMap<AccountAddress, GuardianState, S>,
     /// Data registered upon contract instantiation which is used by off-chain
     /// applications
-    pub registered_data: StateBox<RegisteredData, S>,
+    pub registered_data:   StateBox<RegisteredData, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:  Timestamp,
+    pub election_start:    Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:    Timestamp,
+    pub election_end:      Timestamp,
+    /// The string that should be used when delegating a vote.
+    pub delegation_string: StateBox<String, S>,
+    /// The encrypted tally posted by the operator for convenience of guardians.
+    pub encrypted_tally:   StateBox<Option<Vec<u8>>, S>,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result: StateBox<Option<ElectionResult>, S>,
+    pub election_result:   StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -104,15 +129,18 @@ impl State {
     fn new_checked(
         ctx: &InitContext,
         state_builder: &mut StateBuilder,
-        admin_account: AccountAddress,
-        candidates: Vec<ChecksumUrl>,
-        guardians: Vec<AccountAddress>,
-        eligible_voters: ChecksumUrl,
-        election_manifest: ChecksumUrl,
-        election_parameters: ChecksumUrl,
-        election_description: String,
-        election_start: Timestamp,
-        election_end: Timestamp,
+        InitParameter {
+            admin_account,
+            candidates,
+            guardians,
+            eligible_voters,
+            election_manifest,
+            election_parameters,
+            election_description,
+            election_start,
+            election_end,
+            delegation_string,
+        }: InitParameter,
     ) -> Result<Self, Error> {
         let now = ctx.metadata().block_time();
 
@@ -124,8 +152,11 @@ impl State {
         ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
-        for g in guardians.iter() {
-            if guardians_map.insert(*g, GuardianState::default()).is_some() {
+        for (&guardian_address, index) in guardians.iter().zip(1u32..) {
+            if guardians_map
+                .insert(guardian_address, GuardianState::new(index))
+                .is_some()
+            {
                 return Err(Error::Malformed);
             }
         }
@@ -150,7 +181,9 @@ impl State {
             registered_data: state_builder.new_box(registered_data),
             election_start,
             election_end,
+            encrypted_tally: state_builder.new_box(None),
             election_result: state_builder.new_box(None),
+            delegation_string: state_builder.new_box(delegation_string),
         };
         Ok(config)
     }
@@ -181,32 +214,8 @@ pub struct InitParameter {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
-}
-
-impl InitParameter {
-    /// Converts the init parameter to [`State`] with a supplied function for
-    /// getting a fallback admin account if none is specified. The function
-    /// consumes the parameter in the process.
-    fn into_state(
-        self,
-        ctx: &InitContext,
-        state_builder: &mut StateBuilder,
-    ) -> Result<State, Error> {
-        let state = State::new_checked(
-            ctx,
-            state_builder,
-            self.admin_account,
-            self.candidates,
-            self.guardians,
-            self.eligible_voters,
-            self.election_manifest,
-            self.election_parameters,
-            self.election_description,
-            self.election_start,
-            self.election_end,
-        )?;
-        Ok(state)
-    }
+    /// A string that should be used when delegating a vote to another account.
+    pub delegation_string:    String,
 }
 
 #[derive(Serialize, SchemaType, Debug)]
@@ -233,6 +242,8 @@ pub struct ElectionConfig {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// A string that should be used when delegating a vote to another account.
+    pub delegation_string:    String,
 }
 
 impl From<&State> for ElectionConfig {
@@ -255,6 +266,7 @@ impl From<&State> for ElectionConfig {
             election_parameters: registered_data.election_parameters.clone(),
             candidates,
             guardian_keys,
+            delegation_string: value.delegation_string.clone(),
         }
     }
 }
@@ -264,7 +276,7 @@ impl From<&State> for ElectionConfig {
 #[init(contract = "election", parameter = "InitParameter", error = "Error")]
 fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State> {
     let parameter: InitParameter = ctx.parameter_cursor().get()?;
-    let initial_state = parameter.into_state(ctx, state_builder)?;
+    let initial_state = State::new_checked(ctx, state_builder, parameter)?;
     Ok(initial_state)
 }
 
@@ -274,16 +286,21 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 fn validate_guardian_context<'a>(
     ctx: &ReceiveContext,
     host: &'a mut Host<State>,
+    before: bool, // if true check we are before election start, otherwise check we are after.
 ) -> Result<StateRefMut<'a, GuardianState, ExternStateApi>, Error> {
     let Address::Account(sender) = ctx.sender() else {
         bail!(Error::Unauthorized);
     };
 
     let now = ctx.metadata().block_time();
-    ensure!(
-        now < host.state.election_start,
-        Error::IncorrectElectionPhase
-    );
+    if before {
+        ensure!(
+            now < host.state.election_start,
+            Error::IncorrectElectionPhase
+        );
+    } else {
+        ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
+    }
 
     host.state
         .guardians
@@ -304,7 +321,7 @@ pub type RegisterGuardianPublicKeyParameter = Vec<u8>;
     mutable
 )]
 fn register_guardian_public_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(guardian_state.public_key.is_none(), Error::DuplicateEntry);
 
     let parameter: RegisterGuardianPublicKeyParameter = ctx.parameter_cursor().get()?;
@@ -325,7 +342,7 @@ pub type RegisterGuardianEncryptedShareParameter = Vec<u8>;
     mutable
 )]
 fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(
         guardian_state.encrypted_share.is_none(),
         Error::DuplicateEntry
@@ -333,6 +350,53 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
 
     let parameter: RegisterGuardianEncryptedShareParameter = ctx.parameter_cursor().get()?;
     guardian_state.encrypted_share = Some(parameter);
+    Ok(())
+}
+
+/// Entrypoint for registering the share of the decryption.
+/// The parameter is meant to be Msgpack serialization of the
+/// `DecryptionShareResult` type of electionguard.
+#[receive(
+    contract = "election",
+    name = "postDecryptionShare",
+    parameter = "Vec<u8>",
+    error = "Error",
+    mutable
+)]
+fn post_decryption_share(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(
+        guardian_state.decryption_share.is_none(),
+        Error::DuplicateEntry
+    );
+
+    let parameter: Vec<u8> = ctx.parameter_cursor().get()?;
+    guardian_state.decryption_share = Some(parameter);
+    Ok(())
+}
+
+/// Entrypoint for registering the proof that the decryption share is correct.
+/// The parameter is meant to be Msgpack serialization of the
+/// `DecryptionProofResponseShare` type of electionguard.
+#[receive(
+    contract = "election",
+    name = "postDecryptionProofResponseShare",
+    parameter = "Vec<u8>",
+    error = "Error",
+    mutable
+)]
+fn post_decryption_proof_response_share(
+    ctx: &ReceiveContext,
+    host: &mut Host<State>,
+) -> Result<(), Error> {
+    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(
+        guardian_state.decryption_share_proof.is_none(),
+        Error::DuplicateEntry
+    );
+
+    let parameter: Vec<u8> = ctx.parameter_cursor().get()?;
+    guardian_state.decryption_share_proof = Some(parameter);
     Ok(())
 }
 
@@ -346,7 +410,7 @@ fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> 
     mutable
 )]
 fn register_guardian_status(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(guardian_state.status.is_none(), Error::DuplicateEntry);
 
     let status: GuardianStatus = ctx.parameter_cursor().get()?;
@@ -402,6 +466,33 @@ fn register_votes(ctx: &ReceiveContext, host: &Host<State>) -> Result<(), Error>
     Ok(())
 }
 
+/// The parameter supplied to the [`post_encrypted_tally`] entrypoint.
+pub type PostEncryptedTallyParameter = Vec<u8>;
+
+/// Receive the election result and update the contract state with the supplied
+/// result from the parameter
+#[receive(
+    contract = "election",
+    name = "postEncryptedTally",
+    parameter = "PostEncryptedTallyParameter",
+    error = "Error",
+    mutable
+)]
+fn post_encrypted_tally(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let now = ctx.metadata().block_time();
+
+    ensure!(
+        ctx.sender().matches_account(host.state.admin_account.get()),
+        Error::Unauthorized
+    );
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
+
+    let parameter: PostEncryptedTallyParameter = ctx.parameter_cursor().get()?;
+
+    *host.state.encrypted_tally.get_mut() = Some(parameter);
+    Ok(())
+}
+
 /// The parameter supplied to the [`post_election_result`] entrypoint.
 pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 
@@ -417,11 +508,8 @@ pub type PostResultParameter = Vec<CandidateWeightedVotes>;
 fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let now = ctx.metadata().block_time();
 
-    let Address::Account(sender) = ctx.sender() else {
-        return Err(Error::Unauthorized);
-    };
     ensure!(
-        &sender == host.state.admin_account.get(),
+        ctx.sender().matches_account(host.state.admin_account.get()),
         Error::Unauthorized
     );
     ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
@@ -480,4 +568,22 @@ fn view_election_result(
         .collect();
 
     Ok(Some(response))
+}
+
+/// View function that returns the encrypted tally.
+#[receive(
+    contract = "election",
+    name = "viewEncryptedTally",
+    return_value = "Option<Vec<u8>>",
+    error = "Error"
+)]
+fn view_encrypted_tally(
+    _ctx: &ReceiveContext,
+    host: &Host<State>,
+) -> ReceiveResult<Option<Vec<u8>>> {
+    if let Some(result) = &host.state.encrypted_tally.get() {
+        Ok(Some(result.clone()))
+    } else {
+        Ok(None)
+    }
 }

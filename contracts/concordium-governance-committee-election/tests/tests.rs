@@ -39,7 +39,7 @@ fn test_init_errors() {
     let now = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::seconds(5))
         .unwrap();
-    let future_1d = now.clone().checked_add_days(chrono::Days::new(1)).unwrap();
+    let future_1d = now.checked_add_days(chrono::Days::new(1)).unwrap();
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let eligible_voters = ChecksumUrl {
@@ -66,6 +66,7 @@ fn test_init_errors() {
         eligible_voters: eligible_voters.clone(),
         election_manifest: election_manifest.clone(),
         election_parameters: election_parameters.clone(),
+        delegation_string: "Something".into(),
     };
 
     let init_param = get_init_param();
@@ -80,7 +81,7 @@ fn test_init_errors() {
 
     // `election_start` is in the past
     let mut init_param = get_init_param();
-    let past_1d = now.clone().checked_sub_days(chrono::Days::new(1)).unwrap();
+    let past_1d = now.checked_sub_days(chrono::Days::new(1)).unwrap();
     init_param.election_start = past_1d.try_into().expect("Valid datetime");
     initialize(&module_ref, &init_param, &mut chain).expect_err("Start time must be in the future");
 
@@ -168,6 +169,7 @@ fn test_init_config() {
         eligible_voters,
         election_manifest,
         election_parameters,
+        delegation_string: "Something".into(),
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
     let invocation =
@@ -211,19 +213,20 @@ fn test_receive_guardian_public_key() {
     register_guardian_public_key_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
         .expect_err("Key registration should fail when setup phase expires");
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             public_key: Some(param),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             public_key: Some(param_other),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
@@ -301,19 +304,20 @@ fn test_receive_guardian_encrypted_share() {
         "Unexpected error type"
     );
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|x| x.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             encrypted_share: Some(param),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             encrypted_share: Some(param_other),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
@@ -399,19 +403,20 @@ fn test_receive_guardian_status() {
         "Unexpected error type"
     );
 
-    let guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
         .expect("Can invoke entrypoint")
         .parse_return_value()
         .expect("Can parse value");
+    guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
             status: Some(GuardianStatus::VerificationFailed(complaint.to_string())),
-            ..Default::default()
+            ..GuardianState::new(1)
         }),
-        (CAROLINE, GuardianState::default()),
+        (CAROLINE, GuardianState::new(2)),
         (DANIEL, GuardianState {
             status: Some(GuardianStatus::VerificationSuccessful),
-            ..Default::default()
+            ..GuardianState::new(3)
         }),
     ];
     assert_eq!(guardians_state, expected_result);
@@ -754,6 +759,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         eligible_voters,
         election_manifest,
         election_parameters,
+        delegation_string: "Something".into(),
     };
     let init = initialize(&module_ref, &init_param, &mut chain).expect("Init contract succeeds");
 
