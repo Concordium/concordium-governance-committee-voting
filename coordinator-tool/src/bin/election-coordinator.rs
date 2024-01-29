@@ -1172,7 +1172,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
 
     let param_json = contract::InitParameter::get_type()
         .to_json_string_pretty(&concordium_std::to_bytes(&init_param))?;
-    eprintln!("JSON parameter that can be used to initialize the contract.");
+    eprintln!("JSON parameter that will be used to initialize the contract.");
     println!("{}", param_json);
 
     let confirm = dialoguer::Confirm::new()
