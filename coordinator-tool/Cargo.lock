@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.0"
+version = "9.0.1"
 dependencies = [
  "concordium-contracts-common",
 ]
@@ -816,8 +816,10 @@ dependencies = [
  "serde",
  "serde_cbor",
  "serde_json",
+ "sha2",
  "tokio",
  "tonic",
+ "url",
 ]
 
 [[package]]

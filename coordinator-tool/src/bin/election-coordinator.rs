@@ -5,15 +5,19 @@ use anyhow::Context;
 use clap::Parser;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
+    base::transactions,
+    common::types::TransactionTime,
     contract_client::{self, ViewError},
     indexer,
     smart_contracts::common::{
         self as concordium_std, AccountAddress, Amount, OwnedEntrypointName,
     },
     types::{
-        hashes::TransactionHash, queries::BlockInfo, AbsoluteBlockHeight, AccountAddressEq,
-        AccountIndex, AccountTransactionEffects, BlockItemSummaryDetails, ContractAddress,
-        WalletAccount,
+        hashes::TransactionHash,
+        queries::BlockInfo,
+        smart_contracts::{OwnedContractName, WasmModule},
+        AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
+        BlockItemSummaryDetails, ContractAddress, WalletAccount,
     },
     v2::{self as sdk, BlockIdentifier},
 };
@@ -23,6 +27,7 @@ use eg::{
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
+    guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
     joint_election_public_key::Ciphertext,
     verifiable_decryption::{
@@ -31,6 +36,7 @@ use eg::{
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use sha2::Digest as _;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Command line configuration of the application.
@@ -49,8 +55,74 @@ struct Args {
     command:       Command,
 }
 
+/// Command line flags.
+#[derive(clap::Parser, Debug)]
+struct NewElectionArgs {
+    #[clap(
+        long = "admin",
+        help = "Path to the file containing the Concordium account keys exported from the wallet. \
+                This will be the admin account of the election."
+    )]
+    admin:             std::path::PathBuf,
+    #[clap(
+        long = "module",
+        help = "Path of the Concordium smart contract module."
+    )]
+    module:            std::path::PathBuf,
+    #[arg(
+        long = "base-url",
+        help = "Base url where the election data is accessible. This is recorded in the contract."
+    )]
+    base_url:          url::Url,
+    #[arg(
+        long = "election-start",
+        help = "The start time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
+    )]
+    election_start:    chrono::DateTime<chrono::Utc>,
+    #[arg(
+        long = "election-end",
+        help = "The end time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
+    )]
+    election_end:      chrono::DateTime<chrono::Utc>,
+    #[arg(
+        long = "delegation-string",
+        help = "The string to identify vote delegations."
+    )]
+    delegation_string: String,
+    #[arg(long = "guardian", help = "The account addresses of guardians..")]
+    guardians:         Vec<AccountAddress>,
+    #[arg(
+        long = "threshold",
+        help = "Threshold for the number of guardians needed."
+    )]
+    threshold:         u32,
+    #[arg(
+        long = "candidate",
+        help = "The URL to candidates metadata. The order matters."
+    )]
+    candidates:        Vec<url::Url>,
+    #[clap(
+        long = "manifest-out",
+        help = "Path where the election manifest file will be written."
+    )]
+    manifest_file:     std::path::PathBuf,
+    #[clap(
+        long = "parameters-out",
+        help = "Path where election parameters will be output."
+    )]
+    parameters_file:   std::path::PathBuf,
+    #[clap(
+        long = "voters-file",
+        help = "Path to the file with a list of eligible accounts with their weights."
+    )]
+    voters_file:       std::path::PathBuf,
+}
+
 #[derive(Debug, clap::Subcommand)]
 enum Command {
+    /// Create a new smart contract instance, together with election parameters.
+    #[command(name = "new-election")]
+    NewElection(Box<NewElectionArgs>),
     /// For each account compute the average amount of CCD held
     /// during the period.
     #[command(name = "initial-weights")]
@@ -165,6 +237,7 @@ async fn main() -> anyhow::Result<()> {
             contract,
             wallet_path,
         } => handle_decrypt(endpoint, contract, wallet_path).await,
+        Command::NewElection(args) => handle_new_election(endpoint, *args).await,
     }
 }
 
@@ -927,5 +1000,220 @@ async fn handle_initial_weights(
         })?;
     }
     out_handle.flush()?;
+    Ok(())
+}
+
+#[derive(Debug, serde::Deserialize)]
+/// Metadata of a candidate. We only need the name in this tool so we only model
+/// that, and not the image and other parameters used by the frontend.
+struct CandidateMetadata {
+    name: String,
+}
+
+/// Create a new election instance.
+async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> anyhow::Result<()> {
+    let mut client = sdk::Client::new(endpoint).await?;
+
+    let wallet = WalletAccount::from_json_file(app.admin)?;
+
+    let wasm_module = WasmModule::from_file(&app.module).context("Unable to read module.")?;
+    let module_ref = wasm_module.get_module_ref();
+    let existing_module = client
+        .get_module_source(&module_ref, BlockIdentifier::LastFinal)
+        .await;
+    match existing_module {
+        Ok(_) => {
+            eprintln!("Module {module_ref} already exists.");
+        }
+        Err(e) if e.is_not_found() => {
+            let nonce = client
+                .get_next_account_sequence_number(&wallet.address)
+                .await?;
+            let tx = transactions::send::deploy_module(
+                &wallet,
+                wallet.address,
+                nonce.nonce,
+                TransactionTime::hours_after(1),
+                wasm_module,
+            );
+            let hash = client.send_account_transaction(tx).await?;
+            let (block_hash, result) = client
+                .wait_until_finalized(&hash)
+                .await
+                .context("Module deployment failed.")?;
+            anyhow::ensure!(result.is_success(), "Transaction failed {result:#?}");
+            eprintln!("Module {module_ref} deployed in block {block_hash}");
+        }
+        Err(err) => anyhow::bail!("Could not inspect module status: {err}"),
+    }
+
+    let url = &app.base_url;
+    let make_url = move |path| {
+        let mut url = url.clone();
+        url.set_path(path);
+        url.to_string()
+    };
+
+    anyhow::ensure!(
+        !app.guardians.is_empty(),
+        "The set of guardians must have at least one address."
+    );
+
+    anyhow::ensure!(
+        !app.candidates.is_empty(),
+        "There must be at least one candidate."
+    );
+
+    // Construct the manifest and candidates.
+    let (options, candidates) = {
+        let mut candidates = Vec::with_capacity(app.candidates.len());
+        let mut options = Vec::with_capacity(app.candidates.len());
+        for candidate in app.candidates {
+            let candidate_url = candidate.to_string();
+            let r = reqwest::get(candidate)
+                .await
+                .context("Unable to get data for candidate.")?;
+            anyhow::ensure!(r.status().is_success(), "Unable to get data for candidate.");
+            let data = r.bytes().await?;
+            let hash = contract::HashSha2256(sha2::Sha256::digest(&data).into());
+            candidates.push(contract::ChecksumUrl {
+                url: candidate_url,
+                hash,
+            });
+            let candidate_meta = serde_json::from_slice::<CandidateMetadata>(&data)
+                .context("Unable to parse guardian's information")?;
+            options.push(eg::election_manifest::ContestOption {
+                label: candidate_meta.name,
+            });
+        }
+        (options, candidates)
+    };
+
+    let manifest_hash = {
+        let contest = eg::election_manifest::Contest {
+            label:           "Governance committee member".into(),
+            selection_limit: options.len(),
+            options:         options.try_into()?,
+        };
+
+        let manifest = eg::election_manifest::ElectionManifest {
+            label:         "Governance commitee election 2024 election manifest".into(),
+            contests:      [contest].try_into()?,
+            ballot_styles: [eg::ballot_style::BallotStyle {
+                label:    "Governance committee vote".into(),
+                contests: [ContestIndex::from_one_based_index_const(1).unwrap()].into(),
+            }]
+            .try_into()?,
+        };
+        let manifest_json = serde_json::to_vec_pretty(&manifest)?;
+        let digest: [u8; 32] = sha2::Sha256::digest(&manifest_json).into();
+        std::fs::write(app.manifest_file, manifest_json)?;
+        contract::HashSha2256(digest)
+    };
+
+    let parameters_hash = {
+        let n = GuardianIndex::from_one_based_index(app.guardians.len().try_into()?)
+            .context("Need at least one guardian.")?;
+
+        let k = GuardianIndex::from_one_based_index_const(app.threshold)
+            .context("Threshold must be at least 1.")?;
+        anyhow::ensure!(
+            k <= n,
+            "Threshold must be less than total number of guardians."
+        );
+
+        let parameters = eg::election_parameters::ElectionParameters {
+            fixed_parameters:   eg::standard_parameters::STANDARD_PARAMETERS.clone(),
+            varying_parameters: eg::varying_parameters::VaryingParameters {
+                n,
+                k,
+                date: chrono::Utc::now().to_string(),
+                info: format!(
+                    "Governance committee election from {} to {} with {k} out of {n} threshold.",
+                    app.election_start, app.election_end
+                ),
+                ballot_chaining: eg::varying_parameters::BallotChaining::Prohibited,
+            },
+        };
+        let parameters_json = serde_json::to_vec_pretty(&parameters)?;
+        let digest: [u8; 32] = sha2::Sha256::digest(&parameters_json).into();
+        std::fs::write(app.parameters_file, parameters_json)?;
+        contract::HashSha2256(digest)
+    };
+
+    let eligible_voters_hash = {
+        let data = std::fs::read(app.voters_file).context("Unable to read voters file.")?;
+        contract::HashSha2256(sha2::Sha256::digest(data).into())
+    };
+
+    let init_param = contract::InitParameter {
+        admin_account: wallet.address,
+        candidates,
+        guardians: app.guardians,
+        eligible_voters: contract::ChecksumUrl {
+            url:  make_url("/static/concordium/eligible-voters.csv"),
+            hash: eligible_voters_hash,
+        },
+        election_manifest: contract::ChecksumUrl {
+            url:  make_url("static/electionguard/election-manifest.json"),
+            hash: manifest_hash,
+        },
+        election_parameters: contract::ChecksumUrl {
+            url:  make_url("static/electionguard/election-parameters.json"),
+            hash: parameters_hash,
+        },
+        election_description: "Test election".into(),
+        election_start: app.election_start.try_into()?,
+        election_end: app.election_end.try_into()?,
+        delegation_string: app.delegation_string,
+    };
+
+    let param = concordium_std::OwnedParameter::from_serial(&init_param)?; // Example
+
+    let param_json = contract::InitParameter::get_type()
+        .to_json_string_pretty(&concordium_std::to_bytes(&init_param))?;
+    eprintln!("JSON parameter that will be used to initialize the contract.");
+    println!("{}", param_json);
+
+    let confirm = dialoguer::Confirm::new()
+        .report(true)
+        .wait_for_newline(true)
+        .with_prompt("Do you want to initialize the contract?")
+        .interact()?;
+    anyhow::ensure!(confirm, "Aborting.");
+
+    let payload = transactions::InitContractPayload {
+        init_name: OwnedContractName::new("init_election".into())?,
+        amount: Amount::from_micro_ccd(0),
+        mod_ref: module_ref,
+        param,
+    };
+
+    let nonce = client
+        .get_next_account_sequence_number(&wallet.address)
+        .await?;
+
+    let at = transactions::send::init_contract(
+        &wallet,
+        wallet.address,
+        nonce.nonce,
+        TransactionTime::hours_after(1),
+        payload,
+        20_000.into(),
+    );
+    let tx_hash = client.send_account_transaction(at).await?;
+    eprintln!("Submitted transaction with hash {tx_hash}.");
+    let (_, result) = client
+        .wait_until_finalized(&tx_hash)
+        .await
+        .context("Failed to initialize contract instance.")?;
+    let result = result
+        .contract_init()
+        .context("Unexpected response from transaction.")?;
+
+    eprintln!(
+        "Deployed new contract instance with address {} using transaction hash {}.",
+        result.address, tx_hash
+    );
     Ok(())
 }
