@@ -81,7 +81,7 @@ The options are the following
 
 - `--admin` is the path to the keys that will be used to create the contract, and serve as the admin
 - `--module` is the path to the compiled election smart contract in `wasm.v1` format
-- `--threshold` is the threshold for the number of guardians needed
+- `--threshold` is the threshold for the number of guardians needed for decryption of the result of the election
 - `--election-start` and `--election-end` are clear
 - `--delegation-string` is the string that will be used to determine vote delegations
 - `--voters-file` is intended to be the `initial-weights.csv` file for the election
