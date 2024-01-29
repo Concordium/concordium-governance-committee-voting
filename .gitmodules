@@ -3,4 +3,4 @@
 	url = ../electionguard-rust
 [submodule "deps/concordium-rust-smart-contracts"]
 	path = deps/concordium-rust-smart-contracts
-	url = ../concordium-rust-smart-contracts
+	url = ../concordium-rust-smart-contracts.git
