@@ -6,6 +6,7 @@ import Button from '~/shared/Button';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
 import { generateKeyPair, sendPublicKeyRegistration } from '~/shared/ffi';
+import { Energy } from '@concordium/web-sdk';
 
 const enum GenerateStep {
     Generate,
@@ -69,28 +70,39 @@ function GenerateGuardianKey() {
     const [show, setShow] = useState(false);
     const [error, setError] = useState<string>();
     const [step, setStep] = useState<GenerateStep>(GenerateStep.Generate);
-    const [pubKey, setPubKey] = useState<unknown>();
+    const [energy, setEnergy] = useState<Energy.Type>();
+    const [registerKeyGenerator, setRegisterKeyGenerator] = useState<ReturnType<typeof sendPublicKeyRegistration>>();
 
     const sendUpdate = useCallback(() => {
-        console.log(pubKey); // Send the transaction.
+        if (registerKeyGenerator === undefined) {
+            throw new Error('Expected interaction generator to still be available');
+        }
+
         setStep(GenerateStep.UpdateConctract);
-    }, [pubKey]);
+        registerKeyGenerator.next(true)
+            .then(() => {
+                setStep(GenerateStep.Done);
+            })
+            .catch((e: Error) => {
+                setError(e.message);
+            });
+    }, [registerKeyGenerator]);
 
     useEffect(() => {
-        if (show) {
-            void generateKeyPair()
-                .then((value) => {
-                    setPubKey(value);
+        if (show && registerKeyGenerator !== undefined) {
+            registerKeyGenerator.next(true)
+                .then((res) => {
+                    setEnergy(res.value as Energy.Type);
                     setStep(GenerateStep.ApproveTransaction);
                 })
                 .catch((e: Error) => {
                     setError(e.message);
                 });
         }
-    }, [show]);
+    }, [show, registerKeyGenerator]);
 
     useEffect(() => {
-        sendPublicKeyRegistration();
+        setRegisterKeyGenerator(sendPublicKeyRegistration());
     }, []);
 
     return (

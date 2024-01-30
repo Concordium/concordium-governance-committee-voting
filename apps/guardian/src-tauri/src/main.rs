@@ -5,7 +5,7 @@ use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     id::types::AccountKeys,
     smart_contracts::common::AccountAddress,
-    types::WalletAccount,
+    types::{WalletAccount, Energy},
 };
 use eg::{
     election_manifest::ElectionManifest, election_parameters::ElectionParameters,
@@ -399,7 +399,7 @@ where
     // Wait for the response
     let response = receiver
         .await
-        .map_err(|_| GenerateKeyPairError::MissingState("something".into()))?;
+        .map_err(|_| GenerateKeyPairError::MissingState("something".into()))?; // TODO: change..
     Ok(response)
 }
 
@@ -411,15 +411,11 @@ async fn send_public_key_registration<'a>(
     app_handle: AppHandle,
     window: Window,
 ) -> Result<(), GenerateKeyPairError> {
-    let public_key = generate_key_pair(active_guardian_state, eg_state, app_handle);
-    send_message(&window, &channel_id, ()).await?;
-
-    send_message(&window, &channel_id, ()).await?;
     eprintln!("START");
-    // Do some work...
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
-    send_message(&window, &channel_id, ()).await?;
+    let public_key = generate_key_pair(active_guardian_state, eg_state, app_handle)?;
+    eprintln!("PUB KEY {:?}", public_key);
+    let response: bool = send_message(&window, &channel_id, Energy { energy: 400 }).await?;
+    eprintln!("RESPONSE {}", response);
 
     // Continue the work
     tokio::time::sleep(Duration::from_secs(3)).await;

@@ -1,8 +1,9 @@
-import { AccountAddress, AccountKeys, Base58String, WalletExportFormat } from '@concordium/web-sdk';
+import { AccountAddress, AccountKeys, Base58String, Energy, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
 import { ElectionManifest, ElectionParameters } from 'shared/types';
-import {Buffer} from 'buffer/';
+import { Buffer } from 'buffer/';
 import { appWindow } from '@tauri-apps/api/window';
+import { UnlistenFn, Event } from '@tauri-apps/api/event';
 
 /**
  * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
@@ -96,10 +97,44 @@ export async function generateKeyPair(): Promise<Uint8Array> {
     return Buffer.from(byteArray);
 }
 
-export function sendPublicKeyRegistration(): void {
-    void appWindow.once('test-request', () => {
-        void appWindow.emit('test-response');
+const REGISTER_KEY_CHANNEL_ID = 'register-key';
+
+export async function* sendPublicKeyRegistration(): AsyncGenerator<Energy.Type, void, boolean> {
+    console.log('INIT');
+    // The protocol for this interaction is:
+    // 1. Request transaction approval for estimate (first value yield) or throw
+    // 2. Await transaction finalization (return value) or throw
+
+    const invocation = ensureErrors(
+        invoke<void>('send_public_key_registration', { channelId: REGISTER_KEY_CHANNEL_ID }),
+    );
+
+    let unsub: UnlistenFn | undefined;
+    const keyRegistrationEstimate = new Promise<Energy.Type>((resolve) => {
+        void appWindow
+            .once(REGISTER_KEY_CHANNEL_ID, (event: Event<number>) => {
+                resolve(Energy.create(event.payload));
+            })
+            .then((unsubfun) => {
+                unsub = unsubfun;
+            });
     });
 
-    return void ensureErrors(invoke<void>('send_public_key_registration'));
+    try {
+        const estimate = await Promise.race([keyRegistrationEstimate, invocation]);
+        console.log('FIRST ASYNC', estimate);
+        if (estimate !== undefined) {
+            // This will always be true in practice, as otherwise `invocation` would throw due to how the protocol is built.
+            const approval = yield estimate;
+            console.log('APPROVAL', approval);
+            void appWindow.emit(REGISTER_KEY_CHANNEL_ID, approval); // Will be rejected by backend if false
+        }
+    } catch (e) {
+        unsub?.();
+    }
+
+    const res = await invocation;
+    console.log('LAST ASYNC', res);
+
+    return res;
 }
