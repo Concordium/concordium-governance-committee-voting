@@ -122,7 +122,7 @@ export default function ImportWalletAccount() {
     const [loading, setLoading] = useState(false);
     const guardiansState = useAtomValue(guardiansStateAtom);
     const guardians = useMemo(
-        () => guardiansState?.map(([account]) => AccountAddress.toBase58(account)),
+        () => guardiansState.guardians?.map(([account]) => AccountAddress.toBase58(account)),
         [guardiansState],
     );
     const nav = useNavigate();

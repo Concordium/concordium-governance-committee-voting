@@ -5,7 +5,7 @@ import { Modal, Spinner } from 'react-bootstrap';
 import Button from '~/shared/Button';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
-import { generateKeyPair, sendPublicKeyRegistration } from '~/shared/ffi';
+import { sendPublicKeyRegistration } from '~/shared/ffi';
 import { Energy } from '@concordium/web-sdk';
 
 const enum GenerateStep {
@@ -79,7 +79,8 @@ function GenerateGuardianKey() {
         }
 
         setStep(GenerateStep.UpdateConctract);
-        registerKeyGenerator.next(true)
+        registerKeyGenerator
+            .next()
             .then(() => {
                 setStep(GenerateStep.Done);
             })
@@ -90,7 +91,8 @@ function GenerateGuardianKey() {
 
     useEffect(() => {
         if (show && registerKeyGenerator !== undefined) {
-            registerKeyGenerator.next(true)
+            registerKeyGenerator
+                .next()
                 .then((res) => {
                     setEnergy(res.value as Energy.Type);
                     setStep(GenerateStep.ApproveTransaction);
@@ -121,7 +123,7 @@ function GenerateGuardianKey() {
                             step={GenerateStep.ApproveTransaction}
                             activeStep={step}
                             error={error}
-                            note="Transaction fee: 230 CCD"
+                            note={energy ? `Transaction fee energy: ${energy.value.toString()} NRG` : ``} // TODO: calculate as CCD
                         >
                             Awaiting transaction approval
                             <div className="generate__step-note text-muted"></div>

@@ -4,6 +4,9 @@
 use concordium_std::*;
 
 pub use concordium_std::HashSha2256;
+
+#[cfg(feature = "serde")]
+use serde::ser::SerializeStruct;
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
@@ -12,6 +15,18 @@ pub struct ChecksumUrl {
     pub url:  String,
     /// The hash of the data found at `url`.
     pub hash: HashSha2256,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ChecksumUrl {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        let mut state = serializer.serialize_struct("ChecksumUrl", 2)?;
+        state.serialize_field("url", &self.url)?;
+        state.serialize_field("hash", &self.hash.to_string())?;
+        state.end()
+    }
 }
 
 /// An amount of weighted votes for a candidate
@@ -39,6 +54,7 @@ pub enum Error {
 
 /// The different status options available for guardians.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum GuardianStatus {
     /// Guardian could not verify the [`GuardianState`] of other guardians.
     VerificationFailed(String),
@@ -49,6 +65,7 @@ pub enum GuardianStatus {
 
 /// State associated with each guardian.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GuardianState {
     /// Index of the guardian used for key-sharing. Not modifiable.
     pub index:                  u32,
@@ -218,7 +235,8 @@ pub struct InitParameter {
     pub delegation_string:    String,
 }
 
-#[derive(Serialize, SchemaType, Debug)]
+#[derive(Serialize, SchemaType, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.

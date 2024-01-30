@@ -1,9 +1,9 @@
 import { AccountAddress, AccountKeys, Base58String, Energy, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
-import { ElectionManifest, ElectionParameters } from 'shared/types';
-import { Buffer } from 'buffer/';
 import { appWindow } from '@tauri-apps/api/window';
 import { UnlistenFn, Event } from '@tauri-apps/api/event';
+
+import { ElectionManifest, ElectionParameters } from 'shared/types';
 
 /**
  * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
@@ -86,15 +86,34 @@ export function setElectionGuardConfig(manifest: ElectionManifest, parameters: E
     return ensureErrors(invoke('set_eg_config', { manifest, parameters }));
 }
 
-/**
- * Wraps `generate_key_pair` invocation, which generates a key pair to be used by the active guardian account.
- *
- * @returns A {@linkcode Uint8Array} corresponding to an election guard `GuardianPublicKey` serialized with msgpack
- * @throws If the key pair could not be generated
- */
-export async function generateKeyPair(): Promise<Uint8Array> {
-    const byteArray = await ensureErrors(invoke<number[]>('generate_key_pair'));
-    return Buffer.from(byteArray);
+export type ConnectResponse = {
+    election_start: string;
+    election_end: string;
+    election_description: string;
+};
+
+export function connect(): Promise<ConnectResponse> {
+    return ensureErrors(invoke('connect'));
+}
+
+export type GuardianState = {
+    has_encrypted_share: boolean;
+    index: number;
+    has_public_key: boolean;
+    status: number | null;
+};
+
+export type GuardiansState = [AccountAddress.Type, GuardianState][];
+
+export async function refreshGuardians(): Promise<[AccountAddress.Type, GuardianState][]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const guardiansState = await ensureErrors(invoke<[Base58String, GuardianState][]>('refresh_guardians'));
+    const mapped = guardiansState.map<[AccountAddress.Type, GuardianState]>(([address, state]) => [
+        AccountAddress.fromBase58(address),
+        state,
+    ]);
+
+    return mapped;
 }
 
 const REGISTER_KEY_CHANNEL_ID = 'register-key';
