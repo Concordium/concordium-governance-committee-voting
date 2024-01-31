@@ -5,7 +5,7 @@ contract deployment for guardians through key generation, voting, to decryption
 of the result.
 
 The script is not very configurable, but has a few options to configure the
-election. The de
+election.
 
 - `--module` option must point to a compile election smart contract module.
   Typically this will be
@@ -79,7 +79,7 @@ Submitted vote for 4bHFGdYhexcVeFUyxtecVdVHw4cHJahN83VbRRFGy2BLqVv7mT with trans
 After this the tool will wait for the election to end at which point it waits for the encrypted tally to be posted by the coordinator.
 
 To use the coordinator tool the parameters and election manifest must be hosted in the URLs defined by the script.
-This is easiest to achieve by serving the `run1` (or a directory specified when running the script) on port `7000`. 
+This is easiest to achieve by serving the `run1` (or a directory specified when running the script) on port `7000`.
 If another port is desired modify the script.
 
 ```console
@@ -101,3 +101,23 @@ At this point the script posts the decryption of the tally, together with a proo
 Each guardian also verifies that proofs posted by all other guardians are correct.
 
 The final result can be posted by the coordinator tool after the script terminates.
+
+## Run in combination with election server and indexer
+
+Set up the election with all files generated in `run1` directory
+
+```console
+cargo run -- --module
+../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --keys keys/ --out ../hosted-test --candidates-dir ../resources/config-example/candidates/ --base-url http://localhost:3000 --election-duration 100000
+```
+
+This will make all voters eligible to vote with equal weight. If you already have a file with eligible voters then you may supply it with `--eligible-voters` and it will be used instead.
+The candidates are taken to be all the JSON files in the supplied `--candidates-dir`.
+
+Then start the election server (from inside the [election-server](../election-server) directory)
+
+```console
+cargo run --bin http -- --contract-address '<7868,0>' --election-manifest-file ../hosted-test/static/electionguard/election-manifest.json --election-parameters-file ../hosted-test/static/electionguard/election-parameters.json --listen-address 0.0.0.0:3000  --eligible-voters-file ../hosted-test/eligible-voters.json --log-level=debug
+``
+
+modifying the `--contract-address` to the one printed by the test script in the previous step.
