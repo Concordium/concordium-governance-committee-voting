@@ -1,15 +1,18 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use anyhow::{anyhow, Context};
 use concordium_governance_committee_election::{
     self as contract, ChecksumUrl, ElectionConfig, HashSha2256,
 };
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
-    contract_client::{ContractClient, ViewError},
+    contract_client::ContractClient,
     id::types::AccountKeys,
-    smart_contracts::common::AccountAddress,
-    types::{smart_contracts::OwnedParameter, ContractAddress, Energy, WalletAccount},
+    smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
+    types::{
+        smart_contracts::OwnedParameter, ContractAddress, RejectReason, WalletAccount,
+    },
     v2::{BlockIdentifier, Client, Endpoint, QueryError},
 };
 use contract::GuardianStatus;
@@ -18,8 +21,9 @@ use eg::{
     guardian::GuardianIndex, guardian_public_key::GuardianPublicKey,
     guardian_secret_key::GuardianSecretKey,
 };
+use election_common::ByteConvert;
 use rand::{thread_rng, Rng};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Serialize, ser::SerializeStruct};
 use sha2::Digest;
 use std::{
     path::{Path, PathBuf},
@@ -41,9 +45,9 @@ struct GuardianData {
     /// The guardian account
     account: AccountAddress,
     /// The keys for the `account`
-    keys:    AccountKeys,
+    keys: AccountKeys,
     /// The guardian index used by election guard
-    index:   GuardianIndex,
+    index: GuardianIndex,
 }
 
 impl GuardianData {
@@ -59,9 +63,9 @@ impl GuardianData {
 /// Holds the currently selected account and corresponding password
 struct ActiveGuardian {
     /// The selected account
-    account:        AccountAddress,
+    account: AccountAddress,
     /// The password used for encryption with the selected account
-    password:       Password,
+    password: Password,
     /// The guardian index of the guardian.
     guardian_index: GuardianIndex,
 }
@@ -94,53 +98,101 @@ struct ConnectionConfig {
     node: Client,
 }
 
-#[derive(Debug, thiserror::Error)]
-enum CheckedResourceError {
-    #[error("{0}")]
+/// Describes any error happening in the backend.
+#[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+enum Error {
+    /// HTTP error when trying to get remote resource
+    #[error("Failed to get remote resource: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("Verification of data failed")]
-    Verification,
-    #[error("Deserialization failed: {0}")]
-    Deserialize(#[from] serde_json::Error),
+    /// Decryption of file contents failed. This can either indicate incorrect password given by the user, or file
+    /// corruption.
+    #[error("Decryption of data failed")]
+    Decrypt,
+    /// IO error while attempting read/write
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
+    /// Could not deserialize contents of the encrypted file. This will not be due to invalid user input.
+    #[error("File corruption detected for {0}")]
+    Corrupted(PathBuf),
+    /// Internal errors.
+    #[error("Internal error: {0:?}")]
+    Internal(#[from] anyhow::Error),
+    /// Could not connect to node
+    #[error("Failed to connect to concordium node: {0}")]
+    NodeConnection(#[from] tonic::transport::Error),
+    /// Query was rejected by the node
+    #[error("Node rejected with reason: {0:#?}")]
+    QueryFailed(RejectReason),
+    /// A network error happened while querying the node
+    #[error("Network error: {0}")]
+    NetworkError(#[from] QueryError),
+    /// Duplicate account found when importing
+    #[error("Account has already been imported")]
+    ExistingAccount,
+    /// Used to abort an interactive command invocation prematurely (i.e. where the command awaits events emitted by the frontend)
+    #[error("{0}")]
+    AbortInteraction(String),
 }
 
-async fn get_resource_checked<J: DeserializeOwned>(
-    url: &ChecksumUrl,
-) -> Result<J, CheckedResourceError> {
+impl From<contracts_common::NewReceiveNameError> for Error {
+    fn from(error: contracts_common::NewReceiveNameError) -> Self {
+        anyhow::Error::new(error)
+            .context("Invalid receive name")
+            .into()
+    }
+}
+
+impl From<contracts_common::ParseError> for Error {
+    fn from(error: contracts_common::ParseError) -> Self {
+        anyhow::Error::new(error)
+            .context("Contract response could not be parsed")
+            .into()
+    }
+}
+
+impl From<contracts_common::ExceedsParameterSize> for Error {
+    fn from(error: contracts_common::ExceedsParameterSize) -> Self {
+        anyhow::Error::new(error)
+            .context("Invalid receive name")
+            .into()
+    }
+}
+
+impl From<RejectReason> for Error {
+    fn from(reason: RejectReason) -> Self {
+        Error::QueryFailed(reason)
+    }
+}
+
+// Needs Serialize to be able to return it from a command
+impl serde::Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        let mut error = serializer.serialize_struct("Error", 2)?;
+        error.serialize_field("type", <&str>::from(self))?;
+        error.serialize_field("message", &self.to_string())?;
+        error.end()
+    }
+}
+
+async fn get_resource_checked<J: DeserializeOwned>(url: &ChecksumUrl) -> Result<J, Error> {
     let data = reqwest::get(url.url.clone()).await?.bytes().await?;
 
     let hash = HashSha2256(sha2::Sha256::digest(&data).into());
     if url.hash != hash {
-        return Err(CheckedResourceError::Verification);
+        return Err(anyhow!("Verification of remote resource at {} failed. Expected checksum {} did not match computed hash {}.", url.url, url.hash, hash).into());
     }
 
-    serde_json::from_slice(&data).map_err(CheckedResourceError::from)
-}
-
-#[derive(Debug, thiserror::Error)]
-enum AppConfigError {
-    #[error("{0}")]
-    Connect(#[from] tonic::transport::Error),
-    #[error("{0}")]
-    Contract(#[from] QueryError),
-    #[error("Failed to query election contract configuration: {0}")]
-    ContractQuery(#[from] ViewError),
-    #[error("{0}")]
-    CheckedResource(#[from] CheckedResourceError),
-}
-
-impl serde::Serialize for AppConfigError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
+    // It's fair to assume that data integrity check means that it can also be deserialized
+    let result = serde_json::from_slice(&data).unwrap();
+    Ok(result)
 }
 
 impl ConnectionConfig {
     /// Creates a connection to a concordium node and a contract client. This
     /// function panics if the necessary environment variables are not set.
-    async fn try_create_from_env() -> Result<Self, AppConfigError> {
+    async fn try_create_from_env() -> Result<Self, Error> {
         let endpoint_var = option_env!("CCD_ELECTION_NODE")
             .expect(r#"Expected environment variable "CCD_ELECTION_NODE" to be defined"#); // We
         let endpoint = Endpoint::from_str(endpoint_var).expect("Could not parse node endpoint");
@@ -158,10 +210,10 @@ impl ConnectionConfig {
 
     async fn try_get_election_config(
         &mut self,
-    ) -> Result<(ElectionConfig, ElectionGuardConfig), AppConfigError> {
+    ) -> Result<(ElectionConfig, ElectionGuardConfig), Error> {
         let config: ElectionConfig = self
             .contract
-            .view::<OwnedParameter, ElectionConfig, ViewError>(
+            .view::<OwnedParameter, ElectionConfig, Error>(
                 "viewConfig",
                 &OwnedParameter::empty(),
                 BlockIdentifier::LastFinal,
@@ -181,13 +233,13 @@ impl ConnectionConfig {
 
 #[derive(Default, Clone)]
 struct AppConfig {
-    connection:     Option<ConnectionConfig>,
-    election:       Option<ElectionConfig>,
+    connection: Option<ConnectionConfig>,
+    election: Option<ElectionConfig>,
     election_guard: Option<ElectionGuardConfig>,
 }
 
 impl AppConfig {
-    async fn connection(&mut self) -> Result<ConnectionConfig, AppConfigError> {
+    async fn connection(&mut self) -> Result<ConnectionConfig, Error> {
         let connection = if let Some(connection) = &self.connection {
             connection.clone()
         } else {
@@ -199,7 +251,7 @@ impl AppConfig {
         Ok(connection)
     }
 
-    async fn election_guard(&mut self) -> Result<ElectionGuardConfig, AppConfigError> {
+    async fn election_guard(&mut self) -> Result<ElectionGuardConfig, Error> {
         let eg = if let Some(eg) = &self.election_guard {
             eg.clone()
         } else {
@@ -215,7 +267,7 @@ impl AppConfig {
         Ok(eg)
     }
 
-    async fn election(&mut self) -> Result<ElectionConfig, AppConfigError> {
+    async fn election(&mut self) -> Result<ElectionConfig, Error> {
         let election = if let Some(election) = &self.election {
             election.clone()
         } else {
@@ -234,14 +286,6 @@ impl AppConfig {
 
 #[derive(Default)]
 struct AppConfigState(Mutex<AppConfig>);
-
-impl serde::Serialize for ImportWalletError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
 
 /// Stores the account in global state.
 async fn use_guardian<'a>(
@@ -266,24 +310,13 @@ fn guardian_data_dir(app_handle: &AppHandle, account: AccountAddress) -> PathBuf
         .join(account.to_string())
 }
 
-/// Possible errors when encrypting data and writing it to disk.
-#[derive(thiserror::Error, Debug)]
-enum WriteEncryptedError {
-    /// Serialization of data type failed
-    #[error("Serialization of data type failed")]
-    Serialize(#[from] serde_json::Error),
-    /// [`std::io::Error`] while attempting to write to disk
-    #[error("{0}")]
-    IO(#[from] std::io::Error),
-}
-
 /// Writes `data` encrypted with `password` to disk
 fn write_encrypted_file<D: serde::Serialize>(
     password: &Password,
     data: &D,
     file_path: &Path,
-) -> Result<(), WriteEncryptedError> {
-    let plaintext = serde_json::to_string(&data)?;
+) -> Result<(), Error> {
+    let plaintext = serde_json::to_string(&data).context("Failed to serialize data")?;
     let mut rng = thread_rng();
     // Serialization will not fail at this point.
     let encrypted_data = serde_json::to_vec(&encrypt(&password, &plaintext, &mut rng)).unwrap();
@@ -292,49 +325,18 @@ fn write_encrypted_file<D: serde::Serialize>(
     Ok(())
 }
 
-/// Errors which happen when reading an encrypted file.
-#[derive(thiserror::Error, Debug)]
-enum ReadEncryptedError {
-    /// Decryption of file contents failed
-    #[error("Decryption of data failed")]
-    Decrypt,
-    /// [`std::io::Error`] while attempting to write to disk
-    #[error("{0}")]
-    IO(#[from] std::io::Error),
-    /// Could not deserialize into encrypted data
-    #[error("File corruption detected for {0}")]
-    Corrupted(PathBuf),
-}
-
-impl From<serde_json::Error> for ReadEncryptedError {
-    fn from(_: serde_json::Error) -> Self { ReadEncryptedError::Decrypt }
-}
-
 /// Deserialize contents of an encrypted file.
 fn read_encrypted_file<D: serde::de::DeserializeOwned>(
     password: &Password,
     file_path: &PathBuf,
-) -> Result<D, ReadEncryptedError> {
+) -> Result<D, Error> {
     let encrypted_bytes = std::fs::read(file_path)?;
     let encrypted: EncryptedData = serde_json::from_slice(&encrypted_bytes)
-        .map_err(|_| ReadEncryptedError::Corrupted(file_path.clone()))?;
+        .map_err(|_| Error::Corrupted(file_path.clone()))?;
 
-    let decrypted_bytes =
-        decrypt(&password, &encrypted).map_err(|_| ReadEncryptedError::Decrypt)?;
-    let value =
-        serde_json::from_slice(&decrypted_bytes).map_err(|_| ReadEncryptedError::Decrypt)?;
+    let decrypted_bytes = decrypt(&password, &encrypted).map_err(|_| Error::Decrypt)?;
+    let value = serde_json::from_slice(&decrypted_bytes).map_err(|_| Error::Decrypt)?;
     Ok(value)
-}
-
-/// Describes possible errors when importing an account.
-#[derive(thiserror::Error, Debug)]
-enum ImportWalletError {
-    /// An error happened while trying to write to disk
-    #[error("Could not save account: {0}")]
-    Write(#[from] WriteEncryptedError),
-    /// Account has already been imported
-    #[error("Account already found in application")]
-    Duplicate,
 }
 
 /// Handle a wallet import. Creates a directory for storing data associated with
@@ -353,14 +355,14 @@ async fn import_wallet_account<'a>(
     password: String,
     active_guardian_state: State<'a, ActiveGuardianState>,
     app_handle: AppHandle,
-) -> Result<GuardianData, ImportWalletError> {
+) -> Result<GuardianData, Error> {
     let account = wallet_account.address;
 
     let guardian_dir = guardian_data_dir(&app_handle, account);
     if guardian_dir.exists() {
-        return Err(ImportWalletError::Duplicate);
+        return Err(Error::ExistingAccount);
     }
-    std::fs::create_dir(&guardian_dir).map_err(WriteEncryptedError::from)?;
+    std::fs::create_dir(&guardian_dir)?;
 
     let password = Password::from(password);
     let guardian_data = GuardianData::create(wallet_account, guardian_index);
@@ -374,28 +376,13 @@ async fn import_wallet_account<'a>(
     Ok(guardian_data)
 }
 
-/// Represents an IO error happening while loading accounts from disk. This
-/// should never happen in practice due to accounts being loaded right after
-/// ensuring the data directory for the application exists during setup.
-#[derive(thiserror::Error, Debug)]
-#[error("Could not read app data")]
-struct GetAccountsError(#[from] std::io::Error);
-
-impl serde::Serialize for GetAccountsError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
-
 /// Gets the accounts which have previously been imported into the application.
 ///
 /// ## Errors
 /// Fails if the appliction data directory could not be read, which should not
 /// happen due to ensuring the existence during application setup.
 #[tauri::command(async)]
-fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsError> {
+fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, Error> {
     let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
     let entries = std::fs::read_dir(app_data_dir)?;
 
@@ -415,19 +402,6 @@ fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, GetAccountsErr
     Ok(accounts)
 }
 
-/// Describes possible errors when loading an account from disk.
-#[derive(thiserror::Error, Debug)]
-#[error("Failed to load guardian account: {0}")]
-struct LoadWalletError(#[from] ReadEncryptedError);
-
-impl serde::Serialize for LoadWalletError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
-
 /// Load a [`GuardianAccount`] from disk, decrypting the contents with
 /// `password`
 #[tauri::command]
@@ -436,34 +410,13 @@ async fn load_account<'a>(
     password: String,
     app_handle: AppHandle,
     active_guardian_state: State<'a, ActiveGuardianState>,
-) -> Result<GuardianData, LoadWalletError> {
+) -> Result<GuardianData, Error> {
     let password = Password::from(password);
     let account_path = guardian_data_dir(&app_handle, account).join(WALLET_ACCOUNT_FILE);
     let guardian_data: GuardianData = read_encrypted_file(&password, &account_path)?;
     use_guardian(&guardian_data, password, active_guardian_state).await;
 
     Ok(guardian_data)
-}
-
-/// Describes the possible errors that can happen when generating a guardian key
-/// pair
-#[derive(thiserror::Error, Debug)]
-enum GenerateKeyPairError {
-    /// Missing application state. Should not happen due to user behavioiur.
-    #[error("Application state missing: {0}")]
-    MissingState(String),
-    /// The guardian has already generated a key. Should only happen due to
-    /// corruption of file.
-    #[error("Existing key found, but could not be read: {0}")]
-    ReadExisting(#[from] ReadEncryptedError),
-    /// The key could not be written to disk. Should not happen due to user
-    /// behaviour.
-    #[error("Could not write the key to disk: {0}")]
-    Write(#[from] WriteEncryptedError),
-}
-
-impl From<AppConfigError> for GenerateKeyPairError {
-    fn from(value: AppConfigError) -> Self { GenerateKeyPairError::MissingState(value.to_string()) }
 }
 
 /// Generate a key pair for the selected guardian, storing the secret key on
@@ -473,17 +426,14 @@ impl From<AppConfigError> for GenerateKeyPairError {
 /// ## Errors
 /// Any errors happening will be due to data corruption or internal errors.
 async fn generate_key_pair<'a>(
-    active_guardian_state: State<'a, ActiveGuardianState>,
-    app_config: State<'a, AppConfigState>,
+    active_guardian_state: &State<'a, ActiveGuardianState>,
+    app_config: &State<'a, AppConfigState>,
     app_handle: AppHandle,
-) -> Result<GuardianPublicKey, GenerateKeyPairError> {
+) -> Result<GuardianPublicKey, Error> {
     let active_guardian_guard = active_guardian_state.0.lock().await;
-    let active_guardian =
-        active_guardian_guard
-            .as_ref()
-            .ok_or(GenerateKeyPairError::MissingState(
-                "Active account not set".to_string(),
-            ))?;
+    let active_guardian = active_guardian_guard
+        .as_ref()
+        .ok_or(anyhow!("Active account not set"))?;
     let account = active_guardian.account;
     let secret_key_path = guardian_data_dir(&app_handle, account).join(SECRET_KEY_FILE);
 
@@ -518,10 +468,12 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static, {
+    R: DeserializeOwned + Sync + Send + 'static,
+{
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
+        println!("received response: {:?}", &e.payload()); // FIXME: Why is there no response payload here??
         let response: Result<Option<R>, _> = e.payload().map(serde_json::from_str).transpose();
         let _ = sender.send(response); // Receiver will not be dropped
     });
@@ -534,22 +486,13 @@ where
     response
 }
 
-#[derive(Debug, thiserror::Error)]
-enum SendPublicKeyRegistrationError {
-    #[error("{0}")]
-    Generate(#[from] GenerateKeyPairError),
-    #[error("Internal error happened: {0}")]
-    Internal(String),
-}
-
-impl serde::Serialize for SendPublicKeyRegistrationError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer, {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
-
+/// This command executes the following steps:
+///
+/// - Generate a key pair, storing the secret key (encrypted) on disk
+/// - Request transaction fee estimate approval from user
+/// - Register guardian public key in the election contract
+///
+/// Returns an error if any of the steps fail for various reasons
 #[tauri::command]
 async fn send_public_key_registration<'a>(
     active_guardian_state: State<'a, ActiveGuardianState>,
@@ -557,20 +500,39 @@ async fn send_public_key_registration<'a>(
     channel_id: String,
     app_handle: AppHandle,
     window: Window,
-) -> Result<(), SendPublicKeyRegistrationError> {
-    eprintln!("START");
-    let public_key = generate_key_pair(active_guardian_state, app_config_state, app_handle).await?;
-    eprintln!("PUB KEY {:?}", public_key);
-    let response: bool = match send_message(&window, &channel_id, Energy { energy: 400 }).await {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return Err(SendPublicKeyRegistrationError::Internal(
-                "Expected response with value from frontend".into(),
+) -> Result<(), Error> {
+    let public_key =
+        generate_key_pair(&active_guardian_state, &app_config_state, app_handle).await?;
+    let mut contract = app_config_state.0.lock().await.connection().await?.contract;
+    let active_guardian_guard = active_guardian_state.0.lock().await;
+    let active_guardian = active_guardian_guard
+        .as_ref()
+        .ok_or(anyhow!("Active account not set"))?;
+    let result = contract
+        .dry_run_update::<Vec<u8>, Error>(
+            "registerGuardianPublicKey",
+            Amount::zero(),
+            active_guardian.account,
+            &public_key.encode().unwrap(), // Serialization will not fail
+        )
+        .await?;
+
+    let _ = match send_message(&window, &channel_id, result.current_energy()).await {
+        Ok(Some(true)) => true,
+        Ok(Some(false)) => {
+            return Err(Error::AbortInteraction(
+                "Registration rejected by the user".into(),
             ))
         }
-        Err(error) => return Err(SendPublicKeyRegistrationError::Internal(error.to_string())),
+        Ok(None) => return Err(anyhow!("Expected response with value from frontend").into()),
+        Err(error) => {
+            return Err(anyhow::Error::new(error)
+                .context("Unexpected result received from the frontend")
+                .into())
+        }
     };
-    eprintln!("RESPONSE {}", response);
+
+    // TODO: send the transaction and await finalization
 
     // Continue the work
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -581,18 +543,18 @@ async fn send_public_key_registration<'a>(
 #[derive(serde::Serialize)]
 struct GuardianStateResponse {
     has_encrypted_share: bool,
-    has_public_key:      bool,
-    index:               u32,
-    status:              Option<GuardianStatus>,
+    has_public_key: bool,
+    index: u32,
+    status: Option<GuardianStatus>,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_share: value.encrypted_share.is_some(),
-            has_public_key:      value.public_key.is_some(),
-            index:               value.index,
-            status:              value.status.clone(),
+            has_public_key: value.public_key.is_some(),
+            index: value.index,
+            status: value.status.clone(),
         }
     }
 }
@@ -601,10 +563,10 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
 async fn refresh_guardians<'a>(
     app_config_state: State<'a, AppConfigState>,
     guardians_state: State<'a, GuardiansState>,
-) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, AppConfigError> {
+) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, Error> {
     let mut contract = app_config_state.0.lock().await.connection().await?.contract;
     let guardians_state_contract = contract
-        .view::<OwnedParameter, contract::GuardiansState, ViewError>(
+        .view::<OwnedParameter, contract::GuardiansState, Error>(
             "viewGuardiansState",
             &OwnedParameter::empty(),
             BlockIdentifier::LastFinal,
@@ -625,9 +587,9 @@ async fn refresh_guardians<'a>(
 #[tauri::command]
 async fn connect<'a>(
     app_config_state: State<'a, AppConfigState>,
-) -> Result<ElectionConfig, AppConfigError> {
-    let mut app_config = app_config_state.0.lock().await;
-    let election_config = app_config.election().await?;
+) -> Result<ElectionConfig, Error> {
+    let mut app_config_guard = app_config_state.0.lock().await;
+    let election_config = app_config_guard.election().await?;
     Ok(election_config)
 }
 

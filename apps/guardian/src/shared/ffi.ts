@@ -6,22 +6,6 @@ import { UnlistenFn, Event } from '@tauri-apps/api/event';
 import { ElectionManifest, ElectionParameters } from 'shared/types';
 
 /**
- * Helper function which wraps strings thrown due to errors in proper `Error` types. This is needed as the errors
- * returned from the rust backend are deserialized as strings in the frontend.
- */
-async function ensureErrors<T>(promise: Promise<T>): Promise<T> {
-    try {
-        return await promise;
-    } catch (e) {
-        if (typeof e === 'string') {
-            throw new Error(e);
-        }
-
-        throw e;
-    }
-}
-
-/**
  * The wallet account as returned from the rust backend process.
  */
 export type GuardianData = {
@@ -48,9 +32,7 @@ export function importWalletAccount(
     guardianIndex: number,
     password: string,
 ): Promise<GuardianData> {
-    return ensureErrors(
-        invoke<GuardianData>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password }),
-    );
+    return invoke<GuardianData>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password });
 }
 
 /**
@@ -59,7 +41,7 @@ export function importWalletAccount(
  * @returns The list of {@linkcode AccountAddress.Type} found.
  */
 export async function getAccounts(): Promise<AccountAddress.Type[]> {
-    const accounts = await ensureErrors(invoke<Base58String[]>('get_accounts'));
+    const accounts = await invoke<Base58String[]>('get_accounts');
     return accounts.map(AccountAddress.fromBase58);
 }
 
@@ -72,7 +54,7 @@ export async function getAccounts(): Promise<AccountAddress.Type[]> {
  * @returns The {@linkcode GuardianData}.
  */
 export function loadAccount(account: AccountAddress.Type, password: string): Promise<GuardianData> {
-    return ensureErrors(invoke<GuardianData>('load_account', { account: AccountAddress.toBase58(account), password }));
+    return invoke<GuardianData>('load_account', { account: AccountAddress.toBase58(account), password });
 }
 
 /**
@@ -83,7 +65,7 @@ export function loadAccount(account: AccountAddress.Type, password: string): Pro
  * @param parameters - The election guard parameters
  */
 export function setElectionGuardConfig(manifest: ElectionManifest, parameters: ElectionParameters) {
-    return ensureErrors(invoke('set_eg_config', { manifest, parameters }));
+    return invoke('set_eg_config', { manifest, parameters });
 }
 
 export type ConnectResponse = {
@@ -93,7 +75,7 @@ export type ConnectResponse = {
 };
 
 export function connect(): Promise<ConnectResponse> {
-    return ensureErrors(invoke('connect'));
+    return invoke('connect');
 }
 
 export type GuardianState = {
@@ -107,7 +89,7 @@ export type GuardiansState = [AccountAddress.Type, GuardianState][];
 
 export async function refreshGuardians(): Promise<[AccountAddress.Type, GuardianState][]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const guardiansState = await ensureErrors(invoke<[Base58String, GuardianState][]>('refresh_guardians'));
+    const guardiansState = await invoke<[Base58String, GuardianState][]>('refresh_guardians');
     const mapped = guardiansState.map<[AccountAddress.Type, GuardianState]>(([address, state]) => [
         AccountAddress.fromBase58(address),
         state,
@@ -124,9 +106,7 @@ export async function* sendPublicKeyRegistration(): AsyncGenerator<Energy.Type, 
     // 1. Request transaction approval for estimate (first value yield) or throw
     // 2. Await transaction finalization (return value) or throw
 
-    const invocation = ensureErrors(
-        invoke<void>('send_public_key_registration', { channelId: REGISTER_KEY_CHANNEL_ID }),
-    );
+    const invocation = invoke<void>('send_public_key_registration', { channelId: REGISTER_KEY_CHANNEL_ID });
 
     let unsub: UnlistenFn | undefined;
     const keyRegistrationEstimate = new Promise<Energy.Type>((resolve) => {
