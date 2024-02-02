@@ -65,7 +65,6 @@ pub enum GuardianStatus {
 
 /// State associated with each guardian.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GuardianState {
     /// Index of the guardian used for key-sharing. Not modifiable.
     pub index:                  u32,
@@ -236,7 +235,7 @@ pub struct InitParameter {
 }
 
 #[derive(Serialize, SchemaType, Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(rename_all = "camelCase"))]
 pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.

@@ -71,7 +71,15 @@ function GenerateGuardianKey() {
     const [error, setError] = useState<string>();
     const [step, setStep] = useState<GenerateStep>(GenerateStep.Generate);
     const [energy, setEnergy] = useState<Energy.Type>();
-    const [registerKeyGenerator, setRegisterKeyGenerator] = useState<ReturnType<typeof sendPublicKeyRegistration>>();
+    const [registerKeyGenerator, setRegisterKeyGenerator] =
+        useState<ReturnType<typeof sendPublicKeyRegistration>>(sendPublicKeyRegistration());
+
+    const reset = useCallback(() => {
+        setShow(false);
+        setError(undefined);
+        setStep(GenerateStep.Generate);
+        setRegisterKeyGenerator(sendPublicKeyRegistration());
+    }, []);
 
     const sendUpdate = useCallback(() => {
         if (registerKeyGenerator === undefined) {
@@ -80,14 +88,24 @@ function GenerateGuardianKey() {
 
         setStep(GenerateStep.UpdateConctract);
         registerKeyGenerator
-            .next()
+            .next(true)
             .then(() => {
                 setStep(GenerateStep.Done);
+                setTimeout(reset, 2000);
             })
             .catch((e: Error) => {
                 setError(e.message);
             });
-    }, [registerKeyGenerator]);
+    }, [registerKeyGenerator, reset]);
+
+    const cancel = useCallback(() => {
+        if (registerKeyGenerator === undefined) {
+            throw new Error('Expected interaction generator to still be available');
+        }
+
+        void registerKeyGenerator.next(false);
+        reset();
+    }, [registerKeyGenerator, reset]);
 
     useEffect(() => {
         if (show && registerKeyGenerator !== undefined) {
@@ -103,17 +121,13 @@ function GenerateGuardianKey() {
         }
     }, [show, registerKeyGenerator]);
 
-    useEffect(() => {
-        setRegisterKeyGenerator(sendPublicKeyRegistration());
-    }, []);
-
     return (
         <>
             <Button onClick={() => setShow(true)} disabled={show}>
                 Generate guardian key
             </Button>
-            <Modal show={show} centered animation>
-                <Modal.Header>Generating guardian key</Modal.Header>
+            <Modal show={show} centered animation onHide={() => reset()}>
+                <Modal.Header closeButton={error !== undefined}>Generating guardian key</Modal.Header>
                 <Modal.Body>
                     <ul className="generate__steps">
                         <Step step={GenerateStep.Generate} activeStep={step} error={error}>
@@ -133,10 +147,13 @@ function GenerateGuardianKey() {
                         </Step>
                     </ul>
                 </Modal.Body>
-                {step === GenerateStep.ApproveTransaction && (
+                {step === GenerateStep.ApproveTransaction && error === undefined && (
                     <Modal.Footer className="justify-content-start">
                         <Button onClick={sendUpdate} variant="secondary">
                             Send key registration
+                        </Button>
+                        <Button variant="danger" onClick={cancel}>
+                            Cancel
                         </Button>
                     </Modal.Footer>
                 )}

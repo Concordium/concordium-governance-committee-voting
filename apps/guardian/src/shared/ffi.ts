@@ -1,21 +1,11 @@
-import { AccountAddress, AccountKeys, Base58String, Energy, WalletExportFormat } from '@concordium/web-sdk';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import { AccountAddress, Base58String, Energy, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
 import { appWindow } from '@tauri-apps/api/window';
 import { UnlistenFn, Event } from '@tauri-apps/api/event';
-
-import { ElectionManifest, ElectionParameters } from 'shared/types';
-
-/**
- * The wallet account as returned from the rust backend process.
- */
-export type GuardianData = {
-    /** The account address */
-    account: Base58String;
-    /** The keys for the account */
-    keys: AccountKeys;
-    /** The guardian index associated with the account */
-    index: number;
-};
 
 /**
  * Wraps `import_wallet_account` invocation.
@@ -24,15 +14,20 @@ export type GuardianData = {
  * @param guardianIndex - The guardian index associated with the account
  * @param password - The password to use for encrypting the data file associated with the account.
  *
- * @returns The {@linkcode GuardianData} when import is successful.
- * @throws If the account has already been imported or if the password is infallible
+ * @returns The {@linkcode AccountAddress.Type} when import is successful.
+ * @throws If the account has already been imported
  */
-export function importWalletAccount(
+export async function importWalletAccount(
     walletExport: WalletExportFormat,
     guardianIndex: number,
     password: string,
-): Promise<GuardianData> {
-    return invoke<GuardianData>('import_wallet_account', { walletAccount: walletExport, guardianIndex, password });
+): Promise<AccountAddress.Type> {
+    const account = await invoke<Base58String>('import_wallet_account', {
+        walletAccount: walletExport,
+        guardianIndex,
+        password,
+    });
+    return AccountAddress.fromBase58(account);
 }
 
 /**
@@ -51,62 +46,110 @@ export async function getAccounts(): Promise<AccountAddress.Type[]> {
  * @param account - The account to load
  * @param password - The password to use for decrypting the data file associated with the account.
  *
- * @returns The {@linkcode GuardianData}.
+ * @returns `void` if account is successfully loaded
+ * @throws If the account data could not be decrypted successfully. This will most likely be due to the user giving an
+ * incorrect password, but could also mean the data stored has been corrupted
  */
-export function loadAccount(account: AccountAddress.Type, password: string): Promise<GuardianData> {
-    return invoke<GuardianData>('load_account', { account: AccountAddress.toBase58(account), password });
+export function loadAccount(account: AccountAddress.Type, password: string): Promise<void> {
+    return invoke<void>('load_account', { account: AccountAddress.toBase58(account), password });
 }
 
 /**
- * Wraps `set_eg_config` invocation, storing the election guard config required for construction of election guard
- * entities.
- *
- * @param manifest - The election guard manifest
- * @param parameters - The election guard parameters
+ * The election config from {@linkcode connect}, corresponding to the configuration registered in the election contract
+ * upon contract initialization.
  */
-export function setElectionGuardConfig(manifest: ElectionManifest, parameters: ElectionParameters) {
-    return invoke('set_eg_config', { manifest, parameters });
-}
-
-export type ConnectResponse = {
-    election_start: string;
-    election_end: string;
-    election_description: string;
+export type ElectionConfig = {
+    /** The election start time */
+    electionStart: Date;
+    /** The election end time */
+    electionEnd: Date;
+    /** The election description */
+    electionDescription: string;
 };
 
-export function connect(): Promise<ConnectResponse> {
-    return invoke('connect');
+/**
+ * Initiate a connection to the election contract.
+ *
+ * @returns {@linkcode ConnectResponse} on successful connection
+ * @throws A variety of errors:
+ * - Connecting to the node
+ * - Querying the node
+ * - Fetching remote resources
+ */
+export async function connect(): Promise<ElectionConfig> {
+    const response = await invoke<any>('connect');
+    const mapped: ElectionConfig = {
+        electionStart: new Date(response.electionStart),
+        electionEnd: new Date(response.electionEnd),
+        ...response,
+    };
+    return mapped;
 }
 
+/**
+ * The state returned from the backend for a single guardian.
+ */
 export type GuardianState = {
-    has_encrypted_share: boolean;
+    /** Whether the guardian has registered an encrypted share */
+    hasEncryptedShare: boolean;
+    /** The index of the guardian */
     index: number;
-    has_public_key: boolean;
+    /** Whether the guardian has registered a public key */
+    hasPublicKey: boolean;
+    /**
+     * The current status registered by the guardian, either a form of complaint or an OK signal. `null` means no status
+     * has been registered yet.
+     */
     status: number | null;
 };
 
+/**
+ * The collective state of all guardians and their corresponding account address.
+ */
 export type GuardiansState = [AccountAddress.Type, GuardianState][];
 
+/**
+ * Refresh the data stored for all guardians. Getting fresh data can be used to determine if the election is in a state
+ * where new actions need to be performed by the active guardian.
+ *
+ * @returns The collective state of all guardians.
+ * @throws If an error happened while querying the contract for the guardian information.
+ */
 export async function refreshGuardians(): Promise<[AccountAddress.Type, GuardianState][]> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const guardiansState = await invoke<[Base58String, GuardianState][]>('refresh_guardians');
     const mapped = guardiansState.map<[AccountAddress.Type, GuardianState]>(([address, state]) => [
         AccountAddress.fromBase58(address),
         state,
     ]);
-
     return mapped;
 }
 
 const REGISTER_KEY_CHANNEL_ID = 'register-key';
 
-export async function* sendPublicKeyRegistration(): AsyncGenerator<Energy.Type, void, boolean> {
-    console.log('INIT');
-    // The protocol for this interaction is:
-    // 1. Request transaction approval for estimate (first value yield) or throw
-    // 2. Await transaction finalization (return value) or throw
-
-    const invocation = invoke<void>('send_public_key_registration', { channelId: REGISTER_KEY_CHANNEL_ID });
+/**
+ * Creates a generator for interacting with the backend to register a public key in the election contract. The protocol
+ * for the interaction is:
+ *
+ * 1. Generate the keypair, await approval of transaction proposal
+ * 2. send transaction, await finalization on chain
+ *
+ * @returns 1. A proposed amount of {@linkcode Energy.Type} to use for the transaction
+ * @returns 2. `void`, which signals the transaction has been submitted and finalized
+ * @throws At any step in the interaction, errors can be thrown
+ *
+ * @example
+ * const registerKey = sendPublicKeyRegistration();
+ * try {
+ *   // Generate the keypair, create transaction proposal
+ *   const proposal_energy = await registerKey.next();
+ *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
+ *   await registerKey.next(true);
+ * } catch (e: Error) {
+ *   // Do something with the error.
+ * }
+ */
+export async function* registerGuardianKey(): AsyncGenerator<Energy.Type, void, boolean> {
+    const invocation = invoke<void>('register_guardian_key', { channelId: REGISTER_KEY_CHANNEL_ID });
 
     let unsub: UnlistenFn | undefined;
     const keyRegistrationEstimate = new Promise<Energy.Type>((resolve) => {
@@ -120,20 +163,15 @@ export async function* sendPublicKeyRegistration(): AsyncGenerator<Energy.Type, 
     });
 
     try {
-        const estimate = await Promise.race([keyRegistrationEstimate, invocation]);
-        console.log('FIRST ASYNC', estimate);
-        if (estimate !== undefined) {
-            // This will always be true in practice, as otherwise `invocation` would throw due to how the protocol is built.
-            const approval = yield estimate;
-            console.log('APPROVAL', approval);
-            void appWindow.emit(REGISTER_KEY_CHANNEL_ID, approval); // Will be rejected by backend if false
-        }
-    } catch (e) {
+        // The only instance where `invocation` is the triggering promise is upon rejection, so expecting `Energy.Type` here
+        // is OK.
+        const result = (await Promise.race([keyRegistrationEstimate, invocation])) as Energy.Type;
+
+        const approval = yield result;
+        void appWindow.emit(REGISTER_KEY_CHANNEL_ID, approval); // Will be rejected by backend if false
+
+        return invocation;
+    } finally {
         unsub?.();
     }
-
-    const res = await invocation;
-    console.log('LAST ASYNC', res);
-
-    return res;
 }

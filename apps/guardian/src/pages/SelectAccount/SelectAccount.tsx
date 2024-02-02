@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { accountShowShort } from 'shared/util';
 import { MainLocationState } from '~/layouts/Main/Main';
 import Button from '~/shared/Button';
-import { GuardianData, loadAccount } from '~/shared/ffi';
+import { loadAccount } from '~/shared/ffi';
 import { selectedAccountAtom, accountsAtom } from '~/shared/store';
 import { routes } from '~/shell/router';
 
@@ -18,7 +18,7 @@ type PasswordPromptProps = {
     /** Request to hide the modal */
     onHide(): void;
     /** Called when an account is successfully loaded from disk */
-    onAccountLoad(walletAccount: GuardianData): void;
+    onAccountLoad(walletAccount: AccountAddress.Type): void;
 };
 
 type PasswordPromptForm = {
@@ -49,7 +49,8 @@ function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
         async ({ password }) => {
             setLoading(true);
             try {
-                const account = await loadAccount(AccountAddress.fromBase58(getValues().account), password);
+                const account = AccountAddress.fromBase58(getValues().account);
+                await loadAccount(account, password);
 
                 onAccountLoad(account);
                 close();
@@ -149,8 +150,8 @@ export default function SelectAccount() {
     const hasAccounts = useMemo(() => accounts !== undefined && accounts.length !== 0, [accounts]);
     useEffect(() => {
         if (hasAccounts) {
-            const initialAccount = selectedAccount?.account ?? accounts![0].address;
-            setValue('account', initialAccount);
+            const initialAccount = selectedAccount ?? accounts![0];
+            setValue('account', AccountAddress.toBase58(initialAccount));
         }
     }, [hasAccounts, accounts, setValue, selectedAccount]);
 

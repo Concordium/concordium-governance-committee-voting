@@ -6,7 +6,6 @@ import { selectedAccountAtom, electionConfigAtom } from '~/shared/store';
 import { router } from '../router';
 import { PropsWithChildren, useMemo } from 'react';
 import { accountShowShort } from 'shared/util';
-import { AccountAddress } from '@concordium/web-sdk';
 
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
@@ -32,10 +31,7 @@ function ConfigurationItem({ className, connected, children }: ConfigurationItem
 function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const account = useAtomValue(selectedAccountAtom);
-    const showAccount = useMemo(
-        () => (account === undefined ? undefined : accountShowShort(AccountAddress.fromBase58(account.account))),
-        [account],
-    );
+    const showAccount = useMemo(() => (account === undefined ? undefined : accountShowShort(account)), [account]);
 
     return (
         <div className="app-configuration">

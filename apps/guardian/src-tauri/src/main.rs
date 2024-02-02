@@ -7,12 +7,10 @@ use concordium_governance_committee_election::{
 };
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
-    contract_client::ContractClient,
+    contract_client::{ContractClient, ContractUpdateError},
     id::types::AccountKeys,
     smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
-    types::{
-        smart_contracts::OwnedParameter, ContractAddress, RejectReason, WalletAccount,
-    },
+    types::{smart_contracts::OwnedParameter, ContractAddress, RejectReason, WalletAccount},
     v2::{BlockIdentifier, Client, Endpoint, QueryError},
 };
 use contract::GuardianStatus;
@@ -23,14 +21,13 @@ use eg::{
 };
 use election_common::ByteConvert;
 use rand::{thread_rng, Rng};
-use serde::{de::DeserializeOwned, Serialize, ser::SerializeStruct};
+use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
-    time::Duration,
 };
-use tauri::{App, AppHandle, State, Window};
+use tauri::{App, AppHandle, Manager, State, Window};
 use tokio::sync::Mutex;
 use util::csprng::Csprng;
 
@@ -39,79 +36,21 @@ const WALLET_ACCOUNT_FILE: &str = "guardian-data.json.aes";
 /// The fiel name of the encrypted secret key for a guardian
 const SECRET_KEY_FILE: &str = "secret-key.json.aes";
 
-/// The data stored for a guardian.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct GuardianData {
-    /// The guardian account
-    account: AccountAddress,
-    /// The keys for the `account`
-    keys: AccountKeys,
-    /// The guardian index used by election guard
-    index: GuardianIndex,
-}
-
-impl GuardianData {
-    fn create(wallet_account: WalletAccount, index: GuardianIndex) -> Self {
-        Self {
-            account: wallet_account.address,
-            keys: wallet_account.keys,
-            index,
-        }
-    }
-}
-
-/// Holds the currently selected account and corresponding password
-struct ActiveGuardian {
-    /// The selected account
-    account: AccountAddress,
-    /// The password used for encryption with the selected account
-    password: Password,
-    /// The guardian index of the guardian.
-    guardian_index: GuardianIndex,
-}
-
-/// The type of managed state for the active guardian
-#[derive(Default)]
-struct ActiveGuardianState(Mutex<Option<ActiveGuardian>>);
-
-#[derive(Default)]
-struct GuardiansState(Mutex<contract::GuardiansState>);
-
-/// The necessary election guard configuration to construct election guard
-/// entities.
-#[derive(Clone)]
-struct ElectionGuardConfig {
-    /// The election manifest
-    #[allow(dead_code)] // TODO: remove when it is used
-    manifest: ElectionManifest,
-    /// The election parameters
-    parameters: ElectionParameters,
-}
-
-struct ElectionContractMarker;
-type ElectionClient = ContractClient<ElectionContractMarker>;
-
-#[derive(Clone)]
-struct ConnectionConfig {
-    contract: ElectionClient,
-    #[allow(dead_code)] // TODO: remove when it is used
-    node: Client,
-}
-
 /// Describes any error happening in the backend.
 #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
 enum Error {
     /// HTTP error when trying to get remote resource
     #[error("Failed to get remote resource: {0}")]
     Http(#[from] reqwest::Error),
-    /// Decryption of file contents failed. This can either indicate incorrect password given by the user, or file
-    /// corruption.
+    /// Decryption of file contents failed. This can either indicate incorrect
+    /// password given by the user, or file corruption.
     #[error("Decryption of data failed")]
     Decrypt,
     /// IO error while attempting read/write
     #[error("{0}")]
     IO(#[from] std::io::Error),
-    /// Could not deserialize contents of the encrypted file. This will not be due to invalid user input.
+    /// Could not deserialize contents of the encrypted file. This will not be
+    /// due to invalid user input.
     #[error("File corruption detected for {0}")]
     Corrupted(PathBuf),
     /// Internal errors.
@@ -129,7 +68,8 @@ enum Error {
     /// Duplicate account found when importing
     #[error("Account has already been imported")]
     ExistingAccount,
-    /// Used to abort an interactive command invocation prematurely (i.e. where the command awaits events emitted by the frontend)
+    /// Used to abort an interactive command invocation prematurely (i.e. where
+    /// the command awaits events emitted by the frontend)
     #[error("{0}")]
     AbortInteraction(String),
 }
@@ -159,8 +99,15 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
 }
 
 impl From<RejectReason> for Error {
-    fn from(reason: RejectReason) -> Self {
-        Error::QueryFailed(reason)
+    fn from(reason: RejectReason) -> Self { Error::QueryFailed(reason) }
+}
+
+impl From<ContractUpdateError> for Error {
+    fn from(error: ContractUpdateError) -> Self {
+        match error {
+            ContractUpdateError::Query(inner) => inner.into(),
+            ContractUpdateError::Failed(inner) => inner.into(),
+        }
     }
 }
 
@@ -176,15 +123,80 @@ impl serde::Serialize for Error {
     }
 }
 
+/// The data stored for a guardian.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct GuardianData {
+    /// The guardian account
+    account: AccountAddress,
+    /// The keys for the `account`
+    keys:    AccountKeys,
+    /// The guardian index used by election guard
+    index:   GuardianIndex,
+}
+
+impl GuardianData {
+    /// Create the guardian data from necessary data
+    fn create(wallet_account: WalletAccount, index: GuardianIndex) -> Self {
+        Self {
+            account: wallet_account.address,
+            keys: wallet_account.keys,
+            index,
+        }
+    }
+}
+
+/// Holds the currently selected account and corresponding password
+struct ActiveGuardian {
+    /// The guardian data for the active account
+    guardian: GuardianData,
+    /// The password used for encryption with the selected account
+    password: Password,
+}
+
+/// The type of managed state for the active guardian
+#[derive(Default)]
+struct ActiveGuardianState(Mutex<Option<ActiveGuardian>>);
+
+/// The collective state kept for all guardians
+#[derive(Default)]
+struct GuardiansState(Mutex<contract::GuardiansState>);
+
+/// The necessary election guard configuration to construct election guard
+/// entities.
+#[derive(Clone)]
+struct ElectionGuardConfig {
+    /// The election manifest
+    #[allow(dead_code)] // TODO: remove when it is used
+    manifest: ElectionManifest,
+    /// The election parameters
+    parameters: ElectionParameters,
+}
+
+struct ElectionContractMarker;
+type ElectionClient = ContractClient<ElectionContractMarker>;
+
+#[derive(Clone)]
+struct ConnectionConfig {
+    contract: ElectionClient,
+}
+
 async fn get_resource_checked<J: DeserializeOwned>(url: &ChecksumUrl) -> Result<J, Error> {
     let data = reqwest::get(url.url.clone()).await?.bytes().await?;
 
     let hash = HashSha2256(sha2::Sha256::digest(&data).into());
     if url.hash != hash {
-        return Err(anyhow!("Verification of remote resource at {} failed. Expected checksum {} did not match computed hash {}.", url.url, url.hash, hash).into());
+        return Err(anyhow!(
+            "Verification of remote resource at {} failed. Expected checksum {} did not match \
+             computed hash {}.",
+            url.url,
+            url.hash,
+            hash
+        )
+        .into());
     }
 
-    // It's fair to assume that data integrity check means that it can also be deserialized
+    // It's fair to assume that data integrity check means that it can also be
+    // deserialized
     let result = serde_json::from_slice(&data).unwrap();
     Ok(result)
 }
@@ -202,12 +214,14 @@ impl ConnectionConfig {
             .expect(r#"Expected environment variabled "CCD_ELECTION_CONTRACT" to be defined"#);
         let contract_address =
             ContractAddress::from_str(contract_var).expect("Could not parse contract address");
-        let contract = ElectionClient::create(node.clone(), contract_address).await?;
+        let contract = ElectionClient::create(node, contract_address).await?;
 
-        let contract_connection = Self { contract, node };
+        let contract_connection = Self { contract };
         Ok(contract_connection)
     }
 
+    /// Gets the election config from the contract and subsequently the election
+    /// guard config
     async fn try_get_election_config(
         &mut self,
     ) -> Result<(ElectionConfig, ElectionGuardConfig), Error> {
@@ -231,14 +245,20 @@ impl ConnectionConfig {
     }
 }
 
+/// The application config necessary for the application to function.
 #[derive(Default, Clone)]
 struct AppConfig {
-    connection: Option<ConnectionConfig>,
-    election: Option<ElectionConfig>,
+    /// The connection to the contract
+    connection:     Option<ConnectionConfig>,
+    /// The election config registered in the contract
+    election:       Option<ElectionConfig>,
+    /// The election guard config
     election_guard: Option<ElectionGuardConfig>,
 }
 
 impl AppConfig {
+    /// Gets the connection. If a connection does not exist, a new one is
+    /// created and stored in the configuration before being returned.
     async fn connection(&mut self) -> Result<ConnectionConfig, Error> {
         let connection = if let Some(connection) = &self.connection {
             connection.clone()
@@ -251,6 +271,8 @@ impl AppConfig {
         Ok(connection)
     }
 
+    /// Gets the election guard config. If not already present, it is fetched
+    /// and stored (along with the election config) before being returned.
     async fn election_guard(&mut self) -> Result<ElectionGuardConfig, Error> {
         let eg = if let Some(eg) = &self.election_guard {
             eg.clone()
@@ -267,6 +289,8 @@ impl AppConfig {
         Ok(eg)
     }
 
+    /// Gets the election guard. If not already present, it is fetched and
+    /// stored (along with the election guard config) before being returned.
     async fn election(&mut self) -> Result<ElectionConfig, Error> {
         let election = if let Some(election) = &self.election {
             election.clone()
@@ -284,21 +308,18 @@ impl AppConfig {
     }
 }
 
+/// The application config state
 #[derive(Default)]
 struct AppConfigState(Mutex<AppConfig>);
 
 /// Stores the account in global state.
 async fn use_guardian<'a>(
-    guardian: &GuardianData,
+    guardian: GuardianData,
     password: Password,
     state: State<'a, ActiveGuardianState>,
 ) {
     let mut active_account = state.0.lock().await;
-    *active_account = Some(ActiveGuardian {
-        account: guardian.account,
-        password,
-        guardian_index: guardian.index,
-    });
+    *active_account = Some(ActiveGuardian { guardian, password });
 }
 
 /// Get the data directory for a guardian account
@@ -340,7 +361,8 @@ fn read_encrypted_file<D: serde::de::DeserializeOwned>(
 }
 
 /// Handle a wallet import. Creates a directory for storing data associated with
-/// the guardian account.
+/// the guardian account and returns the [`AccountAddress`] of the imported
+/// wallet account.
 ///
 /// This will create the data directory for the app if it does not already
 /// exist.
@@ -355,7 +377,7 @@ async fn import_wallet_account<'a>(
     password: String,
     active_guardian_state: State<'a, ActiveGuardianState>,
     app_handle: AppHandle,
-) -> Result<GuardianData, Error> {
+) -> Result<AccountAddress, Error> {
     let account = wallet_account.address;
 
     let guardian_dir = guardian_data_dir(&app_handle, account);
@@ -366,14 +388,15 @@ async fn import_wallet_account<'a>(
 
     let password = Password::from(password);
     let guardian_data = GuardianData::create(wallet_account, guardian_index);
+    let account_address = guardian_data.account;
     write_encrypted_file(
         &password,
         &guardian_data,
         &guardian_dir.join(WALLET_ACCOUNT_FILE),
     )?;
-    use_guardian(&guardian_data, password, active_guardian_state).await;
+    use_guardian(guardian_data, password, active_guardian_state).await;
 
-    Ok(guardian_data)
+    Ok(account_address)
 }
 
 /// Gets the accounts which have previously been imported into the application.
@@ -410,13 +433,13 @@ async fn load_account<'a>(
     password: String,
     app_handle: AppHandle,
     active_guardian_state: State<'a, ActiveGuardianState>,
-) -> Result<GuardianData, Error> {
+) -> Result<(), Error> {
     let password = Password::from(password);
     let account_path = guardian_data_dir(&app_handle, account).join(WALLET_ACCOUNT_FILE);
     let guardian_data: GuardianData = read_encrypted_file(&password, &account_path)?;
-    use_guardian(&guardian_data, password, active_guardian_state).await;
+    use_guardian(guardian_data, password, active_guardian_state).await;
 
-    Ok(guardian_data)
+    Ok(())
 }
 
 /// Generate a key pair for the selected guardian, storing the secret key on
@@ -434,7 +457,7 @@ async fn generate_key_pair<'a>(
     let active_guardian = active_guardian_guard
         .as_ref()
         .ok_or(anyhow!("Active account not set"))?;
-    let account = active_guardian.account;
+    let account = active_guardian.guardian.account;
     let secret_key_path = guardian_data_dir(&app_handle, account).join(SECRET_KEY_FILE);
 
     let secret_key = if secret_key_path.exists() {
@@ -448,7 +471,7 @@ async fn generate_key_pair<'a>(
         let secret_key = GuardianSecretKey::generate(
             &mut csprng,
             &app_config.parameters,
-            active_guardian.guardian_index,
+            active_guardian.guardian.index,
             account.to_string().into(),
         );
         write_encrypted_file(&active_guardian.password, &secret_key, &secret_key_path)?;
@@ -468,12 +491,10 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static,
-{
+    R: DeserializeOwned + Sync + Send + 'static, {
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
-        println!("received response: {:?}", &e.payload()); // FIXME: Why is there no response payload here??
         let response: Result<Option<R>, _> = e.payload().map(serde_json::from_str).transpose();
         let _ = sender.send(response); // Receiver will not be dropped
     });
@@ -494,7 +515,7 @@ where
 ///
 /// Returns an error if any of the steps fail for various reasons
 #[tauri::command]
-async fn send_public_key_registration<'a>(
+async fn register_guardian_key<'a>(
     active_guardian_state: State<'a, ActiveGuardianState>,
     app_config_state: State<'a, AppConfigState>,
     channel_id: String,
@@ -512,13 +533,14 @@ async fn send_public_key_registration<'a>(
         .dry_run_update::<Vec<u8>, Error>(
             "registerGuardianPublicKey",
             Amount::zero(),
-            active_guardian.account,
+            active_guardian.guardian.account,
             &public_key.encode().unwrap(), // Serialization will not fail
         )
         .await?;
 
-    let _ = match send_message(&window, &channel_id, result.current_energy()).await {
-        Ok(Some(true)) => true,
+    // Wait for response from the user through the frontend
+    match send_message(&window, &channel_id, result.current_energy()).await {
+        Ok(Some(true)) => true, // Transaction estimate approved
         Ok(Some(false)) => {
             return Err(Error::AbortInteraction(
                 "Registration rejected by the user".into(),
@@ -532,33 +554,43 @@ async fn send_public_key_registration<'a>(
         }
     };
 
-    // TODO: send the transaction and await finalization
+    result
+        .send(&active_guardian.guardian.keys)
+        .await?
+        .wait_for_finalization()
+        .await?;
 
-    // Continue the work
-    tokio::time::sleep(Duration::from_secs(3)).await;
-    eprintln!("END");
     Ok(())
 }
 
+/// The data needed by the frontend, representing the current state of a
+/// guardian as registered in the election contract
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GuardianStateResponse {
+    /// Whether the guardian has registered an encrypted share
     has_encrypted_share: bool,
-    has_public_key: bool,
-    index: u32,
-    status: Option<GuardianStatus>,
+    /// Whether the guardian has registered a public key
+    has_public_key:      bool,
+    /// The guardian index
+    index:               u32,
+    /// The guardian status registered for the guardian
+    status:              Option<GuardianStatus>,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_share: value.encrypted_share.is_some(),
-            has_public_key: value.public_key.is_some(),
-            index: value.index,
-            status: value.status.clone(),
+            has_public_key:      value.public_key.is_some(),
+            index:               value.index,
+            status:              value.status.clone(),
         }
     }
 }
 
+/// Synchronizes the stored guardian state the election contract. Returns a
+/// simplified version consisting of the data needed by the frontend
 #[tauri::command]
 async fn refresh_guardians<'a>(
     app_config_state: State<'a, AppConfigState>,
@@ -584,10 +616,11 @@ async fn refresh_guardians<'a>(
     Ok(response)
 }
 
+/// Initializes a connection to the contract and queries the necessary election
+/// configuration data. Returns the election configuration stored in the
+/// election contract
 #[tauri::command]
-async fn connect<'a>(
-    app_config_state: State<'a, AppConfigState>,
-) -> Result<ElectionConfig, Error> {
+async fn connect<'a>(app_config_state: State<'a, AppConfigState>) -> Result<ElectionConfig, Error> {
     let mut app_config_guard = app_config_state.0.lock().await;
     let election_config = app_config_guard.election().await?;
     Ok(election_config)
@@ -596,11 +629,19 @@ async fn connect<'a>(
 fn main() {
     tauri::Builder::default()
         .setup(move |app: &mut App| {
+            #[cfg(debug_assertions)]
+            {
+                let window = app.get_window("main").unwrap();
+                window.open_devtools();
+                window.maximize().ok();
+            }
+
             // Will not fail due to being declared accessible in `tauri.conf.json`
             let app_data_dir = app.path_resolver().app_data_dir().unwrap();
             if !app_data_dir.exists() {
                 std::fs::create_dir(&app_data_dir)?;
             }
+
             Ok(())
         })
         .manage(ActiveGuardianState::default())
@@ -612,7 +653,7 @@ fn main() {
             import_wallet_account,
             load_account,
             refresh_guardians,
-            send_public_key_registration,
+            register_guardian_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

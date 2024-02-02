@@ -1,22 +1,10 @@
 import { atom, createStore } from 'jotai';
 import { AccountAddress } from '@concordium/web-sdk/types';
 
-import { GuardianData, GuardiansState, connect, getAccounts, refreshGuardians } from './ffi';
+import { ElectionConfig, GuardiansState, connect, getAccounts, refreshGuardians } from './ffi';
 
 /** The interval at which the guardians state will refresh from the contract */
 const GUARDIANS_UPDATE_INTERVAL = 30000;
-
-/**
- * Representation of the election configration.
- */
-export interface ElectionConfig {
-    /** The election start time */
-    start: Date;
-    /** The election end time */
-    end: Date;
-    /** The election description */
-    description: string;
-}
 
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
@@ -37,7 +25,7 @@ export const guardiansStateAtom = atom((get) => ({
 /**
  * Holds the account the application is currently using.
  */
-export const selectedAccountAtom = atom<GuardianData | undefined>(undefined);
+export const selectedAccountAtom = atom<AccountAddress.Type | undefined>(undefined);
 
 /**
  * Base atom holding the list of accounts imported into the application
@@ -52,12 +40,7 @@ export function initStore() {
     const store = createStore();
 
     void connect().then((electionConfig) => {
-        const state: ElectionConfig = {
-            start: new Date(electionConfig.election_start),
-            end: new Date(electionConfig.election_end),
-            description: electionConfig.election_description,
-        };
-        store.set(electionConfigBaseAtom, state);
+        store.set(electionConfigBaseAtom, electionConfig);
     });
 
     void getAccounts().then((accounts) => store.set(accountsBaseAtom, accounts));
