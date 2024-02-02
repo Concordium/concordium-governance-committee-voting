@@ -6,7 +6,7 @@ import { AccountAddress } from '@concordium/web-sdk/types';
 /**
  * Used to indicate failure to verify a remotely located resource
  */
-export class ResourceVerificationError extends Error {}
+export class ResourceVerificationError extends Error { }
 
 /**
  * Gets the resource at the specified url.
@@ -42,7 +42,7 @@ export async function getChecksumResource<T>(
 export const useAsyncMemo = <ReturnType>(
     getResult: () => Promise<ReturnType>,
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    handleError: (e: Error) => void = () => {},
+    handleError: (e: Error) => void = () => { },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     deps?: any[],
 ): ReturnType | undefined => {
@@ -53,6 +53,25 @@ export const useAsyncMemo = <ReturnType>(
     }, deps);
     return result;
 };
+
+/**
+ * Use the current datetime, updated according to the supplied interval.
+ *
+ * @param updateIntervalMs - The interval (in milliseconds) at which the datetime should be updated. Defaults to 5000
+ * @returns The current datetime
+ */
+export function useNow(updateIntervalMs = 5000): Date {
+    const [now, setNow] = useState(new Date());
+
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), updateIntervalMs);
+        return () => {
+            clearInterval(id);
+        };
+    }, [updateIntervalMs]);
+
+    return now;
+}
 
 /**
  * Helper for displaying account addresses in a concise manner (i.e. first/last `numChars/2` characters)

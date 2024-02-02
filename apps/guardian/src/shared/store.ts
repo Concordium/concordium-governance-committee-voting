@@ -17,6 +17,7 @@ const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
 /** Whether the guardians state is currently refreshing */
 const guardiansLoadingAtom = atom(false);
 
+/** Readonly accounts for accessing the collective guardians state */
 export const guardiansStateAtom = atom((get) => ({
     loading: get(guardiansLoadingAtom),
     guardians: get(guardiansStateBaseAtom),
@@ -30,7 +31,8 @@ export const selectedAccountAtom = atom<AccountAddress.Type | undefined>(undefin
 /**
  * Base atom holding the list of accounts imported into the application
  */
-export const accountsBaseAtom = atom<AccountAddress.Type[] | undefined>(undefined);
+const accountsBaseAtom = atom<AccountAddress.Type[] | undefined>(undefined);
+/** Readonly atom for accessing the imported accounts */
 export const accountsAtom = atom((get) => get(accountsBaseAtom));
 
 /**
