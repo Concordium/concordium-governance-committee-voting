@@ -137,8 +137,12 @@ export default function SelectAccount() {
     const [requestPassword, setRequestPassword] = useState(false);
     const [selectedAccount, setSelectedAccount] = useAtom(selectedAccountAtom);
 
-    const submit = () => {
-        setRequestPassword(true);
+    const submit = ({ account }: SelectAccountForm) => {
+        if (account === selectedAccount?.address) {
+            nav(routes.actions.path);
+        } else {
+            setRequestPassword(true);
+        }
     };
 
     useEffect(() => {
@@ -155,11 +159,10 @@ export default function SelectAccount() {
         }
     }, [hasAccounts, accounts, setValue, selectedAccount]);
 
-    useEffect(() => {
-        if (selectedAccount !== undefined) {
-            nav(routes.actions.path);
-        }
-    }, [selectedAccount, nav]);
+    const handleAccountLoad = (account: AccountAddress.Type) => {
+        setSelectedAccount(account);
+        nav(routes.actions.path);
+    };
 
     if (accounts === undefined) {
         return null;
@@ -181,7 +184,7 @@ export default function SelectAccount() {
             <PasswordPrompt
                 show={requestPassword}
                 onHide={() => setRequestPassword(false)}
-                onAccountLoad={setSelectedAccount}
+                onAccountLoad={handleAccountLoad}
             />
         </FormProvider>
     );

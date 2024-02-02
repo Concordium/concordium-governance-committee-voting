@@ -58,7 +58,17 @@ export function initStore() {
     }
 
     void updateGuardiansStore();
-    setInterval(() => {
+    const id = setInterval(() => {
+        const electionConfig = store.get(electionConfigBaseAtom);
+        if (electionConfig === undefined) {
+            return;
+        }
+
+        if (new Date() >= electionConfig.electionStart) {
+            clearInterval(id);
+            return;
+        }
+
         void updateGuardiansStore();
     }, GUARDIANS_UPDATE_INTERVAL);
 

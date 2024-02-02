@@ -31,3 +31,23 @@
         }
     }
 }
+
+.actions {
+    &__header-dots {
+        margin: 0 15px;
+        color: $primary;
+    }
+
+    &__header-phase {
+        color: $primary;
+
+        &--active {
+            & ~ .actions__header-phase {
+                color: $gray-700;
+            }
+            & ~ .actions__header-dots {
+                color: $gray-500;
+            }
+        }
+    }
+}
