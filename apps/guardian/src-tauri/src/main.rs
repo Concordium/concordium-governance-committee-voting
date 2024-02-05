@@ -45,7 +45,7 @@ enum Error {
     /// Decryption of file contents failed. This can either indicate incorrect
     /// password given by the user, or file corruption.
     #[error("Decryption of data failed")]
-    Decrypt,
+    DecryptionError,
     /// IO error while attempting read/write
     #[error("{0}")]
     IO(#[from] std::io::Error),
@@ -355,8 +355,8 @@ fn read_encrypted_file<D: serde::de::DeserializeOwned>(
     let encrypted: EncryptedData = serde_json::from_slice(&encrypted_bytes)
         .map_err(|_| Error::Corrupted(file_path.clone()))?;
 
-    let decrypted_bytes = decrypt(&password, &encrypted).map_err(|_| Error::Decrypt)?;
-    let value = serde_json::from_slice(&decrypted_bytes).map_err(|_| Error::Decrypt)?;
+    let decrypted_bytes = decrypt(&password, &encrypted).map_err(|_| Error::DecryptionError)?;
+    let value = serde_json::from_slice(&decrypted_bytes).map_err(|_| Error::DecryptionError)?;
     Ok(value)
 }
 
@@ -553,6 +553,8 @@ async fn register_guardian_key<'a>(
                 .into())
         }
     };
+
+    println!("ENERGY: {}", result.current_energy());
 
     result
         .send(&active_guardian.guardian.keys)

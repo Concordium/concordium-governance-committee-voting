@@ -1,22 +1,12 @@
 import { useAtomValue } from 'jotai';
 import SetupActions from './SetupActions';
-import { electionConfigAtom } from '~/shared/store';
-import { useNow } from 'shared/util';
-import { useMemo } from 'react';
+import { ElectionPhase, electionStepAtom } from '~/shared/store';
 import { Navbar } from 'react-bootstrap';
 import { clsx } from 'clsx';
 import Button from '~/shared/Button';
 import { Link } from 'react-router-dom';
 import { routes } from '~/shell/router';
 
-/**
- * Represents the different phases of the election
- */
-const enum ElectionPhase {
-    Setup = 'Setup',
-    Voting = 'Voting',
-    Tally = 'Tally',
-}
 
 const Dots = () => <div className="actions__header-dots">• • • • •</div>;
 
@@ -31,39 +21,33 @@ const Phase = ({ children, activePhase }: PhaseProps) => (
  * Component which contains the guardian actions available at the current stage of the election.
  */
 export default function Actions() {
-    const electionConfig = useAtomValue(electionConfigAtom);
-    const now = useNow();
-    const phase = useMemo(() => {
-        if (electionConfig === undefined) {
-            return undefined;
-        }
+    const electionStep = useAtomValue(electionStepAtom);
 
-        if (now < electionConfig.electionStart) return ElectionPhase.Setup;
-        if (now > electionConfig.electionEnd) return ElectionPhase.Tally;
-        return ElectionPhase.Voting;
-    }, [now, electionConfig]);
-
-    if (electionConfig === undefined || phase === undefined) {
+    if (electionStep === undefined) {
         return null;
     }
 
     return (
         <>
             <Navbar className="bg-body-secondary px-4 justify-content-between">
-                <div className='d-flex align-items-center'>
-                    <Phase activePhase={phase}>{ElectionPhase.Setup}</Phase>
+                <div className="d-flex align-items-center">
+                    <Phase activePhase={electionStep.phase}>{ElectionPhase.Setup}</Phase>
                     <Dots />
-                    <Phase activePhase={phase}>{ElectionPhase.Voting}</Phase>
+                    <Phase activePhase={electionStep.phase}>{ElectionPhase.Voting}</Phase>
                     <Dots />
-                    <Phase activePhase={phase}>{ElectionPhase.Tally}</Phase>
+                    <Phase activePhase={electionStep.phase}>{ElectionPhase.Tally}</Phase>
                 </div>
-                <Link to={routes.selectAccount.path} state={{canBack: true}}>
-                    <Button variant='outline-info' size='sm'>Switch account?</Button>
+                <Link to={routes.selectAccount.path} state={{ canBack: true }}>
+                    <Button variant="outline-info" size="sm">
+                        Switch account?
+                    </Button>
                 </Link>
             </Navbar>
-            {phase === ElectionPhase.Setup && <SetupActions />}
-            {phase === ElectionPhase.Voting && <>Waiting for voting to conclude...</>}
-            {phase === ElectionPhase.Setup && <>Finalization phase...</>}
+            <div className='actions__body'>
+                {electionStep.phase === ElectionPhase.Setup && <SetupActions />}
+                {electionStep.phase === ElectionPhase.Voting && <h1 className='text-muted'>Waiting for voting to conclude...</h1>}
+                {electionStep.phase === ElectionPhase.Voting && <>Finalization phase...</>}
+            </div>
         </>
     );
 }

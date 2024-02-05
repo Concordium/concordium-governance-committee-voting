@@ -55,22 +55,13 @@ export const useAsyncMemo = <ReturnType>(
 };
 
 /**
- * Use the current datetime, updated according to the supplied interval.
- *
- * @param updateIntervalMs - The interval (in milliseconds) at which the datetime should be updated. Defaults to 5000
- * @returns The current datetime
+ * Returns a promise which resolves after `timeMs`.
+ * @param timeMs - The time to wait (in milliseconds)
  */
-export function useNow(updateIntervalMs = 5000): Date {
-    const [now, setNow] = useState(new Date());
-
-    useEffect(() => {
-        const id = setInterval(() => setNow(new Date()), updateIntervalMs);
-        return () => {
-            clearInterval(id);
-        };
-    }, [updateIntervalMs]);
-
-    return now;
+export function sleep(timeMs: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, timeMs);
+    });
 }
 
 /**

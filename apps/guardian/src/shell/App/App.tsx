@@ -2,24 +2,33 @@ import { useAtomValue } from 'jotai';
 import { RouterProvider } from 'react-router-dom';
 import { clsx } from 'clsx';
 
-import { selectedAccountAtom, electionConfigAtom } from '~/shared/store';
+import { selectedAccountAtom, electionConfigAtom, connectionErrorAtom } from '~/shared/store';
 import { router } from '../router';
 import { PropsWithChildren, useMemo } from 'react';
 import { accountShowShort } from 'shared/util';
+import { BackendErrorType } from '~/shared/ffi';
 
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
     /** Whether the configuration item should render as "connected" */
     connected: boolean;
+    /** Whether the configuration item should signal an error */
+    error?: boolean;
 }>;
 
 /**
  * Renders a configuration item.
  */
-function ConfigurationItem({ className, connected, children }: ConfigurationItemProps) {
+function ConfigurationItem({ className, connected, children, error }: ConfigurationItemProps) {
     return (
         <div className={clsx(className)}>
-            <span className={clsx('app-configuration__status', connected && 'app-configuration__status--connected')} />
+            <span
+                className={clsx(
+                    'app-configuration__status',
+                    connected && 'app-configuration__status--connected',
+                    error && 'app-configuration__status--error',
+                )}
+            />
             {children}
         </div>
     );
@@ -32,13 +41,25 @@ function Configuration() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const account = useAtomValue(selectedAccountAtom);
     const showAccount = useMemo(() => (account === undefined ? undefined : accountShowShort(account)), [account]);
+    const configError = useAtomValue(connectionErrorAtom);
+    const hasConnectionError =
+        configError?.type !== undefined &&
+        [BackendErrorType.NodeConnection, BackendErrorType.NetworkError].includes(configError.type);
 
     return (
         <div className="app-configuration">
-            <ConfigurationItem className="text-capitalize" connected={electionConfig !== undefined}>
+            <ConfigurationItem
+                className="text-capitalize"
+                connected={electionConfig !== undefined}
+                error={hasConnectionError}
+            >
                 {import.meta.env.CCD_ELECTION_NETWORK}
             </ConfigurationItem>
-            <ConfigurationItem className="d-flex align-items-center" connected={electionConfig !== undefined}>
+            <ConfigurationItem
+                className="d-flex align-items-center"
+                connected={electionConfig !== undefined}
+                error={hasConnectionError}
+            >
                 {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS}
             </ConfigurationItem>
             <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>

@@ -8,6 +8,51 @@ import { appWindow } from '@tauri-apps/api/window';
 import { UnlistenFn, Event } from '@tauri-apps/api/event';
 
 /**
+ * Corresponds to the enum members of the backend `Error` type.
+ */
+export const enum BackendErrorType {
+    NodeConnection = 'NodeConnection',
+    NetworkError = 'NetworkError',
+    DecryptionError = 'DecryptionError',
+    Http = 'Http',
+    ExistingAccount = 'ExistingAccount',
+    QueryFailed = 'QueryFailed',
+    AbortInteraction = 'AbortInteraction',
+}
+
+type BackendErrorJSON = { type: BackendErrorType; message: string };
+
+/**
+ * Represents any error originating in the backend
+ */
+export class BackendError extends Error {
+    private constructor(
+        public type: BackendErrorType,
+        message: string,
+    ) {
+        super(message);
+    }
+
+    /**
+     * Converts errors serialized by the backend into proper `BackendError`
+     */
+    public static fromJSON({ type, message }: BackendErrorJSON): BackendError {
+        return new BackendError(type, message);
+    }
+}
+
+/**
+ * Wraps {@linkcode invoke} to properly deserialize errors originating from the backend
+ */
+const invokeWrapped: typeof invoke = async (...args) => {
+    try {
+        return await invoke(...args);
+    } catch (e) {
+        throw BackendError.fromJSON(e as BackendErrorJSON);
+    }
+};
+
+/**
  * Wraps `import_wallet_account` invocation.
  *
  * @param walletExport - The wallet export to import
@@ -22,7 +67,7 @@ export async function importWalletAccount(
     guardianIndex: number,
     password: string,
 ): Promise<AccountAddress.Type> {
-    const account = await invoke<Base58String>('import_wallet_account', {
+    const account = await invokeWrapped<Base58String>('import_wallet_account', {
         walletAccount: walletExport,
         guardianIndex,
         password,
@@ -36,7 +81,7 @@ export async function importWalletAccount(
  * @returns The list of {@linkcode AccountAddress.Type} found.
  */
 export async function getAccounts(): Promise<AccountAddress.Type[]> {
-    const accounts = await invoke<Base58String[]>('get_accounts');
+    const accounts = await invokeWrapped<Base58String[]>('get_accounts');
     return accounts.map(AccountAddress.fromBase58);
 }
 
@@ -47,11 +92,11 @@ export async function getAccounts(): Promise<AccountAddress.Type[]> {
  * @param password - The password to use for decrypting the data file associated with the account.
  *
  * @returns `void` if account is successfully loaded
- * @throws If the account data could not be decrypted successfully. This will most likely be due to the user giving an
+ * @throws {@linkcode BackendError} If the account data could not be decrypted successfully. This will most likely be due to the user giving an
  * incorrect password, but could also mean the data stored has been corrupted
  */
 export function loadAccount(account: AccountAddress.Type, password: string): Promise<void> {
-    return invoke<void>('load_account', { account: AccountAddress.toBase58(account), password });
+    return invokeWrapped<void>('load_account', { account: AccountAddress.toBase58(account), password });
 }
 
 /**
@@ -71,17 +116,17 @@ export type ElectionConfig = {
  * Initiate a connection to the election contract.
  *
  * @returns {@linkcode ConnectResponse} on successful connection
- * @throws A variety of errors:
+ * @throws {@linkcode BackendError}:
  * - Connecting to the node
  * - Querying the node
  * - Fetching remote resources
  */
 export async function connect(): Promise<ElectionConfig> {
-    const response = await invoke<any>('connect');
+    const response = await invokeWrapped<any>('connect');
     const mapped: ElectionConfig = {
+        ...response,
         electionStart: new Date(response.electionStart),
         electionEnd: new Date(response.electionEnd),
-        ...response,
     };
     return mapped;
 }
@@ -113,10 +158,10 @@ export type GuardiansState = [AccountAddress.Type, GuardianState][];
  * where new actions need to be performed by the active guardian.
  *
  * @returns The collective state of all guardians.
- * @throws If an error happened while querying the contract for the guardian information.
+ * @throws {@linkcode BackendError} if an error happened while querying the contract for the guardian information.
  */
 export async function refreshGuardians(): Promise<[AccountAddress.Type, GuardianState][]> {
-    const guardiansState = await invoke<[Base58String, GuardianState][]>('refresh_guardians');
+    const guardiansState = await invokeWrapped<[Base58String, GuardianState][]>('refresh_guardians');
     const mapped = guardiansState.map<[AccountAddress.Type, GuardianState]>(([address, state]) => [
         AccountAddress.fromBase58(address),
         state,
@@ -135,7 +180,7 @@ const REGISTER_KEY_CHANNEL_ID = 'register-key';
  *
  * @returns 1. A proposed amount of {@linkcode Energy.Type} to use for the transaction
  * @returns 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, errors can be thrown
+ * @throws {@linkcode BackendError} At any step in the interaction, errors can be thrown
  *
  * @example
  * const registerKey = sendPublicKeyRegistration();
@@ -149,7 +194,7 @@ const REGISTER_KEY_CHANNEL_ID = 'register-key';
  * }
  */
 export async function* registerGuardianKey(): AsyncGenerator<Energy.Type, void, boolean> {
-    const invocation = invoke<void>('register_guardian_key', { channelId: REGISTER_KEY_CHANNEL_ID });
+    const invocation = invokeWrapped<void>('register_guardian_key', { channelId: REGISTER_KEY_CHANNEL_ID });
 
     let unsub: UnlistenFn | undefined;
     const keyRegistrationEstimate = new Promise<Energy.Type>((resolve) => {
@@ -170,7 +215,7 @@ export async function* registerGuardianKey(): AsyncGenerator<Energy.Type, void, 
         const approval = yield result;
         void appWindow.emit(REGISTER_KEY_CHANNEL_ID, approval); // Will be rejected by backend if false
 
-        return invocation;
+        return await invocation;
     } finally {
         unsub?.();
     }

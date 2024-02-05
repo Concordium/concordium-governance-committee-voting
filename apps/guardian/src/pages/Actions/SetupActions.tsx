@@ -1,12 +1,15 @@
 import { clsx } from 'clsx';
 import { PropsWithChildren, useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Spinner } from 'react-bootstrap';
+import { Modal, ProgressBar, Spinner } from 'react-bootstrap';
 
 import Button from '~/shared/Button';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
-import { registerGuardianKey } from '~/shared/ffi';
-import { Energy } from '@concordium/web-sdk';
+import { BackendError, GuardiansState, registerGuardianKey } from '~/shared/ffi';
+import { AccountAddress, Energy } from '@concordium/web-sdk';
+import { sleep } from 'shared/util';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { ElectionPhase, SetupStep, electionStepAtom, guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
 
 const enum GenerateStep {
     Generate,
@@ -66,6 +69,9 @@ function Step({ step, activeStep, error, children, note }: StepProps) {
     );
 }
 
+/**
+ * Flow for generating a guardian key
+ */
 function GenerateGuardianKey() {
     const [show, setShow] = useState(false);
     const [error, setError] = useState<string>();
@@ -73,15 +79,23 @@ function GenerateGuardianKey() {
     const [energy, setEnergy] = useState<Energy.Type>();
     const [registerKeyGenerator, setRegisterKeyGenerator] =
         useState<ReturnType<typeof registerGuardianKey>>(registerGuardianKey());
+    const refreshGuardians = useSetAtom(guardiansStateAtom);
 
+    /**
+     * Reset the component to its initial state
+     */
     const reset = useCallback(() => {
         setShow(false);
+        setEnergy(undefined);
         setError(undefined);
         setStep(GenerateStep.Generate);
         setRegisterKeyGenerator(registerGuardianKey());
     }, []);
 
-    const sendUpdate = useCallback(() => {
+    /**
+     * Sends the contract update by accepting the proposed transaction
+     */
+    const acceptTransactionProposal = useCallback(() => {
         if (registerKeyGenerator === undefined) {
             throw new Error('Expected interaction generator to still be available');
         }
@@ -91,13 +105,18 @@ function GenerateGuardianKey() {
             .next(true)
             .then(() => {
                 setStep(GenerateStep.Done);
-                setTimeout(reset, 2000);
+                return sleep(2000); // Allow user to see the successful contract update step
             })
-            .catch((e: Error) => {
+            .then(refreshGuardians)
+            .then(reset)
+            .catch((e: BackendError) => {
                 setError(e.message);
             });
-    }, [registerKeyGenerator, reset]);
+    }, [registerKeyGenerator, reset, refreshGuardians]);
 
+    /**
+     * Reject the proposed transaction.
+     */
     const cancel = useCallback(() => {
         if (registerKeyGenerator === undefined) {
             throw new Error('Expected interaction generator to still be available');
@@ -107,6 +126,7 @@ function GenerateGuardianKey() {
         reset();
     }, [registerKeyGenerator, reset]);
 
+    // Runs when modal shows
     useEffect(() => {
         if (show && registerKeyGenerator !== undefined) {
             registerKeyGenerator
@@ -115,7 +135,7 @@ function GenerateGuardianKey() {
                     setEnergy(res.value as Energy.Type);
                     setStep(GenerateStep.ApproveTransaction);
                 })
-                .catch((e: Error) => {
+                .catch((e: BackendError) => {
                     setError(e.message);
                 });
         }
@@ -123,7 +143,7 @@ function GenerateGuardianKey() {
 
     return (
         <>
-            <Button onClick={() => setShow(true)} disabled={show}>
+            <Button onClick={() => setShow(true)} disabled={show} size="lg">
                 Generate guardian key
             </Button>
             <Modal show={show} centered animation onHide={() => reset()}>
@@ -149,7 +169,7 @@ function GenerateGuardianKey() {
                 </Modal.Body>
                 {step === GenerateStep.ApproveTransaction && error === undefined && (
                     <Modal.Footer className="justify-content-start">
-                        <Button onClick={sendUpdate} variant="secondary">
+                        <Button onClick={acceptTransactionProposal} variant="secondary">
                             Send key registration
                         </Button>
                         <Button variant="danger" onClick={cancel}>
@@ -162,6 +182,44 @@ function GenerateGuardianKey() {
     );
 }
 
+type AwaitPeerKeysProps = {
+    guardians: GuardiansState;
+};
+
+function AwaitPeerKeys({guardians}: AwaitPeerKeysProps) {
+    const numWithKeys = useMemo(() => guardians.filter(([, g]) => g.hasPublicKey).length, [guardians]);
+    const progress = useMemo(() => numWithKeys * (100 / guardians.length), [numWithKeys, guardians]);
+
+    return (
+        <div>
+            <h3>Waiting for other guardians to register keys</h3>
+            <ProgressBar now={progress} label={`${numWithKeys}/${guardians.length}`} />
+        </div>
+    );
+}
+
+function GenerateDecryptionShare() {
+    return (
+    <h2>Generate decryption share</h2>
+    )
+}
+
+/**
+ * Component which shows the relevant actions for the guardian during the election setup phase
+ */
 export default function SetupActions() {
-    return <GenerateGuardianKey />;
+    const electionStep = useAtomValue(electionStepAtom);
+    const { guardians } = useAtomValue(guardiansStateAtom);
+
+    if (electionStep?.phase !== ElectionPhase.Setup || guardians === undefined) {
+        return null;
+    }
+
+    return (
+        <>
+            {electionStep.step === SetupStep.GenerateKey && <GenerateGuardianKey />}
+            {electionStep.step === SetupStep.AwaitPeerKeys && <AwaitPeerKeys guardians={guardians} />}
+            {electionStep.step === SetupStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
+        </>
+    );
 }

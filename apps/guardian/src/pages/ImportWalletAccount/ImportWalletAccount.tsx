@@ -8,7 +8,7 @@ import { useForm, Validate } from 'react-hook-form';
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
-import { guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
+import { accountsAtom, guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
 import { importWalletAccount } from '~/shared/ffi';
 import { useNavigate } from 'react-router-dom';
 import { routes } from '~/shell/router';
@@ -126,6 +126,7 @@ export default function ImportWalletAccount() {
         [guardiansState],
     );
     const nav = useNavigate();
+    const refreshAccounts = useSetAtom(accountsAtom);
 
     const guardianData = useAsyncMemo(
         async () => {
@@ -159,6 +160,8 @@ export default function ImportWalletAccount() {
             void importWalletAccount(guardianData.walletExport, guardianData.index, password)
                 .then((imported) => {
                     setAccount(imported);
+                    void refreshAccounts();
+
                     nav(routes.actions.path);
                 })
                 .catch((e: Error) => {
@@ -168,7 +171,7 @@ export default function ImportWalletAccount() {
                     setLoading(false);
                 });
         }
-    }, [guardianData, password, setAccount, nav]);
+    }, [guardianData, password, setAccount, nav, refreshAccounts]);
 
     return (
         <>
