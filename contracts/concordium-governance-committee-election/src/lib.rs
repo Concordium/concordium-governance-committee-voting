@@ -56,8 +56,12 @@ pub enum Error {
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum GuardianStatus {
-    /// Guardian could not verify the [`GuardianState`] of other guardians.
-    VerificationFailed(String),
+    /// Guardian could not verify public key(s) of the guardians represented by
+    /// the supplied account addresses.
+    KeyVerificationFailed(Vec<AccountAddress>),
+    /// Guardian could not verify encrypted shares of the guardians represented
+    /// by the supplied account addresses.
+    SharesVerificationFailed(Vec<AccountAddress>),
     /// Guardian has verified the [`GuardianState`] of other guardians is as
     /// expected.
     VerificationSuccessful,
@@ -235,7 +239,11 @@ pub struct InitParameter {
 }
 
 #[derive(Serialize, SchemaType, Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(rename_all = "camelCase"))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(rename_all = "camelCase")
+)]
 pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.

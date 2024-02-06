@@ -10,14 +10,15 @@ use concordium_rust_sdk::{
     contract_client::{ContractClient, ContractUpdateError},
     id::types::AccountKeys,
     smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
-    types::{smart_contracts::OwnedParameter, ContractAddress, RejectReason, WalletAccount},
+    types::{
+        smart_contracts::OwnedParameter, ContractAddress, Energy, RejectReason, WalletAccount,
+    },
     v2::{BlockIdentifier, Client, Endpoint, QueryError},
 };
-use contract::GuardianStatus;
 use eg::{
     election_manifest::ElectionManifest, election_parameters::ElectionParameters,
     guardian::GuardianIndex, guardian_public_key::GuardianPublicKey,
-    guardian_secret_key::GuardianSecretKey,
+    guardian_secret_key::GuardianSecretKey, guardian_share::GuardianEncryptedShare,
 };
 use election_common::ByteConvert;
 use rand::{thread_rng, Rng};
@@ -72,6 +73,11 @@ enum Error {
     /// the command awaits events emitted by the frontend)
     #[error("{0}")]
     AbortInteraction(String),
+    /// Failed to validate either the [`GuardianPublicKey`] or the
+    /// [`GuardianEncryptedShare`]s submitted by the guardian represented by
+    /// the inner [`AccountAddress`]
+    #[error("Failed to validate peer submissions")]
+    PeerValidation(Vec<AccountAddress>),
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {
@@ -507,6 +513,31 @@ where
     response
 }
 
+/// Submit a request for approval to the frontend, waiting for response. Only
+/// accepts `true` as the response from the frontend; any other response will
+/// result in an error.
+async fn wait_for_approval<M: Serialize + Clone>(
+    channel_id: &str,
+    window: &Window,
+    proposal: M,
+) -> Result<(), Error> {
+    match send_message(&window, &channel_id, proposal).await {
+        Ok(Some(true)) => true, // Transaction estimate approved
+        Ok(Some(false)) => {
+            return Err(Error::AbortInteraction(
+                "Registration rejected by the user".into(),
+            ))
+        }
+        Ok(None) => return Err(anyhow!("Expected response with value from frontend").into()),
+        Err(error) => {
+            return Err(anyhow::Error::new(error)
+                .context("Unexpected result received from the frontend")
+                .into())
+        }
+    };
+    Ok(())
+}
+
 /// This command executes the following steps:
 ///
 /// - Generate a key pair, storing the secret key (encrypted) on disk
@@ -539,24 +570,199 @@ async fn register_guardian_key<'a>(
         .await?;
 
     // Wait for response from the user through the frontend
-    match send_message(&window, &channel_id, result.current_energy()).await {
-        Ok(Some(true)) => true, // Transaction estimate approved
-        Ok(Some(false)) => {
-            return Err(Error::AbortInteraction(
-                "Registration rejected by the user".into(),
-            ))
+    wait_for_approval(&channel_id, &window, result.current_energy()).await?;
+
+    result
+        .send(&active_guardian.guardian.keys)
+        .await?
+        .wait_for_finalization()
+        .await?;
+
+    Ok(())
+}
+
+/// Generate the encrypted shares for the active guardian. This is done by
+/// querying the public keys registered by all guardians, and generating
+/// [`GuardianEncryptedShare`] for each of them.
+///
+/// ## Errors
+/// Expected errors include:
+/// - `NodeConnection`
+/// - `PeerValidation`
+async fn generate_encrypted_shares<'a>(
+    active_guardian_state: &State<'a, ActiveGuardianState>,
+    app_config_state: &State<'a, AppConfigState>,
+    app_handle: &AppHandle,
+) -> Result<Vec<GuardianEncryptedShare>, Error> {
+    let active_guardian = active_guardian_state.0.lock().await;
+    let Some(active_guardian) = active_guardian.as_ref() else {
+        return Err(Error::Internal(anyhow!(
+            "Expected active guardian state to be set"
+        )));
+    };
+
+    let secret_key_path =
+        guardian_data_dir(&app_handle, active_guardian.guardian.account).join(SECRET_KEY_FILE);
+    let secret_key = read_encrypted_file(&active_guardian.password, &secret_key_path)?;
+
+    let mut app_config = app_config_state.0.lock().await;
+    let mut contract = app_config.connection().await?.contract;
+    let election_parameters = app_config.election_guard().await?.parameters;
+    let guardians_state = contract
+        .view::<_, contract::GuardiansState, Error>(
+            "viewGuardiansState",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
+    let validation_results = guardians_state
+        .into_iter()
+        .map(|(acc, gs)| {
+            gs.public_key
+                .with_context(|| format!("Public key not found for guardian with account {acc}"))
+                .map_err(Error::from)
+                .map(|pub_key| {
+                    // Attempt to decode the public key. Failure to do so means the key submitted by
+                    // that guardian is invalid, and should be reported to the
+                    // election contract.
+                    GuardianPublicKey::decode(pub_key).map_err(|_| acc)
+                })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let (guardian_public_keys, invalid_submissions) =
+        validation_results
+            .into_iter()
+            .fold((vec![], vec![]), |mut acc, res| {
+                match res {
+                    Ok(key) => acc.0.push(key),
+                    Err(account) => acc.1.push(account),
+                };
+                acc
+            });
+
+    if invalid_submissions.len() > 0 {
+        return Err(Error::PeerValidation(invalid_submissions));
+    }
+
+    let mut rng = Csprng::new(&thread_rng().gen::<[u8; 32]>());
+    let encrypted_shares: Vec<_> = guardian_public_keys
+        .into_iter()
+        .map(|recipient_public_key| {
+            GuardianEncryptedShare::new(
+                &mut rng,
+                &election_parameters,
+                &secret_key,
+                &recipient_public_key,
+            )
+        })
+        .collect();
+    Ok(encrypted_shares)
+}
+
+/// Different possible branches of the flow for registering encrypted shares
+#[derive(Debug, strum::IntoStaticStr, Clone)]
+enum RegisterSharesProposal {
+    /// All peer keys were successfully validated and shares could be computed
+    Success(Energy),
+    /// Validation of some keys of guardian accounts failed
+    Complaint(Energy),
+}
+
+impl RegisterSharesProposal {
+    fn energy(&self) -> Energy {
+        match self {
+            Self::Success(energy) => *energy,
+            Self::Complaint(energy) => *energy,
         }
-        Ok(None) => return Err(anyhow!("Expected response with value from frontend").into()),
-        Err(error) => {
-            return Err(anyhow::Error::new(error)
-                .context("Unexpected result received from the frontend")
-                .into())
+    }
+}
+
+impl Serialize for RegisterSharesProposal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer, {
+        let mut error = serializer.serialize_struct("RegisterSharesProposal", 2)?;
+        error.serialize_field("type", <&str>::from(self))?;
+        error.serialize_field("energy", &self.energy())?;
+        error.end()
+    }
+}
+
+/// Runs the flow for computing and registering [`GuardianEncryptedShare`]s in
+/// the election contract. This has two potential outcomes:
+/// 1. All peer public keys are valid, the shares are computed and registered in
+/// the election contract. 2. One or more invalid keys have been detected, a
+/// complaint with the associated guardian accounts is registered in
+///    the election contract.
+///
+/// The following steps are run:
+/// 1. Validate peer keys + generate encrypted shares if successful
+/// 2. Request approval of transaction proposal (either registration of shares
+/// or complaint) 3. Transaction submission + await finalization.
+///
+/// ## Errors
+/// Expected errors include:
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::QueryFailed`]
+#[tauri::command]
+async fn register_guardian_share<'a>(
+    active_guardian_state: State<'a, ActiveGuardianState>,
+    app_config_state: State<'a, AppConfigState>,
+    channel_id: String,
+    app_handle: AppHandle,
+    window: Window,
+) -> Result<(), Error> {
+    let encrypted_shares =
+        match generate_encrypted_shares(&active_guardian_state, &app_config_state, &app_handle)
+            .await
+        {
+            Ok(shares) => Ok(shares),
+            Err(Error::PeerValidation(accounts)) => Err(accounts),
+            Err(error) => return Err(error),
+        };
+
+    let mut contract = app_config_state.0.lock().await.connection().await?.contract;
+    let active_guardian_guard = active_guardian_state.0.lock().await;
+    let active_guardian = active_guardian_guard
+        .as_ref()
+        .ok_or(anyhow!("Active account not set"))?;
+
+    // Depending on whether any validation failures are detected, either:
+    // 1. register the generated shares
+    // 2. file a complaint with the guardian accounts with invalid key registrations
+    let (proposal, contract_update) = match encrypted_shares {
+        Ok(encrypted_shares) => {
+            let update = contract
+                .dry_run_update::<Vec<u8>, Error>(
+                    "registerGuardianEncryptedShare",
+                    Amount::zero(),
+                    active_guardian.guardian.account,
+                    &encrypted_shares.encode().unwrap(), // Serialization will not fail
+                )
+                .await?;
+            let proposal = RegisterSharesProposal::Success(update.current_energy());
+            (proposal, update)
+        }
+        Err(accounts) => {
+            let update = contract
+                .dry_run_update::<contract::GuardianStatus, Error>(
+                    "registerGuardianStatus",
+                    Amount::zero(),
+                    active_guardian.guardian.account,
+                    &contract::GuardianStatus::KeyVerificationFailed(accounts), // Serialization will not fail
+                )
+                .await?;
+            let proposal = RegisterSharesProposal::Complaint(update.current_energy());
+            (proposal, update)
         }
     };
 
-    println!("ENERGY: {}", result.current_energy());
+    // Wait for response from the user through the frontend
+    wait_for_approval(&channel_id, &window, proposal).await?;
 
-    result
+    contract_update
         .send(&active_guardian.guardian.keys)
         .await?
         .wait_for_finalization()
@@ -577,7 +783,7 @@ struct GuardianStateResponse {
     /// The guardian index
     index:               u32,
     /// The guardian status registered for the guardian
-    status:              Option<GuardianStatus>,
+    status:              Option<contract::GuardianStatus>,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
@@ -656,6 +862,7 @@ fn main() {
             load_account,
             refresh_guardians,
             register_guardian_key,
+            register_guardian_share,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

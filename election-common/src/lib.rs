@@ -1,4 +1,4 @@
-use eg::{ballot::BallotEncrypted, guardian_public_key::GuardianPublicKey};
+use eg::{ballot::BallotEncrypted, guardian_public_key::GuardianPublicKey, guardian_share::GuardianEncryptedShare};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Deduplication of code to encode/decode serializable structs
@@ -22,3 +22,4 @@ where
 
 impl ByteConvert for GuardianPublicKey {}
 impl ByteConvert for BallotEncrypted {}
+impl ByteConvert for Vec<GuardianEncryptedShare> {}

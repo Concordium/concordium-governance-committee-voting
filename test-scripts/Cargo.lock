@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.1"
+version = "9.0.0"
 dependencies = [
  "concordium-contracts-common",
 ]

@@ -331,12 +331,11 @@ fn test_receive_guardian_status() {
         .parse_return_value()
         .expect("Can parse value");
 
-    let complaint = "Could not verify guardian state";
     register_guardian_status_update(
         &mut chain,
         &contract_address,
         &BOB_ADDR,
-        GuardianStatus::VerificationFailed(complaint.to_string()),
+        GuardianStatus::KeyVerificationFailed(vec![DANIEL]),
     )
     .expect("Complaint registration should succeed");
 
@@ -346,7 +345,7 @@ fn test_receive_guardian_status() {
         &DANIEL_ADDR,
         GuardianStatus::VerificationSuccessful,
     )
-    .expect("Complaint registration should succeed");
+    .expect("Success registration should succeed");
 
     let error: Error = register_guardian_status_update(
         &mut chain,
@@ -410,7 +409,7 @@ fn test_receive_guardian_status() {
     guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
-            status: Some(GuardianStatus::VerificationFailed(complaint.to_string())),
+            status: Some(GuardianStatus::KeyVerificationFailed(vec![DANIEL])),
             ..GuardianState::new(1)
         }),
         (CAROLINE, GuardianState::new(2)),
