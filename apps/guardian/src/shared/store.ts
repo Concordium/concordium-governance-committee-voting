@@ -69,8 +69,8 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (guardians.every(([, g]) => g.hasEncryptedShare)) return SetupStep.ValidatePeerShares;
-                if (guardian.hasEncryptedShare) return SetupStep.AwaitPeerShares;
+                if (guardians.every(([, g]) => g.hasEncryptedShares)) return SetupStep.ValidatePeerShares;
+                if (guardian.hasEncryptedShares) return SetupStep.AwaitPeerShares;
                 if (guardians.every(([, g]) => g.hasPublicKey)) return SetupStep.GenerateDecryptionShare;
                 if (guardian.hasPublicKey) return SetupStep.AwaitPeerKeys;
                 return SetupStep.GenerateKey;

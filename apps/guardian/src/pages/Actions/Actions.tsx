@@ -7,7 +7,6 @@ import Button from '~/shared/Button';
 import { Link } from 'react-router-dom';
 import { routes } from '~/shell/router';
 
-
 const Dots = () => <div className="actions__header-dots">• • • • •</div>;
 
 type PhaseProps = { activePhase: ElectionPhase; children: ElectionPhase };
@@ -43,9 +42,11 @@ export default function Actions() {
                     </Button>
                 </Link>
             </Navbar>
-            <div className='actions__body'>
+            <div className="actions__body">
                 {electionStep.phase === ElectionPhase.Setup && <SetupActions />}
-                {electionStep.phase === ElectionPhase.Voting && <h1 className='text-muted'>Waiting for voting to conclude...</h1>}
+                {electionStep.phase === ElectionPhase.Voting && (
+                    <h1 className="text-muted">Waiting for voting to conclude...</h1>
+                )}
                 {electionStep.phase === ElectionPhase.Voting && <>Finalization phase...</>}
             </div>
         </>
