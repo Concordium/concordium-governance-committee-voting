@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { AccountAddress, Base58String, Energy, WalletExportFormat } from '@concordium/web-sdk';
+import { AccountAddress, Base58String, CcdAmount, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
 import { appWindow } from '@tauri-apps/api/window';
 import { UnlistenFn, Event } from '@tauri-apps/api/event';
@@ -191,7 +191,7 @@ export async function refreshGuardians(): Promise<[AccountAddress.Type, Guardian
  * @returns A generator function for interacting with the backend
  */
 function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
-    return async function* (abortSignal: AbortSignal): AsyncGenerator<Y, void, boolean> {
+    return async function*(abortSignal: AbortSignal): AsyncGenerator<Y, void, boolean> {
         const invocation = invokeWrapped<void>(cmd, { channelId: cmd });
 
         let unsub: UnlistenFn | undefined;
@@ -251,8 +251,8 @@ function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
  *   // Do something with the error.
  * }
  */
-export const registerGuardianKey = makeInteractionFlow<number, Energy.Type>('register_guardian_key', (payload) =>
-    Energy.create(payload),
+export const registerGuardianKey = makeInteractionFlow<number, CcdAmount.Type>('register_guardian_key', (payload) =>
+    CcdAmount.fromMicroCcd(payload),
 );
 
 /**
@@ -271,13 +271,13 @@ export const enum RegisterSharesProposalType {
 export type RegisterSharesProposal = {
     /** The proposal type */
     type: RegisterSharesProposalType;
-    /** The amount of energy needed for the transaction */
-    energy: Energy.Type;
+    /** The transaction fee of the proposed transaction */
+    ccdCost: CcdAmount.Type;
 };
 
 type RegisterSharesProposalJSON = {
     type: RegisterSharesProposalType;
-    energy: number;
+    ccdCost: number;
 };
 
 /**
@@ -312,5 +312,5 @@ type RegisterSharesProposalJSON = {
  */
 export const registerGuardianShares = makeInteractionFlow<RegisterSharesProposalJSON, RegisterSharesProposal>(
     'register_guardian_shares',
-    (payload) => ({ ...payload, energy: Energy.create(payload.energy) }),
+    (payload) => ({ ...payload, ccdCost: CcdAmount.fromMicroCcd(payload.ccdCost) }),
 );

@@ -79,3 +79,5 @@ export function accountShowShort(account: AccountAddress.Type, numChars = 8): st
     const accountString = AccountAddress.toBase58(account);
     return `${accountString.substring(0, start)}...${accountString.substring(accountString.length - end)}`;
 }
+
+export const CCD_SYMBOL = '\u03FE';

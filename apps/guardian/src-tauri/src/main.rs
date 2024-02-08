@@ -13,7 +13,7 @@ use concordium_rust_sdk::{
     types::{
         smart_contracts::OwnedParameter, ContractAddress, Energy, RejectReason, WalletAccount,
     },
-    v2::{BlockIdentifier, Client, Endpoint, QueryError},
+    v2::{self, BlockIdentifier, Client, Endpoint, QueryError},
 };
 use eg::{
     election_manifest::ElectionManifest, election_parameters::ElectionParameters,
@@ -183,6 +183,7 @@ type ElectionClient = ContractClient<ElectionContractMarker>;
 
 #[derive(Clone)]
 struct ConnectionConfig {
+    node:     v2::Client,
     contract: ElectionClient,
 }
 
@@ -214,15 +215,16 @@ impl ConnectionConfig {
         let endpoint_var = option_env!("CCD_ELECTION_NODE")
             .expect(r#"Expected environment variable "CCD_ELECTION_NODE" to be defined"#); // We
         let endpoint = Endpoint::from_str(endpoint_var).expect("Could not parse node endpoint");
-        let node = Client::new(endpoint).await?;
 
         let contract_var = option_env!("CCD_ELECTION_CONTRACT_ADDRESS")
             .expect(r#"Expected environment variabled "CCD_ELECTION_CONTRACT" to be defined"#);
         let contract_address =
             ContractAddress::from_str(contract_var).expect("Could not parse contract address");
-        let contract = ElectionClient::create(node, contract_address).await?;
 
-        let contract_connection = Self { contract };
+        let node = Client::new(endpoint).await?;
+        let contract = ElectionClient::create(node.clone(), contract_address).await?;
+
+        let contract_connection = Self { node, contract };
         Ok(contract_connection)
     }
 
@@ -682,16 +684,16 @@ async fn generate_encrypted_shares<'a>(
 #[derive(Debug, strum::IntoStaticStr, Clone)]
 enum RegisterSharesProposal {
     /// All peer keys were successfully validated and shares could be computed
-    Registration(Energy),
+    Registration(Amount),
     /// Validation of some keys of guardian accounts failed
-    Complaint(Energy),
+    Complaint(Amount),
 }
 
 impl RegisterSharesProposal {
-    fn energy(&self) -> Energy {
+    fn ccd_cost(&self) -> Amount {
         match self {
-            Self::Registration(energy) => *energy,
-            Self::Complaint(energy) => *energy,
+            Self::Registration(amount) => *amount,
+            Self::Complaint(amount) => *amount,
         }
     }
 }
@@ -702,7 +704,7 @@ impl Serialize for RegisterSharesProposal {
         S: serde::Serializer, {
         let mut error = serializer.serialize_struct("RegisterSharesProposal", 2)?;
         error.serialize_field("type", <&str>::from(self))?;
-        error.serialize_field("energy", &self.energy())?;
+        error.serialize_field("ccdCost", &self.ccd_cost())?;
         error.end()
     }
 }
@@ -761,7 +763,9 @@ async fn register_guardian_shares<'a>(
                         &encrypted_shares.encode().unwrap(), // Serialization will not fail
                     )
                     .await?;
-                let proposal = RegisterSharesProposal::Registration(update.current_energy());
+
+                let ccd_cost = energy_to_ccd(update.current_energy(), &app_config_state).await?;
+                let proposal = RegisterSharesProposal::Registration(ccd_cost);
                 (proposal, update)
             }
             Err(accounts) => {
@@ -773,7 +777,8 @@ async fn register_guardian_shares<'a>(
                         &contract::GuardianStatus::KeyVerificationFailed(accounts), // Serialization will not fail
                     )
                     .await?;
-                let proposal = RegisterSharesProposal::Complaint(update.current_energy());
+                let ccd_cost = energy_to_ccd(update.current_energy(), &app_config_state).await?;
+                let proposal = RegisterSharesProposal::Complaint(ccd_cost);
                 (proposal, update)
             }
         };
@@ -865,6 +870,26 @@ async fn connect<'a>(app_config_state: State<'a, AppConfigState>) -> Result<Elec
     let mut app_config_guard = app_config_state.0.lock().await;
     let election_config = app_config_guard.election().await?;
     Ok(election_config)
+}
+
+/// Calculates the [`Amount`] for a given amount of [`Energy`].
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+async fn energy_to_ccd<'a>(
+    energy: Energy,
+    app_config_state: &State<'a, AppConfigState>,
+) -> Result<Amount, Error> {
+    let mut app_config_guard = app_config_state.0.lock().await;
+    let mut node = app_config_guard.connection().await?.node;
+
+    let chain_parameters = node
+        .get_block_chain_parameters(BlockIdentifier::LastFinal)
+        .await?
+        .response;
+    let amount = chain_parameters.ccd_cost(energy);
+    Ok(amount)
 }
 
 fn main() {

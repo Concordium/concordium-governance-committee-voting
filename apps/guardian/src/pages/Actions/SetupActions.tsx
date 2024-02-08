@@ -21,9 +21,10 @@ import {
     registerGuardianKey,
     registerGuardianShares,
 } from '~/shared/ffi';
-import { sleep } from 'shared/util';
+import { CCD_SYMBOL, sleep } from 'shared/util';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { ElectionPhase, SetupStep, electionStepAtom, guardiansStateAtom } from '~/shared/store';
+import { CcdAmount } from '@concordium/web-sdk';
 
 const enum ActionStep {
     Generate,
@@ -235,7 +236,7 @@ const GenerateGuardianKey = makeActionableStep(
                             step={ActionStep.ApproveTransaction}
                             activeStep={step}
                             error={error}
-                            note={proposal ? `Transaction fee energy: ${proposal.value.toString()} NRG` : ``} // TODO: calculate as CCD
+                            note={proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``}
                         >
                             Awaiting transaction approval
                             <div className="generate__step-note text-muted"></div>
@@ -312,7 +313,7 @@ const GenerateDecryptionShare = makeActionableStep(
                                 step={ActionStep.ApproveTransaction}
                                 activeStep={step}
                                 error={error}
-                                note={proposal ? `Transaction fee energy: ${proposal.energy.value.toString()} NRG` : ``} // TODO: calculate as CCD
+                                note={proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal.ccdCost).toString()}` : ``}
                             >
                                 Awaiting transaction approval
                                 <div className="generate__step-note text-muted"></div>
