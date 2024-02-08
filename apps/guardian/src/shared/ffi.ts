@@ -140,6 +140,12 @@ export async function connect(): Promise<ElectionConfig> {
     return mapped;
 }
 
+export const enum GuardianStatus {
+    VerificationSuccessful = 'VerificationSuccessful',
+    SharesVerificationFailed = 'SharesVerificationFailed',
+    KeyVerificationFailed = 'KeyVerificationFailed',
+}
+
 /**
  * The state returned from the backend for a single guardian.
  */
@@ -154,7 +160,7 @@ export type GuardianState = {
      * The current status registered by the guardian, either a form of complaint or an OK signal. `null` means no status
      * has been registered yet.
      */
-    status: number | null;
+    status: GuardianStatus | null;
 };
 
 /**
@@ -191,7 +197,7 @@ export async function refreshGuardians(): Promise<[AccountAddress.Type, Guardian
  * @returns A generator function for interacting with the backend
  */
 function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
-    return async function*(abortSignal: AbortSignal): AsyncGenerator<Y, void, boolean> {
+    return async function* (abortSignal: AbortSignal): AsyncGenerator<Y, void, boolean> {
         const invocation = invokeWrapped<void>(cmd, { channelId: cmd });
 
         let unsub: UnlistenFn | undefined;
@@ -251,16 +257,17 @@ function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
  *   // Do something with the error.
  * }
  */
-export const registerGuardianKey = makeInteractionFlow<number, CcdAmount.Type>('register_guardian_key', (payload) =>
-    CcdAmount.fromMicroCcd(payload),
+export const registerGuardianKey = makeInteractionFlow<number, CcdAmount.Type>(
+    'register_guardian_key_flow',
+    (payload) => CcdAmount.fromMicroCcd(payload),
 );
 
 /**
  * the possible transaction proposals from the {@linkcode registerGuardianShares} flow.
  */
-export const enum RegisterSharesProposalType {
+export const enum ValidatedProposalType {
     /** Peer keys valid -> propose to register encrypted shares */
-    Registration = 'Registration',
+    Success = 'Success',
     /** One or more invalid peer keys -> propose to file a complaint */
     Complaint = 'Complaint',
 }
@@ -268,15 +275,15 @@ export const enum RegisterSharesProposalType {
 /**
  * A transaction proposal from the {@linkcode registerGuardianShares} flow.
  */
-export type RegisterSharesProposal = {
+export type ValidatedProposal = {
     /** The proposal type */
-    type: RegisterSharesProposalType;
+    type: ValidatedProposalType;
     /** The transaction fee of the proposed transaction */
     ccdCost: CcdAmount.Type;
 };
 
-type RegisterSharesProposalJSON = {
-    type: RegisterSharesProposalType;
+type ValidatedProposalJSON = {
+    type: ValidatedProposalType;
     ccdCost: number;
 };
 
@@ -291,7 +298,7 @@ type RegisterSharesProposalJSON = {
  *
  * @param abortSignal - An abort signal which will terminate the interaction
  *
- * @yields 1. A {@linkcode RegisterSharesProposal} to either accept or reject
+ * @yields 1. A {@linkcode ValidatedProposal} to either accept or reject
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
  * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
@@ -310,7 +317,42 @@ type RegisterSharesProposalJSON = {
  *   // Do something with the error.
  * }
  */
-export const registerGuardianShares = makeInteractionFlow<RegisterSharesProposalJSON, RegisterSharesProposal>(
-    'register_guardian_shares',
+export const registerGuardianShares = makeInteractionFlow<ValidatedProposalJSON, ValidatedProposal>(
+    'register_guardian_shares_flow',
+    (payload) => ({ ...payload, ccdCost: CcdAmount.fromMicroCcd(payload.ccdCost) }),
+);
+
+/**
+ * Creates a generator for interacting with the backend to validate peer shares and generate the secret share. The protocol
+ * for the interaction is:
+ *
+ * 1. Validate shares, generate secret share, await approval of transaction proposal, which is one of:
+ *   - Signaling OK
+ *   - Filing of complaint due to invalid peer shares
+ * 2. Send transaction, await finalization on chain
+ *
+ * @param abortSignal - An abort signal which will terminate the interaction
+ *
+ * @yields 1. A {@linkcode ValidatedProposal} to either accept or reject
+ * @yields 2. `void`, which signals the transaction has been submitted and finalized
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.NetworkError`
+ * - `BackendErrorType.QueryFailed`
+ *
+ * @example
+ * const abortController = new AbortController();
+ * const generator = generateSecretShare(abortController.signal);
+ * try {
+ *   // Generate encrypted shares, create transaction proposal
+ *   const proposal = await generator.next();
+ *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
+ *   await generator.next(true);
+ * } catch (e: Error) {
+ *   // Do something with the error.
+ * }
+ */
+export const generateSecretShare = makeInteractionFlow<ValidatedProposalJSON, ValidatedProposal>(
+    'generate_secret_share_flow',
     (payload) => ({ ...payload, ccdCost: CcdAmount.fromMicroCcd(payload.ccdCost) }),
 );

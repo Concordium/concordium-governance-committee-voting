@@ -16,8 +16,10 @@ import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
 import {
     BackendError,
+    GuardianStatus,
     GuardiansState,
-    RegisterSharesProposalType,
+    ValidatedProposalType,
+    generateSecretShare,
     registerGuardianKey,
     registerGuardianShares,
 } from '~/shared/ffi';
@@ -48,7 +50,8 @@ const enum StepStatus {
     Error,
 }
 
-function Step({ step, activeStep, error, children, note }: StepProps) {
+// TODO: use the warn signal
+function Step({ step, activeStep, error, children, note, warn }: StepProps) {
     const ownError = step === activeStep ? error : undefined;
     const status = useMemo(() => {
         if (step > activeStep) {
@@ -157,7 +160,7 @@ function makeActionableStep<P>(
             flow.next(true)
                 .then(() => {
                     setStep(ActionStep.Done);
-                    return sleep(2000); // Allow user to see the successful contract update step
+                    return sleep(1000); // Allow user to see the successful contract update step
                 })
                 .then(refreshGuardians)
                 .then(reset)
@@ -236,7 +239,9 @@ const GenerateGuardianKey = makeActionableStep(
                             step={ActionStep.ApproveTransaction}
                             activeStep={step}
                             error={error}
-                            note={proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``}
+                            note={
+                                proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``
+                            }
                         >
                             Awaiting transaction approval
                             <div className="generate__step-note text-muted"></div>
@@ -280,12 +285,12 @@ function AwaitPeerKeys({ guardians }: GuardiansProps) {
     );
 }
 
-const GenerateDecryptionShare = makeActionableStep(
+const GenerateEncryptedShares = makeActionableStep(
     registerGuardianShares,
     ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
         const peerValidationMessage = useMemo(
             () =>
-                proposal?.type === RegisterSharesProposalType.Complaint
+                proposal?.type === ValidatedProposalType.Complaint
                     ? 'Failed to validate the keys submitted by peer guardians.'
                     : undefined,
             [proposal],
@@ -297,7 +302,7 @@ const GenerateDecryptionShare = makeActionableStep(
                     Generate decryption share
                 </Button>
                 <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                    <Modal.Header closeButton={error !== undefined}>Generating guardian key</Modal.Header>
+                    <Modal.Header closeButton={error !== undefined}>Generating encrypted shares</Modal.Header>
                     <Modal.Body>
                         <ul className="generate__steps">
                             <Step
@@ -313,7 +318,13 @@ const GenerateDecryptionShare = makeActionableStep(
                                 step={ActionStep.ApproveTransaction}
                                 activeStep={step}
                                 error={error}
-                                note={proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal.ccdCost).toString()}` : ``}
+                                note={
+                                    proposal
+                                        ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(
+                                              proposal.ccdCost,
+                                          ).toString()}`
+                                        : ``
+                                }
                             >
                                 Awaiting transaction approval
                                 <div className="generate__step-note text-muted"></div>
@@ -327,7 +338,7 @@ const GenerateDecryptionShare = makeActionableStep(
                         <Modal.Footer className="justify-content-start">
                             <Button onClick={acceptProposal} variant="secondary">
                                 {peerValidationMessage !== undefined
-                                    ? 'File validation complaint'
+                                    ? 'Register validation complaint'
                                     : 'Register encrypted shares'}
                             </Button>
                             <Button variant="danger" onClick={rejectProposal}>
@@ -356,6 +367,96 @@ function AwaitPeerShares({ guardians }: GuardiansProps) {
     );
 }
 
+const GenerateSecretShare = makeActionableStep(
+    generateSecretShare,
+    ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
+        const peerValidationMessage = useMemo(
+            () =>
+                proposal?.type === ValidatedProposalType.Complaint
+                    ? 'Failed to validate the shares submitted by peer guardians.'
+                    : undefined,
+            [proposal],
+        );
+
+        return (
+            <>
+                <Button onClick={initFlow} disabled={isOpen} size="lg">
+                    Generate secret share
+                </Button>
+                <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
+                    <Modal.Header closeButton={error !== undefined}>Generating secret share</Modal.Header>
+                    <Modal.Body>
+                        <ul className="generate__steps">
+                            <Step
+                                step={ActionStep.Generate}
+                                activeStep={step}
+                                error={error}
+                                warn={peerValidationMessage !== undefined}
+                                note={peerValidationMessage}
+                            >
+                                Generating secret share
+                            </Step>
+                            <Step
+                                step={ActionStep.ApproveTransaction}
+                                activeStep={step}
+                                error={error}
+                                note={
+                                    proposal
+                                        ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(
+                                              proposal.ccdCost,
+                                          ).toString()}`
+                                        : ``
+                                }
+                            >
+                                Awaiting transaction approval
+                                <div className="generate__step-note text-muted"></div>
+                            </Step>
+                            <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
+                                Updating election contract
+                            </Step>
+                        </ul>
+                    </Modal.Body>
+                    {step === ActionStep.ApproveTransaction && error === undefined && (
+                        <Modal.Footer className="justify-content-start">
+                            <Button onClick={acceptProposal} variant="secondary">
+                                {peerValidationMessage !== undefined
+                                    ? 'Register validation complaint'
+                                    : 'Register validation OK'}
+                            </Button>
+                            <Button variant="danger" onClick={rejectProposal}>
+                                Cancel
+                            </Button>
+                        </Modal.Footer>
+                    )}
+                </Modal>
+            </>
+        );
+    },
+);
+
+/**
+ * Shows the progress of encrypted shares validation and secret key generation for guardians.
+ */
+function AwaitPeerValidation({ guardians }: GuardiansProps) {
+    const numValidations = useMemo(
+        () => guardians.filter(([, g]) => g.status === GuardianStatus.VerificationSuccessful).length,
+        [guardians],
+    );
+    const progress = useMemo(() => numValidations * (100 / guardians.length), [numValidations, guardians]);
+
+    return (
+        <div>
+            <h3 className="text-center">Waiting for other guardians to generate their secret share</h3>
+            <ProgressBar now={progress} label={`${numValidations}/${guardians.length}`} />
+        </div>
+    );
+}
+
+// TODO: Count down until election start time
+function Ready() {
+    return <h1>Ready for election to begin</h1>;
+}
+
 /**
  * Component which shows the relevant actions for the guardian during the election setup phase
  */
@@ -371,8 +472,11 @@ export default function SetupActions() {
         <>
             {electionStep.step === SetupStep.GenerateKey && <GenerateGuardianKey />}
             {electionStep.step === SetupStep.AwaitPeerKeys && <AwaitPeerKeys guardians={guardians} />}
-            {electionStep.step === SetupStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
+            {electionStep.step === SetupStep.GenerateEncryptedShares && <GenerateEncryptedShares />}
             {electionStep.step === SetupStep.AwaitPeerShares && <AwaitPeerShares guardians={guardians} />}
+            {electionStep.step === SetupStep.GenerateSecretShare && <GenerateSecretShare />}
+            {electionStep.step === SetupStep.AwaitPeerValidation && <AwaitPeerValidation guardians={guardians} />}
+            {electionStep.step === SetupStep.Done && <Ready />}
         </>
     );
 }

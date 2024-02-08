@@ -1,7 +1,15 @@
 import { atom, createStore } from 'jotai';
 import { AccountAddress } from '@concordium/web-sdk/types';
 
-import { BackendError, ElectionConfig, GuardiansState, connect, getAccounts, refreshGuardians } from './ffi';
+import {
+    BackendError,
+    ElectionConfig,
+    GuardianStatus,
+    GuardiansState,
+    connect,
+    getAccounts,
+    refreshGuardians,
+} from './ffi';
 
 /** The interval at which the guardians state will refresh from the contract */
 const GUARDIANS_UPDATE_INTERVAL = 30000;
@@ -38,9 +46,11 @@ export const enum ElectionPhase {
 export const enum SetupStep {
     GenerateKey,
     AwaitPeerKeys,
-    GenerateDecryptionShare,
+    GenerateEncryptedShares,
     AwaitPeerShares,
-    ValidatePeerShares,
+    GenerateSecretShare,
+    AwaitPeerValidation,
+    Done,
 }
 
 /**
@@ -69,9 +79,25 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (guardians.every(([, g]) => g.hasEncryptedShares)) return SetupStep.ValidatePeerShares;
-                if (guardian.hasEncryptedShares) return SetupStep.AwaitPeerShares;
-                if (guardians.every(([, g]) => g.hasPublicKey)) return SetupStep.GenerateDecryptionShare;
+                if (
+                    guardians.every(
+                        ([, g]) =>
+                            g.hasPublicKey &&
+                            g.hasEncryptedShares &&
+                            g.status === GuardianStatus.VerificationSuccessful,
+                    )
+                )
+                    return SetupStep.Done;
+                if (
+                    guardian.hasPublicKey &&
+                    guardian.hasEncryptedShares &&
+                    guardian.status === GuardianStatus.VerificationSuccessful
+                )
+                    return SetupStep.AwaitPeerValidation;
+                if (guardians.every(([, g]) => g.hasPublicKey && g.hasEncryptedShares))
+                    return SetupStep.GenerateSecretShare;
+                if (guardian.hasPublicKey && guardian.hasEncryptedShares) return SetupStep.AwaitPeerShares;
+                if (guardians.every(([, g]) => g.hasPublicKey)) return SetupStep.GenerateEncryptedShares;
                 if (guardian.hasPublicKey) return SetupStep.AwaitPeerKeys;
                 return SetupStep.GenerateKey;
             })();
