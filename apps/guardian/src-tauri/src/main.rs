@@ -217,10 +217,12 @@ impl ConnectionConfig {
     /// Creates a connection to a concordium node and a contract client. This
     /// function panics if the necessary environment variables are not set.
     async fn try_create_from_env() -> Result<Self, Error> {
+        #[allow(clippy::option_env_unwrap)] // To avoid cargo check errors in editor
         let endpoint_var = option_env!("CCD_ELECTION_NODE")
             .expect(r#"Expected environment variable "CCD_ELECTION_NODE" to be defined"#); // We
         let endpoint = Endpoint::from_str(endpoint_var).expect("Could not parse node endpoint");
 
+        #[allow(clippy::option_env_unwrap)] // To avoid cargo check errors in editor
         let contract_var = option_env!("CCD_ELECTION_CONTRACT_ADDRESS")
             .expect(r#"Expected environment variabled "CCD_ELECTION_CONTRACT" to be defined"#);
         let contract_address =
@@ -665,7 +667,7 @@ async fn generate_encrypted_shares<'a>(
                 acc
             });
 
-    if invalid_submissions.is_empty() {
+    if !invalid_submissions.is_empty() {
         return Err(Error::PeerValidation(invalid_submissions));
     }
 
@@ -881,7 +883,7 @@ async fn generate_secret_share<'a>(
         }
     }
 
-    if invalid_share_submissions.is_empty() {
+    if !invalid_share_submissions.is_empty() {
         return Err(Error::PeerValidation(invalid_share_submissions));
     }
     // Then we generate the secret share
