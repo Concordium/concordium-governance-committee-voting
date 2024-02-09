@@ -1,12 +1,13 @@
 import { Buffer } from 'buffer/index.js';
 import { ChecksumUrl } from './types';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AccountAddress } from '@concordium/web-sdk/types';
+import { formatDuration, intervalToDuration } from 'date-fns';
 
 /**
  * Used to indicate failure to verify a remotely located resource
  */
-export class ResourceVerificationError extends Error { }
+export class ResourceVerificationError extends Error {}
 
 /**
  * Gets the resource at the specified url.
@@ -42,7 +43,7 @@ export async function getChecksumResource<T>(
 export const useAsyncMemo = <ReturnType>(
     getResult: () => Promise<ReturnType>,
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    handleError: (e: Error) => void = () => { },
+    handleError: (e: Error) => void = () => {},
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     deps?: any[],
 ): ReturnType | undefined => {
@@ -62,6 +63,33 @@ export function sleep(timeMs: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, timeMs);
     });
+}
+
+/**
+ * A hook returning the current date-time at an interval according to the specified argument. An update to the component
+ * is triggered everytime a new value is produced.
+ *
+ * @param updateIntervalSeconds - The interval in seconds to update
+ * @returns The current date-time.
+ */
+export function useNow(updateIntervalSeconds: number): Date {
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), updateIntervalSeconds * 1000);
+        return () => {
+            clearInterval(id);
+        };
+    }, [updateIntervalSeconds]);
+
+    return now;
+}
+
+export function useCountdown(to: Date) {
+    const now = useNow(1);
+    return useMemo(() => {
+        const duration = intervalToDuration({ start: now, end: to });
+        return formatDuration(duration);
+    }, [now, to]);
 }
 
 /**

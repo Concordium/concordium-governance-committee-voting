@@ -10,6 +10,8 @@ import {
     useState,
 } from 'react';
 import { Modal, ProgressBar, Spinner } from 'react-bootstrap';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { CcdAmount } from '@concordium/web-sdk';
 
 import Button from '~/shared/Button';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
@@ -23,10 +25,8 @@ import {
     registerGuardianKey,
     registerGuardianShares,
 } from '~/shared/ffi';
-import { CCD_SYMBOL, sleep } from 'shared/util';
-import { useAtomValue, useSetAtom } from 'jotai';
-import { ElectionPhase, SetupStep, electionStepAtom, guardiansStateAtom } from '~/shared/store';
-import { CcdAmount } from '@concordium/web-sdk';
+import { CCD_SYMBOL, sleep, useCountdown } from 'shared/util';
+import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, guardiansStateAtom } from '~/shared/store';
 
 const enum ActionStep {
     Generate,
@@ -50,7 +50,6 @@ const enum StepStatus {
     Error,
 }
 
-// TODO: use the warn signal
 function Step({ step, activeStep, error, children, note, warn = false }: StepProps) {
     const ownError = step === activeStep ? error : undefined;
     const status = useMemo(() => {
@@ -445,9 +444,19 @@ function AwaitPeerValidation({ guardians }: GuardiansProps) {
     );
 }
 
-// TODO: Count down until election start time
 function Ready() {
-    return <h1>Ready for election to begin</h1>;
+    const electionConfig = useAtomValue(electionConfigAtom);
+    const countdown = useCountdown(electionConfig!.electionStart); // Reasonable unwrap, as this is checked in the parent component.
+
+    return (
+        <>
+            <h1>Election setup complete</h1>
+            <p>
+                Election begins in <br />
+                <b className="text-primary">{countdown}</b>
+            </p>
+        </>
+    );
 }
 
 function Invalid() {
