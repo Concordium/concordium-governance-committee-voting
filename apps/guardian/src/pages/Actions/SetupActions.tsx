@@ -220,6 +220,10 @@ const GenerateGuardianKey = makeActionableStep(
             <Button onClick={initFlow} disabled={isOpen} size="lg">
                 Generate guardian key
             </Button>
+            <p className="text-muted mt-3">
+                Creates your secret key (needed for decryption of the election result) and registers the corresponding
+                public key, which is needed for encryption of the ballot submissions by voters.
+            </p>
             <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
                 <Modal.Header closeButton={error !== undefined}>Generating guardian key</Modal.Header>
                 <Modal.Body>
@@ -239,7 +243,7 @@ const GenerateGuardianKey = makeActionableStep(
                             <div className="generate__step-note text-muted"></div>
                         </Step>
                         <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
-                            Updating election contract
+                            Registering public key in contract
                         </Step>
                     </ul>
                 </Modal.Body>
@@ -277,6 +281,9 @@ function AwaitPeerKeys({ guardians }: GuardiansProps) {
     );
 }
 
+/**
+ * Flow for generating and registering encrypted shares
+ */
 const GenerateEncryptedShares = makeActionableStep(
     registerGuardianShares,
     ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
@@ -291,10 +298,18 @@ const GenerateEncryptedShares = makeActionableStep(
         return (
             <>
                 <Button onClick={initFlow} disabled={isOpen} size="lg">
-                    Generate decryption share
+                    Generate encrypted shares
                 </Button>
+                <p className="text-muted mt-3">
+                    Creates encryption shares of your secret key for peers and registers them.
+                    <br />
+                    Peer guardians need the encrypted share of your secret key to create their share of the decryption
+                    key.
+                </p>
                 <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                    <Modal.Header closeButton={error !== undefined}>Generating encrypted shares</Modal.Header>
+                    <Modal.Header closeButton={error !== undefined}>
+                        Generating encrypted shares of guardian key
+                    </Modal.Header>
                     <Modal.Body>
                         <ul className="generate__steps">
                             <Step
@@ -304,7 +319,7 @@ const GenerateEncryptedShares = makeActionableStep(
                                 warn={peerValidationMessage !== undefined}
                                 note={peerValidationMessage}
                             >
-                                Generating encrypted shares
+                                Generating encrypted shares of guardian key
                             </Step>
                             <Step
                                 step={ActionStep.ApproveTransaction}
@@ -322,7 +337,9 @@ const GenerateEncryptedShares = makeActionableStep(
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
-                                Updating election contract
+                                {peerValidationMessage === undefined
+                                    ? 'Registering encrypted shares of guardian key'
+                                    : 'Registering failed validation of public keys of peers'}
                             </Step>
                         </ul>
                     </Modal.Body>
@@ -359,6 +376,9 @@ function AwaitPeerShares({ guardians }: GuardiansProps) {
     );
 }
 
+/**
+ * Flow for generating the secret share, and registering validation of peer shares.
+ */
 const GenerateSecretShare = makeActionableStep(
     generateSecretShare,
     ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
@@ -373,10 +393,14 @@ const GenerateSecretShare = makeActionableStep(
         return (
             <>
                 <Button onClick={initFlow} disabled={isOpen} size="lg">
-                    Generate secret share
+                    Generate secret key share
                 </Button>
+                <p className="text-muted mt-3">
+                    Creates your share of the decryption key from your secret key along with the encrypted shares of the
+                    secret keys of your peer guardians
+                </p>
                 <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                    <Modal.Header closeButton={error !== undefined}>Generating secret share</Modal.Header>
+                    <Modal.Header closeButton={error !== undefined}>Generating share of secret key</Modal.Header>
                     <Modal.Body>
                         <ul className="generate__steps">
                             <Step
@@ -386,7 +410,7 @@ const GenerateSecretShare = makeActionableStep(
                                 warn={peerValidationMessage !== undefined}
                                 note={peerValidationMessage}
                             >
-                                Generating secret share
+                                Generating share of secret key
                             </Step>
                             <Step
                                 step={ActionStep.ApproveTransaction}
@@ -404,7 +428,9 @@ const GenerateSecretShare = makeActionableStep(
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
-                                Updating election contract
+                                {peerValidationMessage === undefined
+                                    ? 'Registering successful validation of peer shares'
+                                    : 'Registering failed validation of peer shares'}
                             </Step>
                         </ul>
                     </Modal.Body>
@@ -444,6 +470,9 @@ function AwaitPeerValidation({ guardians }: GuardiansProps) {
     );
 }
 
+/**
+ * Component shown when the setup phase is completed for all guardians.
+ */
 function Ready() {
     const electionConfig = useAtomValue(electionConfigAtom);
     const countdown = useCountdown(electionConfig!.electionStart); // Reasonable unwrap, as this is checked in the parent component.
@@ -459,6 +488,9 @@ function Ready() {
     );
 }
 
+/**
+ * Component shown when the election has been flagged as invalid by any guardian.
+ */
 function Invalid() {
     return (
         <>
@@ -473,7 +505,7 @@ function Invalid() {
 }
 
 /**
- * Component which shows the relevant actions for the guardian during the election setup phase
+ * Component which shows the relevant actions/election state for the guardian during the election setup phase
  */
 export default function SetupActions() {
     const electionStep = useAtomValue(electionStepAtom);
