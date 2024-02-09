@@ -51,7 +51,7 @@ const enum StepStatus {
 }
 
 // TODO: use the warn signal
-function Step({ step, activeStep, error, children, note, warn }: StepProps) {
+function Step({ step, activeStep, error, children, note, warn = false }: StepProps) {
     const ownError = step === activeStep ? error : undefined;
     const status = useMemo(() => {
         if (step > activeStep) {
@@ -65,18 +65,11 @@ function Step({ step, activeStep, error, children, note, warn }: StepProps) {
     }, [ownError, step, activeStep]);
 
     return (
-        <li
-            className={clsx(
-                'generate__step',
-                status === StepStatus.Active && 'generate__step--active',
-                status === StepStatus.Error && 'generate__step--error',
-                status === StepStatus.Success && 'generate__step--success',
-            )}
-        >
+        <li className={clsx('generate__step', warn && 'generate__step--warn')}>
             <div className="generate__step-icon">
-                {status === StepStatus.Active && <Spinner animation="border" size="sm" />}
-                {status === StepStatus.Error && <ErrorIcon width="20" />}
-                {status === StepStatus.Success && <SuccessIcon width="20" />}
+                {!warn && status === StepStatus.Active && <Spinner animation="border" size="sm" />}
+                {(warn || status === StepStatus.Error) && <ErrorIcon width="20" />}
+                {!warn && status === StepStatus.Success && <SuccessIcon width="20" />}
             </div>
             <div>
                 {children}
@@ -256,7 +249,7 @@ const GenerateGuardianKey = makeActionableStep(
                         <Button onClick={acceptProposal} variant="secondary">
                             Send key registration
                         </Button>
-                        <Button variant="danger" onClick={rejectProposal}>
+                        <Button variant="outline-danger" onClick={rejectProposal}>
                             Cancel
                         </Button>
                     </Modal.Footer>
@@ -341,7 +334,7 @@ const GenerateEncryptedShares = makeActionableStep(
                                     ? 'Register validation complaint'
                                     : 'Register encrypted shares'}
                             </Button>
-                            <Button variant="danger" onClick={rejectProposal}>
+                            <Button variant="outline-danger" onClick={rejectProposal}>
                                 Cancel
                             </Button>
                         </Modal.Footer>
@@ -457,6 +450,19 @@ function Ready() {
     return <h1>Ready for election to begin</h1>;
 }
 
+function Invalid() {
+    return (
+        <>
+            <h3>A validation complaint has been registered</h3>
+            <p>
+                The validity of the submissions made by one or more guardians has been questioned.
+                <br />
+                Manual intervention by the election facilitator is required.
+            </p>
+        </>
+    );
+}
+
 /**
  * Component which shows the relevant actions for the guardian during the election setup phase
  */
@@ -469,7 +475,7 @@ export default function SetupActions() {
     }
 
     return (
-        <>
+        <div className="text-center">
             {electionStep.step === SetupStep.GenerateKey && <GenerateGuardianKey />}
             {electionStep.step === SetupStep.AwaitPeerKeys && <AwaitPeerKeys guardians={guardians} />}
             {electionStep.step === SetupStep.GenerateEncryptedShares && <GenerateEncryptedShares />}
@@ -477,6 +483,7 @@ export default function SetupActions() {
             {electionStep.step === SetupStep.GenerateSecretShare && <GenerateSecretShare />}
             {electionStep.step === SetupStep.AwaitPeerValidation && <AwaitPeerValidation guardians={guardians} />}
             {electionStep.step === SetupStep.Done && <Ready />}
-        </>
+            {electionStep.step === SetupStep.Invalid && <Invalid />}
+        </div>
     );
 }

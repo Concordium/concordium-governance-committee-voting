@@ -853,18 +853,25 @@ async fn generate_secret_share<'a>(
         let share = guardian_state
             .encrypted_share
             .context("Guardian share not registered.")?;
-        let mut shares: Vec<GuardianEncryptedShare> = ByteConvert::decode(share).unwrap(); // FIXME: unwrap...
+        let Ok(mut shares): Result<Vec<GuardianEncryptedShare>, _> = ByteConvert::decode(share) else {
+            // If we cannot decode, the shares are invalid
+            invalid_share_submissions.push(guardian_account);
+            break;
+        };
         let Ok(i) = shares.binary_search_by_key(
             &active_guardian.guardian.index,
             |x: &GuardianEncryptedShare| x.recipient,
         ) else {
-            return Err(anyhow!("Could not find guardian's encrypted share.").into());
+            // If we cannot find our share, the list of shares submitted is invalid
+            invalid_share_submissions.push(guardian_account);
+            break;
         };
         let share = shares.swap_remove(i);
         drop(shares);
         let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
 
         if let Err(_) = share.decrypt_and_validate(&parameters, dealer_public_key, &secret_key) {
+            // Finally, if the share cannot be validated, the individual share is invalid
             invalid_share_submissions.push(guardian_account);
         } else {
             guardian_key_shares.push(share);

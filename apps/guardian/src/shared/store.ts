@@ -4,6 +4,7 @@ import { AccountAddress } from '@concordium/web-sdk/types';
 import {
     BackendError,
     ElectionConfig,
+    GuardianState,
     GuardianStatus,
     GuardiansState,
     connect,
@@ -51,6 +52,7 @@ export const enum SetupStep {
     GenerateSecretShare,
     AwaitPeerValidation,
     Done,
+    Invalid,
 }
 
 /**
@@ -63,6 +65,9 @@ export type ElectionStep =
     | { phase: ElectionPhase.Tally };
 
 const electionPhaseBaseAtom = atom<ElectionPhase | undefined>(undefined);
+
+const setupCompleted = (guardian: GuardianState) =>
+    guardian.hasPublicKey && guardian.hasEncryptedShares && guardian.status === GuardianStatus.VerificationSuccessful;
 
 /**
  * Exposes the current {@linkcode ElectionStep}. Invoking the setter recomputes the active election step.
@@ -79,21 +84,10 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (
-                    guardians.every(
-                        ([, g]) =>
-                            g.hasPublicKey &&
-                            g.hasEncryptedShares &&
-                            g.status === GuardianStatus.VerificationSuccessful,
-                    )
-                )
-                    return SetupStep.Done;
-                if (
-                    guardian.hasPublicKey &&
-                    guardian.hasEncryptedShares &&
-                    guardian.status === GuardianStatus.VerificationSuccessful
-                )
-                    return SetupStep.AwaitPeerValidation;
+                if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful))
+                    return SetupStep.Invalid;
+                if (guardians.every(([, g]) => setupCompleted(g))) return SetupStep.Done;
+                if (setupCompleted(guardian)) return SetupStep.AwaitPeerValidation;
                 if (guardians.every(([, g]) => g.hasPublicKey && g.hasEncryptedShares))
                     return SetupStep.GenerateSecretShare;
                 if (guardian.hasPublicKey && guardian.hasEncryptedShares) return SetupStep.AwaitPeerShares;

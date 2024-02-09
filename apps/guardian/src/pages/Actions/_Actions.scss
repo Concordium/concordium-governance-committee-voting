@@ -29,6 +29,18 @@
             top: 4px;
             left: -22px;
         }
+
+        .generate__step--warn & {
+            path:first-of-type {
+                fill: $warning !important;
+            }
+            path:nth-child(2) {
+                stroke: $gray-700 !important;
+            }
+            path:last-child {
+                fill: $gray-700 !important;
+            }
+        }
     }
 }
 
