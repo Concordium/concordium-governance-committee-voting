@@ -12,6 +12,7 @@ clap = { version = "4.4", features = ["env", "derive"] }
 concordium-rust-sdk = { path = "../deps/concordium-rust-smart-contracts/concordium-rust-sdk/" }
 concordium_governance_committee_election = { path = "../contracts/concordium-governance-committee-election" }
 eg = { path = "../deps/electionguard-rust/src/eg" }
+election-common = { version = "*", path = "../election-common" }
 futures = "0.3"
 indicatif = "0.17"
 rand = "0.8"

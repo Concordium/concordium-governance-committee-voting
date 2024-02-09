@@ -84,8 +84,8 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
     fn try_from(value: EncryptedBallotContext) -> Result<Self, Self::Error> {
         let guardian_public_keys: Vec<GuardianPublicKey> = value
             .guardian_public_keys
-            .into_iter()
-            .map(GuardianPublicKey::decode)
+            .iter()
+            .map(|bytes| GuardianPublicKey::decode(bytes))
             .collect::<Result<_, _>>()?;
         let joint_election_public_key =
             JointElectionPublicKey::compute(&value.election_parameters, &guardian_public_keys)

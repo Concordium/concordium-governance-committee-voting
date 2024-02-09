@@ -30,6 +30,7 @@ use eg::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
+use election_common::ByteConvert;
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
@@ -318,7 +319,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .context("Unable to write guardian keys.")?;
 
-            let param = rmp_serde::to_vec(&public_key)?;
+            let param = public_key.encode()?;
             let mut contract_client = contract_client.clone();
             let fut = async move {
                 let tx_dry_run = contract_client
@@ -364,7 +365,7 @@ async fn main() -> anyhow::Result<()> {
                 shares.push(share);
             }
 
-            let param = rmp_serde::to_vec(&shares)?;
+            let param = shares.encode()?;
 
             let mut contract_client = contract_client.clone();
             let fut = async move {
@@ -520,7 +521,7 @@ async fn main() -> anyhow::Result<()> {
                 &primary_nonce,
                 &[(contest, selections)].into(),
             );
-            let ballot_data = rmp_serde::to_vec(&ballot)?;
+            let ballot_data = &ballot.encode()?;
             eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client
                 .get_next_account_sequence_number(&voter.address)
@@ -535,7 +536,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let tx_hash = contract_client
-                .update::<Vec<u8>, anyhow::Error>(voter, &metadata, "registerVotes", &ballot_data)
+                .update::<Vec<u8>, anyhow::Error>(voter, &metadata, "registerVotes", ballot_data)
                 .await?;
             eprintln!(
                 "Submitted vote for {} with transaction hash {tx_hash}",

@@ -55,6 +55,7 @@ const invokeWrapped: typeof invoke = async (...args) => {
     try {
         return await invoke(...args);
     } catch (e) {
+        console.error((e as Error).message);
         throw BackendError.fromJSON(e as BackendErrorJSON);
     }
 };

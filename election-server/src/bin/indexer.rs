@@ -332,7 +332,7 @@ fn get_ballot_submission(
 
     let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
         .context("Failed to parse ballot from transaction message")
-        .and_then(|bytes| BallotEncrypted::decode(bytes).context("Failed parse encrypted ballot"))
+        .and_then(|bytes| BallotEncrypted::decode(&bytes).context("Failed parse encrypted ballot"))
     {
         Ok(ballot) => ballot,
         Err(err) => {
@@ -646,8 +646,8 @@ async fn main() -> anyhow::Result<()> {
     let contract_config = get_election_config(&mut contract_client).await?;
     let guardian_public_keys = contract_config
         .guardian_keys
-        .into_iter()
-        .map(GuardianPublicKey::decode)
+        .iter()
+        .map(|bytes| GuardianPublicKey::decode(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
     let verification_context =

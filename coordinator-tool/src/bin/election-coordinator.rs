@@ -24,6 +24,7 @@ use concordium_rust_sdk::{
 use concordium_std::schema::SchemaType;
 use contract::GuardiansState;
 use eg::{
+    ballot::BallotEncrypted,
     election_manifest::{ContestIndex, ElectionManifest},
     election_parameters::ElectionParameters,
     election_record::PreVotingData,
@@ -34,6 +35,7 @@ use eg::{
         DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
     },
 };
+use election_common::ByteConvert;
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
@@ -617,7 +619,6 @@ async fn handle_decrypt(
         } else {
             eprintln!("Transaction successful and finalized.",);
         }
-    } else {
     }
 
     Ok(())
@@ -692,7 +693,7 @@ async fn get_election_data(
     let mut guardian_public_keys = config
         .guardian_keys
         .iter()
-        .map(|bytes| rmp_serde::from_slice(bytes))
+        .map(|bytes| GuardianPublicKey::decode(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
 
@@ -774,7 +775,7 @@ async fn handle_tally(
                 continue;
             };
 
-            let Ok(ballot) = rmp_serde::from_slice::<eg::ballot::BallotEncrypted>(param.as_ref()) else {
+            let Ok(ballot) = BallotEncrypted::decode(&param) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };

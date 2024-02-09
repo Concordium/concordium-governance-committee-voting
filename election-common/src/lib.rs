@@ -1,4 +1,7 @@
-use eg::{ballot::BallotEncrypted, guardian_public_key::GuardianPublicKey, guardian_share::GuardianEncryptedShare};
+use eg::{
+    ballot::BallotEncrypted, guardian_public_key::GuardianPublicKey,
+    guardian_share::GuardianEncryptedShare,
+};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Deduplication of code to encode/decode serializable structs
@@ -15,8 +18,8 @@ where
     ///
     /// ## Errors
     /// Fails if deserialization fails
-    fn decode(value: Vec<u8>) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(&value)
+    fn decode(value: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(value)
     }
 }
 
