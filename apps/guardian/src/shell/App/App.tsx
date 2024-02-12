@@ -7,6 +7,7 @@ import { router } from '../router';
 import { PropsWithChildren, useMemo } from 'react';
 import { accountShowShort } from 'shared/util';
 import { BackendErrorType } from '~/shared/ffi';
+import { version } from '../../../package.json';
 
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
@@ -63,6 +64,7 @@ function Configuration() {
                 {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS}
             </ConfigurationItem>
             <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>
+            <div className="mt-2">v{version}</div>
         </div>
     );
 }
