@@ -27,6 +27,16 @@ by executing the following:
 yarn install
 ```
 
+## Build configuration
+
+Building for both development and production will fail if the correct environment variables are not set:
+
+```env
+CCD_ELECTION_NETWORK="testnet" # The network name. This is not strictly needed, but will show the user which network is shown to the user in the UI.
+CCD_ELECTION_CONTRACT_ADDRESS="<8011,0>" # Specify the contract address to target
+CCD_ELECTION_NODE="https://node.testnet.concordium.com:20000" # The node to use for queries
+```
+
 ## Development workflow
 
 To run the project during development, the following will provide a workflow with hot module replacement:
