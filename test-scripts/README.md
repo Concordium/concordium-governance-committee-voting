@@ -117,7 +117,7 @@ The candidates are taken to be all the JSON files in the supplied `--candidates-
 Then start the election server (from inside the [election-server](../election-server) directory)
 
 ```console
-cargo run --bin http -- --contract-address '<7868,0>' --election-manifest-file ../hosted-test/static/electionguard/election-manifest.json --election-parameters-file ../hosted-test/static/electionguard/election-parameters.json --listen-address 0.0.0.0:3000  --eligible-voters-file ../hosted-test/eligible-voters.json --log-level=debug
+cargo run --bin http -- --contract-address '<7868,0>' --election-manifest-file ../hosted-test/static/electionguard/election-manifest.json --election-parameters-file ../hosted-test/static/electionguard/election-parameters.json --listen-address 0.0.0.0:3000  --eligible-voters-file ../hosted-test/eligible-voters.json --candidates-dir ../hosted-test/candidates/ --log-level=debug
 ``
 
 modifying the `--contract-address` to the one printed by the test script in the previous step.
