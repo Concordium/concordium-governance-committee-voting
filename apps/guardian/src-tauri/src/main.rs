@@ -168,9 +168,18 @@ struct ActiveGuardian {
 #[derive(Default)]
 struct ActiveGuardianState(Mutex<Option<ActiveGuardian>>);
 
-/// The collective state kept for all guardians
+/// The data registered in the election contract
 #[derive(Default)]
-struct GuardiansState(Mutex<contract::GuardiansState>);
+struct RegisteredData {
+    /// The guardians state registered in the election contract
+    guardians:       contract::GuardiansState,
+    /// The encrypted tally registered in the contract
+    encrypted_tally: Option<ElectionEncryptedTally>,
+}
+
+/// The state read from the election contract
+#[derive(Default)]
+struct ContractState(Mutex<RegisteredData>);
 
 /// The necessary election guard configuration to construct election guard
 /// entities.
@@ -242,11 +251,7 @@ impl ConnectionConfig {
     ) -> Result<(ElectionConfig, ElectionGuardConfig), Error> {
         let config: ElectionConfig = self
             .contract
-            .view::<OwnedParameter, ElectionConfig, Error>(
-                "viewConfig",
-                &OwnedParameter::empty(),
-                BlockIdentifier::LastFinal,
-            )
+            .view::<_, ElectionConfig, Error>("viewConfig", &(), BlockIdentifier::LastFinal)
             .await?;
         let manifest: ElectionManifest = get_resource_checked(&config.election_manifest).await?;
         let parameters: ElectionParameters =
@@ -854,8 +859,7 @@ async fn generate_secret_share(
         let share = guardian_state
             .encrypted_share
             .context("Guardian share not registered.")?;
-        let Ok(mut shares) = GuardianEncryptedShares::decode(&share)
-        else {
+        let Ok(mut shares) = GuardianEncryptedShares::decode(&share) else {
             // If we cannot decode, the shares are invalid
             invalid_share_submissions.push(guardian_account);
             break;
@@ -988,6 +992,40 @@ async fn generate_secret_share_flow(
     }
 }
 
+/// Attempts to read the encrypted tally from the election contract into the
+/// application state, returning whether it exists or not.
+///
+/// ## Errors
+/// - [`Error::NetworkError`] if contract query fails
+/// - [`Error::Internal`] if [`ElectionEncryptedTally`] could not be parsed from
+///   the registered value
+#[tauri::command]
+async fn has_encrypted_tally(
+    app_config_state: State<'_, AppConfigState>,
+    contract_state: State<'_, ContractState>,
+) -> Result<bool, Error> {
+    let mut contract = app_config_state.0.lock().await.connection().await?.contract;
+    let encrypted_tally = contract
+        .view::<(), Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
+        .await?;
+    let encrypted_tally = encrypted_tally
+        .map(|tally| {
+            ElectionEncryptedTally::decode(&tally).context("Failed to parse the encrypted tally")
+            // TODO: complain?
+        })
+        .transpose()?;
+
+    let has_encrypted_tally = if encrypted_tally.is_some() {
+        let mut contract_state = contract_state.0.lock().await;
+        contract_state.encrypted_tally = encrypted_tally;
+        true
+    } else {
+        false
+    };
+
+    Ok(has_encrypted_tally)
+}
+
 /// The data needed by the frontend, representing the current state of a
 /// guardian as registered in the election contract
 #[derive(serde::Serialize)]
@@ -1022,13 +1060,13 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
 #[tauri::command]
 async fn refresh_guardians(
     app_config_state: State<'_, AppConfigState>,
-    guardians_state: State<'_, GuardiansState>,
+    contract_state: State<'_, ContractState>,
 ) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, Error> {
     let mut contract = app_config_state.0.lock().await.connection().await?.contract;
     let guardians_state_contract = contract
-        .view::<OwnedParameter, contract::GuardiansState, Error>(
+        .view::<_, contract::GuardiansState, Error>(
             "viewGuardiansState",
-            &OwnedParameter::empty(),
+            &(),
             BlockIdentifier::LastFinal,
         )
         .await?;
@@ -1038,8 +1076,8 @@ async fn refresh_guardians(
         .map(|(account, guardian_state)| (*account, GuardianStateResponse::from(guardian_state)))
         .collect();
 
-    let mut guardians_state = guardians_state.0.lock().await;
-    *guardians_state = guardians_state_contract;
+    let mut contract_state = contract_state.0.lock().await;
+    contract_state.guardians = guardians_state_contract;
 
     Ok(response)
 }
@@ -1099,7 +1137,7 @@ fn main() {
         })
         .manage(ActiveGuardianState::default())
         .manage(AppConfigState::default())
-        .manage(GuardiansState::default())
+        .manage(ContractState::default())
         .invoke_handler(tauri::generate_handler![
             connect,
             get_accounts,
@@ -1109,6 +1147,7 @@ fn main() {
             register_guardian_key_flow,
             register_guardian_shares_flow,
             generate_secret_share_flow,
+            has_encrypted_tally
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
