@@ -112,7 +112,7 @@ cargo run -- --module
 ```
 
 This will make all voters eligible to vote with equal weight. If you already have a file with eligible voters then you may supply it with `--eligible-voters` and it will be used instead.
-The candidates are taken to be all the JSON files in the supplied `--candidates-dir`.
+The candidates are taken to be all the JSON files in the supplied `--candidates-dir`. If the `--candidates-dir` is not supplied then some test ones are created in the directory `$OUT/candidates` where `$OUT` is the directory supplied with the `--out` option.
 
 Then start the election server (from inside the [election-server](../election-server) directory)
 

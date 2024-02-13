@@ -70,6 +70,7 @@ struct Args {
     num_options:       usize,
     #[arg(
         long = "candidates-dir",
+        name = "candidates-dir",
         help = "Directory with candidates JSON files."
     )]
     candidates_dir:    Option<PathBuf>,
@@ -168,16 +169,26 @@ async fn main() -> anyhow::Result<()> {
             }
             candidates
         } else {
+            std::fs::create_dir_all(guardian_out.join("candidates"))?;
             (0..args.num_options)
                 .map(|c| {
-                    let mut url = args.base_url.clone();
-                    url.set_path(&c.to_string());
-                    contract::ChecksumUrl {
-                        url:  url.to_string(),
-                        hash: contract::HashSha2256([0u8; 32]),
-                    }
+                    let path = guardian_out.join(format!("candidates/{c}.json"));
+                    let candidate_details = serde_json::json!({
+                        "name": format!("Candidate {c}"),
+                        "imageUrl": "https://picsum.photos/300/300",
+                        "descriptionUrl": "https://concordium.com"
+                    });
+                    let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
+                    std::fs::write(path, &candidate_details_bytes)?;
+                    let web_path = format!("static/concordium/candidates/{c}.json",);
+                    Ok::<_, anyhow::Error>(ChecksumUrl {
+                        url:  make_url(&web_path),
+                        hash: contract::HashSha2256(
+                            sha2::Sha256::digest(candidate_details_bytes).into(),
+                        ),
+                    })
                 })
-                .collect()
+                .collect::<Result<_, _>>()?
         }
     };
     let num_options = candidates.len();
