@@ -13,7 +13,7 @@ use concordium_rust_sdk::{
     },
     v2::{self as sdk, BlockIdentifier},
 };
-use contract::{GuardiansState, RegisterGuardianPublicKeyParameter};
+use contract::{ChecksumUrl, GuardiansState, RegisterGuardianPublicKeyParameter};
 use eg::{
     ballot::BallotEncrypted,
     ballot_style::BallotStyle,
@@ -33,7 +33,7 @@ use eg::{
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// Command line configuration of the application.
 #[derive(Debug, clap::Parser)]
@@ -46,6 +46,15 @@ struct Args {
         global = true
     )]
     node_endpoint:     concordium_rust_sdk::v2::Endpoint,
+    /// List of eligible voters. If this is not set then the eligible voters are
+    /// all accounts with equal weight, and an `eligible-voters.json` file
+    /// is emitted to the output directory.
+    #[arg(
+        long = "eligible-voters",
+        help = "A path to the list of eligible voters. This file is hashed and the hash put into \
+                the contract."
+    )]
+    eligible_voters:   Option<std::path::PathBuf>,
     #[arg(
         long = "module",
         help = "Source module from which to initialize the contract instances."
@@ -59,6 +68,12 @@ struct Args {
         default_value = "5"
     )]
     num_options:       usize,
+    #[arg(
+        long = "candidates-dir",
+        name = "candidates-dir",
+        help = "Directory with candidates JSON files."
+    )]
+    candidates_dir:    Option<PathBuf>,
     #[arg(
         long = "election-duration",
         help = "Duration of the election in minutes. Should be at least 1.",
@@ -122,8 +137,64 @@ async fn main() -> anyhow::Result<()> {
         (params_out, args.out)
     };
 
+    let url = &args.base_url;
+    let make_url = move |path: &str| -> String {
+        let mut url = url.clone();
+        url.set_path(path);
+        url.to_string()
+    };
+
+    let candidates = {
+        if let Some(dir) = args.candidates_dir {
+            let dir = std::fs::read_dir(dir)?;
+            let mut candidates = Vec::new();
+            for entry in dir {
+                let entry = entry?;
+                let path = entry.path();
+                if let Some(ext) = path.extension() {
+                    if ext == "json" {
+                        let mut hasher = sha2::Sha256::new();
+                        let mut file = std::fs::File::open(&path)?;
+                        std::io::copy(&mut file, &mut hasher)?;
+                        let web_path = format!(
+                            "static/concordium/candidates/{}",
+                            path.file_name().context("No file name.")?.to_string_lossy()
+                        );
+                        candidates.push(ChecksumUrl {
+                            url:  make_url(&web_path),
+                            hash: contract::HashSha2256(hasher.finalize().into()),
+                        })
+                    }
+                }
+            }
+            candidates
+        } else {
+            std::fs::create_dir_all(guardian_out.join("candidates"))?;
+            (0..args.num_options)
+                .map(|c| {
+                    let path = guardian_out.join(format!("candidates/{c}.json"));
+                    let candidate_details = serde_json::json!({
+                        "name": format!("Candidate {c}"),
+                        "imageUrl": "https://picsum.photos/300/300",
+                        "descriptionUrl": "https://concordium.com"
+                    });
+                    let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
+                    std::fs::write(path, &candidate_details_bytes)?;
+                    let web_path = format!("static/concordium/candidates/{c}.json",);
+                    Ok::<_, anyhow::Error>(ChecksumUrl {
+                        url:  make_url(&web_path),
+                        hash: contract::HashSha2256(
+                            sha2::Sha256::digest(candidate_details_bytes).into(),
+                        ),
+                    })
+                })
+                .collect::<Result<_, _>>()?
+        }
+    };
+    let num_options = candidates.len();
+
     let (manifest, manifest_digest) = {
-        let options = (0..args.num_options)
+        let options = (0..num_options)
             .map(|o| eg::election_manifest::ContestOption {
                 label: format!("Candidate {o}"),
             })
@@ -131,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
             .try_into()?;
         let contest = eg::election_manifest::Contest {
             label: "New governance committee member".into(),
-            selection_limit: args.num_options,
+            selection_limit: num_options,
             options,
         };
         let manifest = eg::election_manifest::ElectionManifest {
@@ -208,13 +279,6 @@ async fn main() -> anyhow::Result<()> {
         mod_ref
     };
 
-    let url = &args.base_url;
-    let make_url = move |path| {
-        let mut url = url.clone();
-        url.set_path(path);
-        url.to_string()
-    };
-
     // initialize new instance
     let (start_timestamp, end_timestamp, mut contract_client) = {
         let start_timestamp = chrono::Utc::now()
@@ -226,19 +290,28 @@ async fn main() -> anyhow::Result<()> {
             .context("Time overflow")?;
 
         let election_end = end_timestamp.try_into()?;
-        let candidates = (0..args.num_options)
-            .map(|c| {
-                let mut url = args.base_url.clone();
-                url.set_path(&c.to_string());
-                contract::ChecksumUrl {
-                    url:  url.to_string(),
-                    hash: contract::HashSha2256([0u8; 32]), // TODO
-                }
-            })
-            .collect();
+        let eligible_voters_hash = if let Some(voters_file) = args.eligible_voters {
+            let mut file = std::fs::File::open(voters_file)?;
+            let mut hasher = sha2::Sha256::new();
+            std::io::copy(&mut file, &mut hasher)?;
+            contract::HashSha2256(hasher.finalize().into())
+        } else {
+            // give each account weight 3
+            let accs = client
+                .get_account_list(BlockIdentifier::LastFinal)
+                .await?
+                .response
+                .map_ok(|addr| (addr, 3u64))
+                .try_collect::<BTreeMap<_, _>>()
+                .await?;
+            let json = serde_json::to_vec_pretty(&accs)?;
+            let hash = sha2::Sha256::digest(&json);
+            std::fs::write(guardian_out.join("eligible-voters.json"), json)?;
+            contract::HashSha2256(hash.into())
+        };
         let eligible_voters = contract::ChecksumUrl {
-            url:  make_url("voters"),
-            hash: contract::HashSha2256([1u8; 32]), // TODO
+            url:  make_url("static/concordium/eligible-voters.json"),
+            hash: eligible_voters_hash,
         };
         let init_param = contract::InitParameter {
             admin_account: admin.address,
@@ -509,7 +582,7 @@ async fn main() -> anyhow::Result<()> {
         for voter in guardians.iter().chain(std::iter::once(&admin)) {
             let primary_nonce: [u8; 32] = rand::thread_rng().gen();
             let selections = ContestSelection {
-                vote: (0..args.num_options)
+                vote: (0..num_options)
                     .map(|_| if rand::thread_rng().gen() { 1u8 } else { 0u8 })
                     .collect(),
             };
