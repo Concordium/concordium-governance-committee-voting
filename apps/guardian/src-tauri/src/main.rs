@@ -23,7 +23,7 @@ use eg::{
     guardian_secret_key::GuardianSecretKey,
     guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare},
 };
-use election_common::ByteConvert;
+use election_common::{ByteConvert, ElectionEncryptedTally, GuardianEncryptedShares};
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
@@ -328,10 +328,10 @@ impl AppConfig {
 struct AppConfigState(Mutex<AppConfig>);
 
 /// Stores the account in global state.
-async fn use_guardian<'a>(
+async fn use_guardian(
     guardian: GuardianData,
     password: Password,
-    state: &State<'a, ActiveGuardianState>,
+    state: &State<'_, ActiveGuardianState>,
 ) {
     let mut active_account = state.0.lock().await;
     *active_account = Some(ActiveGuardian { guardian, password });
@@ -466,9 +466,9 @@ async fn load_account(
 ///
 /// ## Errors
 /// Any errors happening will be due to data corruption or internal errors.
-async fn generate_key_pair<'a>(
-    active_guardian_state: &State<'a, ActiveGuardianState>,
-    app_config: &State<'a, AppConfigState>,
+async fn generate_key_pair(
+    active_guardian_state: &State<'_, ActiveGuardianState>,
+    app_config: &State<'_, AppConfigState>,
     app_handle: AppHandle,
 ) -> Result<GuardianPublicKey, Error> {
     let active_guardian_guard = active_guardian_state.0.lock().await;
@@ -562,10 +562,10 @@ async fn handle_abort(channel_id: &str, window: &Window) -> Error {
 /// - [`Error::NetworkError`]
 /// - [`Error::QueryFailed`]
 #[tauri::command]
-async fn register_guardian_key_flow<'a>(
+async fn register_guardian_key_flow(
     channel_id: String,
-    active_guardian_state: State<'a, ActiveGuardianState>,
-    app_config_state: State<'a, AppConfigState>,
+    active_guardian_state: State<'_, ActiveGuardianState>,
+    app_config_state: State<'_, AppConfigState>,
     app_handle: AppHandle,
     window: Window,
 ) -> Result<(), Error> {
@@ -614,9 +614,9 @@ async fn register_guardian_key_flow<'a>(
 /// Expected errors include:
 /// - [`Error::NodeConnection`]
 /// - [`Error::PeerValidation`]
-async fn generate_encrypted_shares<'a>(
-    active_guardian_state: &State<'a, ActiveGuardianState>,
-    app_config_state: &State<'a, AppConfigState>,
+async fn generate_encrypted_shares(
+    active_guardian_state: &State<'_, ActiveGuardianState>,
+    app_config_state: &State<'_, AppConfigState>,
     app_handle: &AppHandle,
 ) -> Result<Vec<GuardianEncryptedShare>, Error> {
     let active_guardian = active_guardian_state.0.lock().await;
@@ -732,10 +732,10 @@ impl Serialize for ValidatedProposal {
 /// - [`Error::NetworkError`]
 /// - [`Error::QueryFailed`]
 #[tauri::command]
-async fn register_guardian_shares_flow<'a>(
+async fn register_guardian_shares_flow(
     channel_id: String,
-    active_guardian_state: State<'a, ActiveGuardianState>,
-    app_config_state: State<'a, AppConfigState>,
+    active_guardian_state: State<'_, ActiveGuardianState>,
+    app_config_state: State<'_, AppConfigState>,
     app_handle: AppHandle,
     window: Window,
 ) -> Result<(), Error> {
@@ -807,9 +807,9 @@ async fn register_guardian_shares_flow<'a>(
     }
 }
 
-async fn generate_secret_share<'a>(
-    active_guardian_state: &State<'a, ActiveGuardianState>,
-    app_config_state: &State<'a, AppConfigState>,
+async fn generate_secret_share(
+    active_guardian_state: &State<'_, ActiveGuardianState>,
+    app_config_state: &State<'_, AppConfigState>,
     app_handle: &AppHandle,
 ) -> Result<(), Error> {
     let mut app_config = app_config_state.0.lock().await;
@@ -854,7 +854,7 @@ async fn generate_secret_share<'a>(
         let share = guardian_state
             .encrypted_share
             .context("Guardian share not registered.")?;
-        let Ok(mut shares): Result<Vec<GuardianEncryptedShare>, _> = ByteConvert::decode(&share)
+        let Ok(mut shares) = GuardianEncryptedShares::decode(&share)
         else {
             // If we cannot decode, the shares are invalid
             invalid_share_submissions.push(guardian_account);
@@ -919,10 +919,10 @@ async fn generate_secret_share<'a>(
 /// - [`Error::NetworkError`]
 /// - [`Error::QueryFailed`]
 #[tauri::command]
-async fn generate_secret_share_flow<'a>(
+async fn generate_secret_share_flow(
     channel_id: String,
-    active_guardian_state: State<'a, ActiveGuardianState>,
-    app_config_state: State<'a, AppConfigState>,
+    active_guardian_state: State<'_, ActiveGuardianState>,
+    app_config_state: State<'_, AppConfigState>,
     app_handle: AppHandle,
     window: Window,
 ) -> Result<(), Error> {
@@ -1020,9 +1020,9 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
 /// ## Errors
 /// - [`Error::NetworkError`]
 #[tauri::command]
-async fn refresh_guardians<'a>(
-    app_config_state: State<'a, AppConfigState>,
-    guardians_state: State<'a, GuardiansState>,
+async fn refresh_guardians(
+    app_config_state: State<'_, AppConfigState>,
+    guardians_state: State<'_, GuardiansState>,
 ) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, Error> {
     let mut contract = app_config_state.0.lock().await.connection().await?.contract;
     let guardians_state_contract = contract
@@ -1064,9 +1064,9 @@ async fn connect(app_config_state: State<'_, AppConfigState>) -> Result<Election
 /// ## Errors
 /// - [`Error::NodeConnection`]
 /// - [`Error::NetworkError`]
-async fn energy_to_ccd<'a>(
+async fn energy_to_ccd(
     energy: Energy,
-    app_config_state: &State<'a, AppConfigState>,
+    app_config_state: &State<'_, AppConfigState>,
 ) -> Result<Amount, Error> {
     let mut app_config_guard = app_config_state.0.lock().await;
     let mut node = app_config_guard.connection().await?.node;

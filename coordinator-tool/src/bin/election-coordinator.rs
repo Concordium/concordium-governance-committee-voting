@@ -30,12 +30,12 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
-    joint_election_public_key::Ciphertext,
-    verifiable_decryption::{
-        DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
-    },
+    verifiable_decryption::VerifiableDecryption,
 };
-use election_common::ByteConvert;
+use election_common::{
+    ByteConvert, ElectionEncryptedTally, GuardianDecryptionProofResponseShares,
+    GuardianDecryptionShares,
+};
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
@@ -463,7 +463,7 @@ async fn handle_decrypt(
         anyhow::bail!("Encrypted tally not yet registered.")
     };
 
-    let Ok(tally) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&encrypted_tally) else {
+    let Ok(tally) = ElectionEncryptedTally::decode(&encrypted_tally) else {
         anyhow::bail!("Encrypted tally is not readable.")
     };
 
@@ -474,11 +474,11 @@ async fn handle_decrypt(
             guardian_state.decryption_share,
             guardian_state.decryption_share_proof,
         ) {
-            let Ok(share) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<DecryptionShareResult>>>(&share) else {
+            let Ok(share) = GuardianDecryptionShares::decode(&share) else {
                 eprintln!("The decryption share registered by {guardian_address} is not readable.");
                 continue;
             };
-            let Ok(proof) = rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>>(&proof) else {
+            let Ok(proof) = GuardianDecryptionProofResponseShares::decode(&proof) else {
                 eprintln!("The decryption proof response share registered by {guardian_address} is not readable.");
                 continue;
             };
@@ -816,7 +816,7 @@ async fn handle_tally(
     }
     let tally = tally.finalize();
 
-    let serialized_tally = rmp_serde::to_vec(&tally)?;
+    let serialized_tally = tally.encode()?;
     let param = concordium_std::OwnedParameter::from_serial(&serialized_tally)?;
 
     let json_param =

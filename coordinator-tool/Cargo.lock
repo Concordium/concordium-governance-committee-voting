@@ -813,7 +813,6 @@ dependencies = [
  "futures",
  "indicatif",
  "reqwest",
- "rmp-serde",
  "serde",
  "serde_cbor",
  "serde_json",
