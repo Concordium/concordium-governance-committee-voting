@@ -9,25 +9,28 @@ use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     contract_client::{ContractClient, ContractUpdateError},
     id::types::AccountKeys,
-    smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
-    types::{
-        smart_contracts::OwnedParameter, ContractAddress, Energy, RejectReason, WalletAccount,
-    },
+    smart_contracts::common::{AccountAddress, Amount, self as contracts_common},
+    types::{ContractAddress, Energy, RejectReason, WalletAccount},
     v2::{self, BlockIdentifier, Client, Endpoint, QueryError},
 };
 use eg::{
     election_manifest::ElectionManifest,
     election_parameters::ElectionParameters,
+    fixed_parameters::FixedParameters,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
     guardian_secret_key::GuardianSecretKey,
     guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare},
+    verifiable_decryption::{DecryptionProof, DecryptionShare, DecryptionShareResult},
 };
-use election_common::{ByteConvert, ElectionEncryptedTally, GuardianEncryptedShares};
+use election_common::{
+    ByteConvert, ElectionEncryptedTally, GuardianDecryptionShares, GuardianEncryptedShares,
+};
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -41,6 +44,8 @@ const WALLET_ACCOUNT_FILE: &str = "guardian-data.json.aes";
 const SECRET_KEY_FILE: &str = "secret-key.json.aes";
 /// The file name of the encrypted secret share for a guardian
 const SECRET_SHARE_FILE: &str = "secret-share.json.aes";
+/// The file name of the encrypted secret share for a guardian
+const DECRYPTION_SECRET_STATES: &str = "secret-decryption_states.json.aes";
 
 /// Describes any error happening in the backend.
 #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
@@ -110,7 +115,9 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
 }
 
 impl From<RejectReason> for Error {
-    fn from(reason: RejectReason) -> Self { Error::QueryFailed(reason) }
+    fn from(reason: RejectReason) -> Self {
+        Error::QueryFailed(reason)
+    }
 }
 
 impl From<ContractUpdateError> for Error {
@@ -126,7 +133,8 @@ impl From<ContractUpdateError> for Error {
 impl serde::Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut error = serializer.serialize_struct("Error", 2)?;
         error.serialize_field("type", <&str>::from(self))?;
         error.serialize_field("message", &self.to_string())?;
@@ -140,9 +148,9 @@ struct GuardianData {
     /// The guardian account
     account: AccountAddress,
     /// The keys for the `account`
-    keys:    AccountKeys,
+    keys: AccountKeys,
     /// The guardian index used by election guard
-    index:   GuardianIndex,
+    index: GuardianIndex,
 }
 
 impl GuardianData {
@@ -172,7 +180,7 @@ struct ActiveGuardianState(Mutex<Option<ActiveGuardian>>);
 #[derive(Default)]
 struct RegisteredData {
     /// The guardians state registered in the election contract
-    guardians:       contract::GuardiansState,
+    guardians: contract::GuardiansState,
     /// The encrypted tally registered in the contract
     encrypted_tally: Option<ElectionEncryptedTally>,
 }
@@ -197,7 +205,7 @@ type ElectionClient = ContractClient<ElectionContractMarker>;
 
 #[derive(Clone)]
 struct ConnectionConfig {
-    node:     v2::Client,
+    node: v2::Client,
     contract: ElectionClient,
 }
 
@@ -269,9 +277,9 @@ impl ConnectionConfig {
 #[derive(Default, Clone)]
 struct AppConfig {
     /// The connection to the contract
-    connection:     Option<ConnectionConfig>,
+    connection: Option<ConnectionConfig>,
     /// The election config registered in the contract
-    election:       Option<ElectionConfig>,
+    election: Option<ElectionConfig>,
     /// The election guard config
     election_guard: Option<ElectionGuardConfig>,
 }
@@ -513,7 +521,8 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static, {
+    R: DeserializeOwned + Sync + Send + 'static,
+{
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
@@ -534,7 +543,7 @@ where
 async fn wait_for_approval<M: Serialize + Clone>(
     channel_id: &str,
     window: &Window,
-    proposal: M,
+    proposal: &M,
 ) -> Result<(), Error> {
     match send_message(window, channel_id, proposal).await {
         Ok(Some(true)) => Ok(()), // Transaction estimate approved
@@ -594,7 +603,7 @@ async fn register_guardian_key_flow(
             .await?;
 
         // Wait for response from the user through the frontend
-        wait_for_approval(&channel_id, &window, result.current_energy()).await?;
+        wait_for_approval(&channel_id, &window, &result.current_energy()).await?;
 
         result
             .send(&active_guardian.guardian.keys)
@@ -712,7 +721,8 @@ impl ValidatedProposal {
 impl Serialize for ValidatedProposal {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut error = serializer.serialize_struct("ValidatedProposal", 2)?;
         error.serialize_field("type", <&str>::from(self))?;
         error.serialize_field("ccdCost", &self.ccd_cost())?;
@@ -795,7 +805,7 @@ async fn register_guardian_shares_flow(
         };
 
         // Wait for response from the user through the frontend
-        wait_for_approval(&channel_id, &window, proposal).await?;
+        wait_for_approval(&channel_id, &window, &proposal).await?;
 
         contract_update
             .send(&active_guardian.guardian.keys)
@@ -975,7 +985,7 @@ async fn generate_secret_share_flow(
         };
 
         // Wait for response from the user through the frontend
-        wait_for_approval(&channel_id, &window, proposal).await?;
+        wait_for_approval(&channel_id, &window, &proposal).await?;
 
         contract_update
             .send(&active_guardian.guardian.keys)
@@ -1010,8 +1020,8 @@ async fn has_encrypted_tally(
         .await?;
     let encrypted_tally = encrypted_tally
         .map(|tally| {
+             // FIXME: this is likely not good enough for error handling
             ElectionEncryptedTally::decode(&tally).context("Failed to parse the encrypted tally")
-            // TODO: complain?
         })
         .transpose()?;
 
@@ -1026,6 +1036,96 @@ async fn has_encrypted_tally(
     Ok(has_encrypted_tally)
 }
 
+async fn generate_decryption_shares(
+    fixed_parameters: &FixedParameters,
+    encrypted_tally: &ElectionEncryptedTally,
+    active_guardian: &ActiveGuardian,
+    guardian_data_dir: &PathBuf,
+) -> Result<GuardianDecryptionShares, Error> {
+    let mut election_decryptions = BTreeMap::new();
+    let mut election_secret_states = BTreeMap::new();
+    let mut rng = Csprng::new(&thread_rng().gen::<[u8; 32]>());
+
+    let secret_share = read_encrypted_file(
+        &active_guardian.password,
+        &guardian_data_dir.join(SECRET_SHARE_FILE),
+    )?;
+
+    for (&index, ciphertexts) in encrypted_tally {
+        let contest_secret_states = election_secret_states.entry(index).or_insert(Vec::new());
+        let decryption_shares = election_decryptions
+            .entry(index)
+            .or_insert_with(|| Vec::with_capacity(ciphertexts.len()));
+        for ciphertext in ciphertexts {
+            let ds = DecryptionShare::from(fixed_parameters, &secret_share, ciphertext);
+            let (proof_commit, secret_state) = DecryptionProof::generate_commit_share(
+                &mut rng,
+                fixed_parameters,
+                ciphertext,
+                &ds.i,
+            );
+            decryption_shares.push(DecryptionShareResult {
+                share: ds,
+                proof_commit,
+            });
+            contest_secret_states.push(secret_state);
+        }
+    }
+
+    write_encrypted_file(
+        &active_guardian.password,
+        &election_secret_states,
+        &guardian_data_dir.join(DECRYPTION_SECRET_STATES),
+    )?;
+
+    Ok(election_decryptions)
+}
+
+#[tauri::command]
+async fn register_decryption_shares_flow(
+    channel_id: String,
+    active_guardian_state: State<'_, ActiveGuardianState>,
+    app_config_state: State<'_, AppConfigState>,
+    app_handle: AppHandle,
+    window: Window,
+) -> Result<(), Error> {
+    let cancel = handle_abort(&channel_id, &window);
+    let interaction = async {
+        let decryption_shares = Vec::new(); // TODO: generate shares...
+        let mut contract = app_config_state.0.lock().await.connection().await?.contract;
+        let active_guardian_guard = active_guardian_state.0.lock().await;
+        let active_guardian = active_guardian_guard
+            .as_ref()
+            .ok_or(anyhow!("Active account not set"))?;
+
+        let contract_update = contract
+            .dry_run_update::<Vec<u8>, Error>(
+                "postDecryptionShare",
+                Amount::zero(),
+                active_guardian.guardian.account,
+                &decryption_shares,
+            )
+            .await?;
+        let ccd_cost = energy_to_ccd(contract_update.current_energy(), &app_config_state).await?;
+
+        // Wait for response from the user through the frontend
+        wait_for_approval(&channel_id, &window, &ccd_cost).await?;
+
+        contract_update
+            .send(&active_guardian.guardian.keys)
+            .await?
+            .wait_for_finalization()
+            .await?;
+
+        Ok(())
+    };
+
+    tokio::select! {
+        error = cancel => Err(error),
+        res = interaction => res
+    }
+}
+
 /// The data needed by the frontend, representing the current state of a
 /// guardian as registered in the election contract
 #[derive(serde::Serialize)]
@@ -1034,20 +1134,20 @@ struct GuardianStateResponse {
     /// Whether the guardian has registered its encrypted shares
     has_encrypted_shares: bool,
     /// Whether the guardian has registered a public key
-    has_public_key:       bool,
+    has_public_key: bool,
     /// The guardian index
-    index:                u32,
+    index: u32,
     /// The guardian status registered for the guardian
-    status:               Option<contract::GuardianStatus>,
+    status: Option<contract::GuardianStatus>,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_shares: value.encrypted_share.is_some(),
-            has_public_key:       value.public_key.is_some(),
-            index:                value.index,
-            status:               value.status.clone(),
+            has_public_key: value.public_key.is_some(),
+            index: value.index,
+            status: value.status.clone(),
         }
     }
 }

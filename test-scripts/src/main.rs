@@ -593,7 +593,7 @@ async fn main() -> anyhow::Result<()> {
             }
         };
         eprintln!("Retrieved encrypted tally.");
-        let serialized_tally =
+        let encrypted_tally =
             ElectionEncryptedTally::decode(&serialized_tally).context("Unable to read tally.")?;
 
         // State maintained by guardians for the proof of decryption.
@@ -602,7 +602,7 @@ async fn main() -> anyhow::Result<()> {
         for (share, guardian_wallet) in guardian_secret_shares.iter().zip(&guardians) {
             let mut decryptions = BTreeMap::new();
             let mut secret_states_map = BTreeMap::new();
-            for (&index, ciphertexts) in &serialized_tally {
+            for (&index, ciphertexts) in &encrypted_tally {
                 let secret_states_for_i = secret_states_map.entry(index).or_insert(Vec::new());
                 let decryption_shares = decryptions
                     .entry(index)
@@ -650,7 +650,7 @@ async fn main() -> anyhow::Result<()> {
                 guardian_wallet.address
             );
         }
-        (secret_states, serialized_tally)
+        (secret_states, encrypted_tally)
     };
 
     // Now for each guardian gather decrypted shares.
