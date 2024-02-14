@@ -8,7 +8,7 @@ import { useForm, Validate } from 'react-hook-form';
 import FileInput from '~/shared/FileInput';
 import { FileInputValue } from '~/shared/FileInput/FileInput';
 import { useAsyncMemo } from 'shared/util';
-import { guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
+import { accountsAtom, guardiansStateAtom, selectedAccountAtom } from '~/shared/store';
 import { importWalletAccount } from '~/shared/ffi';
 import { useNavigate } from 'react-router-dom';
 import { routes } from '~/shell/router';
@@ -122,12 +122,13 @@ export default function ImportWalletAccount() {
     const [loading, setLoading] = useState(false);
     const guardiansState = useAtomValue(guardiansStateAtom);
     const guardians = useMemo(
-        () => guardiansState?.map(([account]) => AccountAddress.toBase58(account)),
+        () => guardiansState.guardians?.map(([account]) => AccountAddress.toBase58(account)),
         [guardiansState],
     );
     const nav = useNavigate();
+    const refreshAccounts = useSetAtom(accountsAtom);
 
-    const walletExport = useAsyncMemo(
+    const guardianData = useAsyncMemo(
         async () => {
             setError(undefined);
             if (fileInput === null || guardians === undefined) {
@@ -135,8 +136,9 @@ export default function ImportWalletAccount() {
             }
 
             const contents = await processFile(fileInput[0]);
-            if (guardians.includes(contents.value.address)) {
-                return contents;
+            const index = guardians.findIndex((address) => contents.value.address === address);
+            if (index !== -1) {
+                return { walletExport: contents, index: index + 1 };
             }
 
             setError('Imported account is not a guardian in the election');
@@ -146,18 +148,20 @@ export default function ImportWalletAccount() {
     );
 
     useEffect(() => {
-        if (walletExport !== undefined) {
+        if (guardianData !== undefined) {
             setShowModal(true);
         }
-    }, [walletExport]);
+    }, [guardianData]);
 
     useEffect(() => {
-        if (walletExport !== undefined && password !== undefined) {
+        if (guardianData !== undefined && password !== undefined) {
             setLoading(true);
 
-            void importWalletAccount(walletExport, password)
+            void importWalletAccount(guardianData.walletExport, guardianData.index, password)
                 .then((imported) => {
                     setAccount(imported);
+                    void refreshAccounts();
+
                     nav(routes.actions.path);
                 })
                 .catch((e: Error) => {
@@ -167,7 +171,7 @@ export default function ImportWalletAccount() {
                     setLoading(false);
                 });
         }
-    }, [walletExport, password, setAccount, nav]);
+    }, [guardianData, password, setAccount, nav, refreshAccounts]);
 
     return (
         <>

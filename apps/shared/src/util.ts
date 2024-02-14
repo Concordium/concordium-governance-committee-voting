@@ -1,7 +1,8 @@
 import { Buffer } from 'buffer/index.js';
 import { ChecksumUrl } from './types';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AccountAddress } from '@concordium/web-sdk/types';
+import { formatDuration, intervalToDuration } from 'date-fns';
 
 /**
  * Used to indicate failure to verify a remotely located resource
@@ -55,6 +56,43 @@ export const useAsyncMemo = <ReturnType>(
 };
 
 /**
+ * Returns a promise which resolves after `timeMs`.
+ * @param timeMs - The time to wait (in milliseconds)
+ */
+export function sleep(timeMs: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, timeMs);
+    });
+}
+
+/**
+ * A hook returning the current date-time at an interval according to the specified argument. An update to the component
+ * is triggered everytime a new value is produced.
+ *
+ * @param updateIntervalSeconds - The interval in seconds to update
+ * @returns The current date-time.
+ */
+export function useNow(updateIntervalSeconds: number): Date {
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), updateIntervalSeconds * 1000);
+        return () => {
+            clearInterval(id);
+        };
+    }, [updateIntervalSeconds]);
+
+    return now;
+}
+
+export function useCountdown(to: Date) {
+    const now = useNow(1);
+    return useMemo(() => {
+        const duration = intervalToDuration({ start: now, end: to });
+        return formatDuration(duration);
+    }, [now, to]);
+}
+
+/**
  * Helper for displaying account addresses in a concise manner (i.e. first/last `numChars/2` characters)
  *
  * @param account - The {@linkcode AccountAddress.Type} to display
@@ -69,3 +107,5 @@ export function accountShowShort(account: AccountAddress.Type, numChars = 8): st
     const accountString = AccountAddress.toBase58(account);
     return `${accountString.substring(0, start)}...${accountString.substring(accountString.length - end)}`;
 }
+
+export const CCD_SYMBOL = '\u03FE';

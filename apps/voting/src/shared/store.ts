@@ -11,9 +11,9 @@ import {
 import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
 import { atomEffect } from 'jotai-effect';
-import { ElectionManifest, ElectionParameters, GuardianPublicKey } from 'electionguard-bindings';
+import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 import { ResourceVerificationError, getChecksumResource } from 'shared/util';
-import { ChecksumUrl, EligibleVoters } from 'shared/types';
+import { ChecksumUrl, EligibleVoters, GuardianPublicKey } from 'shared/types';
 
 import { getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';

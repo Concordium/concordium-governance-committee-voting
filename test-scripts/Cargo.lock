@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-rust-sdk"
-version = "4.0.0"
+version = "4.1.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.1"
+version = "9.0.2"
 dependencies = [
  "concordium-contracts-common",
 ]
@@ -1044,6 +1044,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 
 [[package]]
+name = "election-common"
+version = "0.1.0"
+dependencies = [
+ "rmp-serde",
+ "serde",
+]
+
+[[package]]
 name = "election-test"
 version = "0.1.0"
 dependencies = [
@@ -1053,10 +1061,10 @@ dependencies = [
  "concordium-rust-sdk",
  "concordium_governance_committee_election",
  "eg",
+ "election-common",
  "futures",
  "indicatif",
  "rand",
- "rmp-serde",
  "serde",
  "serde_json",
  "sha2",

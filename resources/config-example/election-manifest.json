@@ -1,34 +1,31 @@
 {
-  "label": "Concordium Election",
+  "label": "Test election manifest",
   "contests": [
     {
-      "label": "New governance committee members",
-      "selection_limit": 6,
+      "label": "New governance committee member",
+      "selection_limit": 5,
       "options": [
         {
-          "label": "Candidate A"
+          "label": "Candidate 0"
         },
         {
-          "label": "Candidate B"
+          "label": "Candidate 1"
         },
         {
-          "label": "Candidate C"
+          "label": "Candidate 2"
         },
         {
-          "label": "Candidate D"
+          "label": "Candidate 3"
         },
         {
-          "label": "Candidate E"
-        },
-        {
-          "label": "Candidate F"
+          "label": "Candidate 4"
         }
       ]
     }
   ],
   "ballot_styles": [
     {
-      "label": "Concordium Ballot",
+      "label": "Governance committee vote",
       "contests": [
         1
       ]

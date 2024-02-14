@@ -12,9 +12,11 @@ description = "A smart contract for facilitating Concordium goverance committee 
 default = ["std"]
 std = ["concordium-std/std"]
 wee_alloc = ["concordium-std/wee_alloc"]
+serde = ["dep:serde"]
 
 [dependencies]
 concordium-std = { path = "../../deps/concordium-rust-smart-contracts/concordium-std", version = "9.0", default-features = false }
+serde = { version = "1.0", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 concordium-smart-contract-testing = {path = "../../deps/concordium-rust-smart-contracts/contract-testing/", version = "4"}

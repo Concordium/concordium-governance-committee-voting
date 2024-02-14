@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { accountShowShort } from 'shared/util';
 import { MainLocationState } from '~/layouts/Main/Main';
 import Button from '~/shared/Button';
-import { WalletAccount, loadAccount } from '~/shared/ffi';
+import { loadAccount } from '~/shared/ffi';
 import { selectedAccountAtom, accountsAtom } from '~/shared/store';
 import { routes } from '~/shell/router';
 
@@ -18,7 +18,7 @@ type PasswordPromptProps = {
     /** Request to hide the modal */
     onHide(): void;
     /** Called when an account is successfully loaded from disk */
-    onAccountLoad(walletAccount: WalletAccount): void;
+    onAccountLoad(walletAccount: AccountAddress.Type): void;
 };
 
 type PasswordPromptForm = {
@@ -49,7 +49,8 @@ function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
         async ({ password }) => {
             setLoading(true);
             try {
-                const account = await loadAccount(AccountAddress.fromBase58(getValues().account), password);
+                const account = AccountAddress.fromBase58(getValues().account);
+                await loadAccount(account, password);
 
                 onAccountLoad(account);
                 close();
@@ -136,8 +137,12 @@ export default function SelectAccount() {
     const [requestPassword, setRequestPassword] = useState(false);
     const [selectedAccount, setSelectedAccount] = useAtom(selectedAccountAtom);
 
-    const submit = () => {
-        setRequestPassword(true);
+    const submit = ({ account }: SelectAccountForm) => {
+        if (account === selectedAccount?.address) {
+            nav(routes.actions.path);
+        } else {
+            setRequestPassword(true);
+        }
     };
 
     useEffect(() => {
@@ -149,16 +154,15 @@ export default function SelectAccount() {
     const hasAccounts = useMemo(() => accounts !== undefined && accounts.length !== 0, [accounts]);
     useEffect(() => {
         if (hasAccounts) {
-            const initialAccount = selectedAccount?.address ?? accounts![0].address;
-            setValue('account', initialAccount);
+            const initialAccount = selectedAccount ?? accounts![0];
+            setValue('account', AccountAddress.toBase58(initialAccount));
         }
     }, [hasAccounts, accounts, setValue, selectedAccount]);
 
-    useEffect(() => {
-        if (selectedAccount !== undefined) {
-            nav(routes.actions.path);
-        }
-    }, [selectedAccount, nav]);
+    const handleAccountLoad = (account: AccountAddress.Type) => {
+        setSelectedAccount(account);
+        nav(routes.actions.path);
+    };
 
     if (accounts === undefined) {
         return null;
@@ -180,7 +184,7 @@ export default function SelectAccount() {
             <PasswordPrompt
                 show={requestPassword}
                 onHide={() => setRequestPassword(false)}
-                onAccountLoad={setSelectedAccount}
+                onAccountLoad={handleAccountLoad}
             />
         </FormProvider>
     );
