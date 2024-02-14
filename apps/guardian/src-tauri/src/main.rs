@@ -30,6 +30,7 @@ use sha2::Digest;
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
+    time::Duration,
 };
 use tauri::{App, AppHandle, Manager, State, Window};
 use tokio::sync::Mutex;
@@ -38,10 +39,14 @@ use util::csprng::Csprng;
 
 /// The file name of the encrypted wallet account.
 const WALLET_ACCOUNT_FILE: &str = "guardian-data.json.aes";
-/// The file name of the encrypted secret key for a guardian
+/// The file name of the encrypted secret key for a guardian.
 const SECRET_KEY_FILE: &str = "secret-key.json.aes";
-/// The file name of the encrypted secret share for a guardian
+/// The file name of the encrypted secret share for a guardian.
 const SECRET_SHARE_FILE: &str = "secret-share.json.aes";
+
+/// The default request timeout to use if not specified by environment variable
+/// "CCD_ELECTION_REQUEST_TIMEOUT_MS".
+const DEFAULT_REQUEST_TIMEOUT_MS: u16 = 5000;
 
 /// Describes any error happening in the backend.
 #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
@@ -192,41 +197,62 @@ struct ElectionGuardConfig {
 }
 
 struct ElectionContractMarker;
+/// The election contract client
 type ElectionClient = ContractClient<ElectionContractMarker>;
+
+/// Wrapper around [`reqwest::Client`] to provide
+/// `HttpClient::get_resource_checked`
+#[derive(Debug, Clone)]
+struct HttpClient(reqwest::Client);
+
+impl HttpClient {
+    /// Gets the remote resource at `url` while also checking the content
+    /// against the checksum included as part of the [`ChecksumUrl`]
+    async fn get_resource_checked<J: DeserializeOwned>(
+        &self,
+        url: &ChecksumUrl,
+    ) -> Result<J, Error> {
+        let data = self.0.get(url.url.clone()).send().await?.bytes().await?;
+        let hash = HashSha2256(sha2::Sha256::digest(&data).into());
+        if url.hash != hash {
+            return Err(anyhow!(
+                "Verification of remote resource at {} failed. Expected checksum {} did not match \
+                 computed hash {}.",
+                url.url,
+                url.hash,
+                hash
+            )
+            .into());
+        }
+
+        let result = serde_json::from_slice(&data)
+            .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
+        Ok(result)
+    }
+}
 
 /// The contract (and correspondingly node) connection configuration.
 #[derive(Clone)]
 struct ConnectionConfig {
+    /// The http client to use for remote resources
+    http:     HttpClient,
     /// The contract client for querying the contract.
     contract: ElectionClient,
-}
-
-async fn get_resource_checked<J: DeserializeOwned>(url: &ChecksumUrl) -> Result<J, Error> {
-    let data = reqwest::get(url.url.clone()).await?.bytes().await?;
-
-    let hash = HashSha2256(sha2::Sha256::digest(&data).into());
-    if url.hash != hash {
-        return Err(anyhow!(
-            "Verification of remote resource at {} failed. Expected checksum {} did not match \
-             computed hash {}.",
-            url.url,
-            url.hash,
-            hash
-        )
-        .into());
-    }
-
-    let result = serde_json::from_slice(&data)
-        .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
-    Ok(result)
 }
 
 impl ConnectionConfig {
     /// Creates a connection to a concordium node and a contract client. This
     /// function panics if the necessary environment variables are not set.
     async fn try_create_from_env() -> Result<Self, Error> {
-        let endpoint_var = env!("CCD_ELECTION_NODE");
-        let endpoint = Endpoint::from_str(endpoint_var).expect("Could not parse node endpoint");
+        let endpoint = Endpoint::from_str(env!("CCD_ELECTION_NODE"))
+            .expect("Could not parse CCD_ELECTION_NODE");
+        let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
+            .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
+        let timeout = Duration::from_millis(timeout);
+        let contract_address = ContractAddress::from_str(env!("CCD_ELECTION_CONTRACT_ADDRESS"))
+            .expect("Could not parse CCD_ELECTION_CONTRACT_ADDRESS");
+
         let endpoint = if endpoint
             .uri()
             .scheme()
@@ -238,16 +264,17 @@ impl ConnectionConfig {
         } else {
             endpoint
         };
-
-        #[allow(clippy::option_env_unwrap)] // To avoid cargo check errors in editor
-        let contract_var = env!("CCD_ELECTION_CONTRACT_ADDRESS");
-        let contract_address =
-            ContractAddress::from_str(contract_var).expect("Could not parse contract address");
-
+        let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let node = Client::new(endpoint).await?;
         let contract = ElectionClient::create(node, contract_address).await?;
 
-        let contract_connection = Self { contract };
+        let http = reqwest::Client::builder()
+            .connect_timeout(timeout)
+            .timeout(timeout)
+            .build()?;
+        let http = HttpClient(http);
+
+        let contract_connection = Self { contract, http };
         Ok(contract_connection)
     }
 
@@ -264,9 +291,14 @@ impl ConnectionConfig {
                 BlockIdentifier::LastFinal,
             )
             .await?;
-        let manifest: ElectionManifest = get_resource_checked(&config.election_manifest).await?;
-        let parameters: ElectionParameters =
-            get_resource_checked(&config.election_parameters).await?;
+        let manifest: ElectionManifest = self
+            .http
+            .get_resource_checked(&config.election_manifest)
+            .await?;
+        let parameters: ElectionParameters = self
+            .http
+            .get_resource_checked(&config.election_parameters)
+            .await?;
 
         let eg_config = ElectionGuardConfig {
             manifest,
@@ -881,8 +913,7 @@ async fn generate_secret_share<'a>(
         let share = guardian_state
             .encrypted_share
             .context("Guardian share not registered.")?;
-        let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(&share)
-        else {
+        let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(&share) else {
             // If we cannot decode, the shares are invalid
             invalid_share_submissions.push(guardian_account);
             break;

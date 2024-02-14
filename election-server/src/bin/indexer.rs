@@ -9,7 +9,7 @@ use concordium_rust_sdk::{
         hashes::BlockHash, smart_contracts::InstanceInfo, AbsoluteBlockHeight, BlockItemSummary,
         ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
-    v2::{self, BlockIdentifier, Client, Endpoint},
+    v2::{self, BlockIdentifier, Client},
 };
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
@@ -48,7 +48,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:     Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:     Vec<v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -90,6 +90,13 @@ struct AppConfig {
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file: std::path::PathBuf,
+    /// The request timeout of the http server (in milliseconds)
+    #[clap(
+        long = "request-timeout-ms",
+        default_value_t = 5000,
+        env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
+    )]
+    request_timeout_ms: u64,
 }
 
 /// Verify the digest of `file` matches the expected `checksum`.
@@ -491,12 +498,40 @@ async fn find_election_start_height(
     Ok(block_info.block_height)
 }
 
+/// Creates a [`v2::Client`] from the [`v2::Endpoint`], enabling TLS and setting
+/// connection and request timeouts
+async fn create_client(
+    endpoint: v2::Endpoint,
+    request_timeout: std::time::Duration,
+) -> anyhow::Result<v2::Client> {
+    let endpoint = if endpoint
+        .uri()
+        .scheme()
+        .map_or(false, |x| x == &v2::Scheme::HTTPS)
+    {
+        endpoint
+            .tls_config(ClientTlsConfig::new())
+            .context("Unable to construct TLS configuration for Concordium API.")?
+    } else {
+        endpoint
+    };
+    let endpoint = endpoint
+        .connect_timeout(request_timeout)
+        .timeout(request_timeout);
+    let node = Client::new(endpoint)
+        .await
+        .context("Could not connect to node.")?;
+    Ok(node)
+}
+
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip_all, fields(node_endpoint = %node_endpoint.uri(), from_height = ?from_height))]
 async fn node_process(
-    node_endpoint: Endpoint,
+    node_endpoint: v2::Endpoint,
+    request_timeout: std::time::Duration,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
     from_height: &mut AbsoluteBlockHeight,
@@ -504,21 +539,8 @@ async fn node_process(
     max_behind_s: u32,
     stop_flag: &AtomicBool,
 ) -> anyhow::Result<()> {
-    let node_endpoint = if node_endpoint
-        .uri()
-        .scheme()
-        .map_or(false, |x| x == &v2::Scheme::HTTPS)
-    {
-        node_endpoint
-            .tls_config(ClientTlsConfig::new())
-            .context("Unable to construct TLS configuration for Concordium API.")?
-    } else {
-        node_endpoint
-    };
     let node_uri = node_endpoint.uri().clone();
-    let mut node = Client::new(node_endpoint)
-        .await
-        .context("Could not connect to node.")?;
+    let mut node = create_client(node_endpoint, request_timeout).await?;
 
     tracing::info!("Processing blocks using node {}", &node_uri);
 
@@ -602,20 +624,14 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
+    let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
+
     let ep = config
         .node_endpoints
         .get(0)
         .context("Expected endpoint to be defined")?
         .clone();
-    let ep = if ep.uri().scheme().map_or(false, |x| x == &v2::Scheme::HTTPS) {
-        ep.tls_config(ClientTlsConfig::new())
-            .context("Unable to construct TLS configuration for Concordium API.")?
-    } else {
-        ep
-    };
-    let client = Client::new(ep)
-        .await
-        .context("Could not create node client")?;
+    let client = create_client(ep, request_timeout).await?;
 
     let mut contract_client = verify_contract(client, config.contract_address).await?;
     let contract_config = get_election_config(&mut contract_client).await?;
@@ -699,6 +715,7 @@ async fn main() -> anyhow::Result<()> {
         // The process keeps running until stopped manually, or an error happens.
         let node_result = node_process(
             node,
+            request_timeout,
             &config.contract_address,
             &verification_context,
             &mut from_height,

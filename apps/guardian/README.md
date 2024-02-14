@@ -37,6 +37,14 @@ CCD_ELECTION_CONTRACT_ADDRESS="<8011,0>" # Specify the contract address to targe
 CCD_ELECTION_NODE="https://node.testnet.concordium.com:20000" # The node to use for queries
 ```
 
+### Optional configuration
+
+The following environment variables can be provided optionally:
+
+```env
+CCD_ELECTION_REQUEST_TIMEOUT_MS=5000 # Defaults to 5000
+```
+
 ## Development workflow
 
 To run the project during development, the following will provide a workflow with hot module replacement:
