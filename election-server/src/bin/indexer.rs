@@ -247,7 +247,7 @@ async fn run_db_process(
 /// defined by `db`. Everything is commited as a single transactions allowing
 /// for easy restoration from the last recorded block (by height) inserted into
 /// the database. Returns the duration it took to process the block.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip_all, fields(block_hash = %block_data.block_hash, block_time = %block_data.block_time))]
 async fn db_insert_block<'a>(
     db: &mut Database,
     block_data: &'a BlockData,
