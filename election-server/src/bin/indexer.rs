@@ -9,7 +9,7 @@ use concordium_rust_sdk::{
         hashes::BlockHash, smart_contracts::InstanceInfo, AbsoluteBlockHeight, BlockItemSummary,
         ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
-    v2::{BlockIdentifier, Client, Endpoint},
+    v2::{self, BlockIdentifier, Client, Endpoint},
 };
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
@@ -17,7 +17,7 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::ByteConvert;
+use election_common::decode;
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::BallotSubmission,
@@ -32,6 +32,7 @@ use std::{
     },
     time::Duration,
 };
+use tonic::transport::ClientTlsConfig;
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 const CONFIG_VIEW: &str = "viewConfig";
@@ -332,8 +333,9 @@ fn get_ballot_submission(
 
     let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
         .context("Failed to parse ballot from transaction message")
-        .and_then(|bytes| BallotEncrypted::decode(&bytes).context("Failed parse encrypted ballot"))
-    {
+        .and_then(|bytes| {
+            decode::<BallotEncrypted>(&bytes).context("Failed parse encrypted ballot")
+        }) {
         Ok(ballot) => ballot,
         Err(err) => {
             tracing::warn!("Could not parse ballot: {}", err);
@@ -502,11 +504,23 @@ async fn node_process(
     max_behind_s: u32,
     stop_flag: &AtomicBool,
 ) -> anyhow::Result<()> {
-    let mut node = Client::new(node_endpoint.clone())
+    let node_endpoint = if node_endpoint
+        .uri()
+        .scheme()
+        .map_or(false, |x| x == &v2::Scheme::HTTPS)
+    {
+        node_endpoint
+            .tls_config(ClientTlsConfig::new())
+            .context("Unable to construct TLS configuration for Concordium API.")?
+    } else {
+        node_endpoint
+    };
+    let node_uri = node_endpoint.uri().clone();
+    let mut node = Client::new(node_endpoint)
         .await
         .context("Could not connect to node.")?;
 
-    tracing::info!("Processing blocks using node {}", node_endpoint.uri());
+    tracing::info!("Processing blocks using node {}", &node_uri);
 
     let mut blocks_stream = node
         .get_finalized_blocks_from(*from_height)
@@ -517,7 +531,7 @@ async fn node_process(
         let block = blocks_stream
             .next_timeout(timeout)
             .await
-            .with_context(|| format!("Timeout reached for node: {}", node_endpoint.uri()))?;
+            .with_context(|| format!("Timeout reached for node: {}", node_uri))?;
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
@@ -591,8 +605,15 @@ async fn main() -> anyhow::Result<()> {
     let ep = config
         .node_endpoints
         .get(0)
-        .context("Expected endpoint to be defined")?;
-    let client = Client::new(ep.clone())
+        .context("Expected endpoint to be defined")?
+        .clone();
+    let ep = if ep.uri().scheme().map_or(false, |x| x == &v2::Scheme::HTTPS) {
+        ep.tls_config(ClientTlsConfig::new())
+            .context("Unable to construct TLS configuration for Concordium API.")?
+    } else {
+        ep
+    };
+    let client = Client::new(ep)
         .await
         .context("Could not create node client")?;
 
@@ -647,7 +668,7 @@ async fn main() -> anyhow::Result<()> {
     let guardian_public_keys = contract_config
         .guardian_keys
         .iter()
-        .map(|bytes| GuardianPublicKey::decode(bytes))
+        .map(|bytes| decode::<GuardianPublicKey>(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
     let verification_context =
@@ -674,9 +695,10 @@ async fn main() -> anyhow::Result<()> {
             tokio::time::sleep(delay).await;
         }
 
+        let node_uri = node.uri().clone();
         // The process keeps running until stopped manually, or an error happens.
         let node_result = node_process(
-            node.clone(),
+            node,
             &config.contract_address,
             &verification_context,
             &mut from_height,
@@ -689,7 +711,7 @@ async fn main() -> anyhow::Result<()> {
         if let Err(e) = node_result {
             tracing::warn!(
                 "Endpoint {} failed with error {}. Trying next.",
-                node.uri(),
+                node_uri,
                 e
             );
         } else {

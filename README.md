@@ -6,6 +6,6 @@ This repository contains the different components for runnning a Concordium gove
 
 The dependencies needed on the host machine to build and run the different components included in the repository are:
 
-- Rust version 1.70
-- NodeJS version 20.9
-- Yarn version 1.22.19
+- Rust (version specified in ./.github/workflows/check-crates.yaml)
+- NodeJS (version specified in ./.github/workflows/check-apps.yml)
+- Yarn

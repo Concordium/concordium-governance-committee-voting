@@ -12,8 +12,8 @@ const BOB_ADDR: Address = Address::Account(BOB);
 const CAROLINE: AccountAddress = AccountAddress([2u8; 32]);
 const CAROLINE_ADDR: Address = Address::Account(CAROLINE);
 
-const DANIEL: AccountAddress = AccountAddress([3u8; 32]);
-const DANIEL_ADDR: Address = Address::Account(DANIEL);
+const DAVE: AccountAddress = AccountAddress([3u8; 32]);
+const DAVE_ADDR: Address = Address::Account(DAVE);
 
 /// The initial balance of the ALICE test account.
 const ACC_INITIAL_BALANCE: Amount = Amount::from_ccd(10_000);
@@ -191,7 +191,7 @@ fn test_receive_guardian_public_key() {
     register_guardian_public_key_update(&mut chain, &contract_address, &BOB_ADDR, &param)
         .expect("Key registration should succeed");
 
-    register_guardian_public_key_update(&mut chain, &contract_address, &DANIEL_ADDR, &param_other)
+    register_guardian_public_key_update(&mut chain, &contract_address, &DAVE_ADDR, &param_other)
         .expect("Key registration should succeed");
 
     register_guardian_public_key_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
@@ -224,7 +224,7 @@ fn test_receive_guardian_public_key() {
             ..GuardianState::new(1)
         }),
         (CAROLINE, GuardianState::new(2)),
-        (DANIEL, GuardianState {
+        (DAVE, GuardianState {
             public_key: Some(param_other),
             ..GuardianState::new(3)
         }),
@@ -248,7 +248,7 @@ fn test_receive_guardian_encrypted_share() {
     register_guardian_encrypted_share_update(
         &mut chain,
         &contract_address,
-        &DANIEL_ADDR,
+        &DAVE_ADDR,
         &param_other,
     )
     .expect("Key registration should succeed");
@@ -315,7 +315,7 @@ fn test_receive_guardian_encrypted_share() {
             ..GuardianState::new(1)
         }),
         (CAROLINE, GuardianState::new(2)),
-        (DANIEL, GuardianState {
+        (DAVE, GuardianState {
             encrypted_share: Some(param_other),
             ..GuardianState::new(3)
         }),
@@ -335,14 +335,14 @@ fn test_receive_guardian_status() {
         &mut chain,
         &contract_address,
         &BOB_ADDR,
-        GuardianStatus::KeyVerificationFailed(vec![DANIEL]),
+        GuardianStatus::KeyVerificationFailed(vec![DAVE]),
     )
     .expect("Complaint registration should succeed");
 
     register_guardian_status_update(
         &mut chain,
         &contract_address,
-        &DANIEL_ADDR,
+        &DAVE_ADDR,
         GuardianStatus::VerificationSuccessful,
     )
     .expect("Success registration should succeed");
@@ -409,11 +409,11 @@ fn test_receive_guardian_status() {
     guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
         (BOB, GuardianState {
-            status: Some(GuardianStatus::KeyVerificationFailed(vec![DANIEL])),
+            status: Some(GuardianStatus::KeyVerificationFailed(vec![DAVE])),
             ..GuardianState::new(1)
         }),
         (CAROLINE, GuardianState::new(2)),
-        (DANIEL, GuardianState {
+        (DAVE, GuardianState {
             status: Some(GuardianStatus::VerificationSuccessful),
             ..GuardianState::new(3)
         }),
@@ -727,7 +727,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
             hash: HashSha2256([1; 32]),
         },
     ];
-    let guardians = vec![BOB, CAROLINE, DANIEL];
+    let guardians = vec![BOB, CAROLINE, DAVE];
     let election_start = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::seconds(5))
         .unwrap();
@@ -776,7 +776,7 @@ fn new_chain_and_module() -> (Chain, ModuleReference) {
     chain.create_account(Account::new(ALICE, ACC_INITIAL_BALANCE));
     chain.create_account(Account::new(BOB, ACC_INITIAL_BALANCE));
     chain.create_account(Account::new(CAROLINE, ACC_INITIAL_BALANCE));
-    chain.create_account(Account::new(DANIEL, ACC_INITIAL_BALANCE));
+    chain.create_account(Account::new(DAVE, ACC_INITIAL_BALANCE));
     // Load the module.
     let module = module_load_v1("./concordium-out/module.wasm.v1").expect("Module exists at path");
     // Deploy the module.

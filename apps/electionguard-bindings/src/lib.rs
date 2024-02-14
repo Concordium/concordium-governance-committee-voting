@@ -10,7 +10,7 @@ use eg::{
     hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::ByteConvert;
+use election_common::{decode, encode};
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, convert::TryFrom};
@@ -85,7 +85,7 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
         let guardian_public_keys: Vec<GuardianPublicKey> = value
             .guardian_public_keys
             .iter()
-            .map(|bytes| GuardianPublicKey::decode(bytes))
+            .map(|bytes| decode::<GuardianPublicKey>(bytes))
             .collect::<Result<_, _>>()?;
         let joint_election_public_key =
             JointElectionPublicKey::compute(&value.election_parameters, &guardian_public_keys)
@@ -172,6 +172,6 @@ pub fn get_encrypted_ballot(
         &selections.into(),
     );
 
-    let js_value = js_sys::Uint8Array::from(ballot.encode()?.as_slice());
+    let js_value = js_sys::Uint8Array::from(encode(&ballot)?.as_slice());
     Ok(js_value)
 }

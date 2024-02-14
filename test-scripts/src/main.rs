@@ -30,7 +30,7 @@ use eg::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
-use election_common::ByteConvert;
+use election_common::{decode, encode};
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
@@ -392,7 +392,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .context("Unable to write guardian keys.")?;
 
-            let param = public_key.encode()?;
+            let param = encode(&public_key)?;
             let mut contract_client = contract_client.clone();
             let fut = async move {
                 let tx_dry_run = contract_client
@@ -438,7 +438,7 @@ async fn main() -> anyhow::Result<()> {
                 shares.push(share);
             }
 
-            let param = shares.encode()?;
+            let param = encode(&shares)?;
 
             let mut contract_client = contract_client.clone();
             let fut = async move {
@@ -490,7 +490,7 @@ async fn main() -> anyhow::Result<()> {
                     .encrypted_share
                     .as_ref()
                     .context("Guardian share not registered.")?;
-                let mut shares = rmp_serde::from_slice::<Vec<GuardianEncryptedShare>>(share)
+                let mut shares = decode::<Vec<GuardianEncryptedShare>>(share)
                     .context("Unable to parse key shares.")?;
                 let Ok(i) = shares.binary_search_by_key(&GuardianIndex::from_one_based_index(g_i as u32)?, |x: &GuardianEncryptedShare| x.recipient) else {
                     anyhow::bail!("Could not find guardian's encrypted share.");
@@ -594,7 +594,7 @@ async fn main() -> anyhow::Result<()> {
                 &primary_nonce,
                 &[(contest, selections)].into(),
             );
-            let ballot_data = &ballot.encode()?;
+            let ballot_data = encode(&ballot)?;
             eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client
                 .get_next_account_sequence_number(&voter.address)
@@ -609,7 +609,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let tx_hash = contract_client
-                .update::<Vec<u8>, anyhow::Error>(voter, &metadata, "registerVotes", ballot_data)
+                .update::<Vec<u8>, anyhow::Error>(voter, &metadata, "registerVotes", &ballot_data)
                 .await?;
             eprintln!(
                 "Submitted vote for {} with transaction hash {tx_hash}",
@@ -665,9 +665,8 @@ async fn main() -> anyhow::Result<()> {
             }
         };
         eprintln!("Retrieved encrypted tally.");
-        let serialized_tally =
-            rmp_serde::from_slice::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&serialized_tally)
-                .context("Unable to read tally.")?;
+        let serialized_tally = decode::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&serialized_tally)
+            .context("Unable to read tally.")?;
 
         // State maintained by guardians for the proof of decryption.
         let mut secret_states = Vec::new();
@@ -697,7 +696,7 @@ async fn main() -> anyhow::Result<()> {
             }
             secret_states.push(secret_states_map);
 
-            let decryptions = rmp_serde::to_vec(&decryptions)?;
+            let decryptions = encode(&decryptions)?;
 
             eprintln!("Serialized decryption share is {}B.", decryptions.len());
 
@@ -755,7 +754,7 @@ async fn main() -> anyhow::Result<()> {
                         let Some(share_result) = gs.1.decryption_share.as_ref() else {
                             anyhow::bail!("Share not present even though it was registered.");
                         };
-                        let share_result = rmp_serde::from_slice::<
+                        let share_result = decode::<
                             BTreeMap<ContestIndex, Vec<DecryptionShareResult>>,
                         >(share_result)
                         .context("Unable to parse decryption share result.")?;
@@ -784,7 +783,7 @@ async fn main() -> anyhow::Result<()> {
             }
             // Publish response shares
 
-            let shares = rmp_serde::to_vec(&response_shares)?;
+            let shares = encode(&response_shares)?;
 
             let dry_run_result = contract_client
                 .dry_run_update::<_, ViewError>(

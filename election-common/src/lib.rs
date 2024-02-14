@@ -1,28 +1,17 @@
-use eg::{
-    ballot::BallotEncrypted, guardian_public_key::GuardianPublicKey,
-    guardian_share::GuardianEncryptedShare,
-};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Deserialize, Serialize};
 
-/// Deduplication of code to encode/decode serializable structs
-pub trait ByteConvert
-where
-    Self: Serialize + DeserializeOwned + Sized, {
-    /// Encodes the value.
-    ///
-    /// ## Errors
-    /// Fails if serialization fails
-    fn encode(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> { rmp_serde::to_vec(&self) }
-
-    /// Decodes the value
-    ///
-    /// ## Errors
-    /// Fails if deserialization fails
-    fn decode(value: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(value)
-    }
+/// Encodes the value.
+///
+/// ## Errors
+/// Fails if serialization fails
+pub fn encode<T: Serialize + Sized>(value: &T) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(value)
 }
 
-impl ByteConvert for GuardianPublicKey {}
-impl ByteConvert for BallotEncrypted {}
-impl ByteConvert for Vec<GuardianEncryptedShare> {}
+/// Decodes the value
+///
+/// ## Errors
+/// Fails if deserialization fails
+pub fn decode<'de, T: Deserialize<'de>>(value: &'de [u8]) -> Result<T, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(value)
+}

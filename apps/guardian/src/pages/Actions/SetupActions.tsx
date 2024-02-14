@@ -28,26 +28,51 @@ import {
 import { CCD_SYMBOL, sleep, useCountdown } from 'shared/util';
 import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, guardiansStateAtom } from '~/shared/store';
 
+/**
+ * The steps run for each guardian action performed.
+ */
 const enum ActionStep {
-    Generate,
-    ApproveTransaction,
+    /** Compute the value (e.g. guardian key) required for the action to succeed. */
+    Compute,
+    /** Handle the proposal from the backend. */
+    HandleProposal,
+    /** Update the contract according to the proposal. */
     UpdateConctract,
+    /** Completed all steps of action. */
     Done,
 }
 
 type StepProps = PropsWithChildren<{
+    /** The active step in the action flow. */
     activeStep: ActionStep;
+    /** The action flow step to represent. */
     step: ActionStep;
+    /** An optional error message. */
     error?: string;
+    /** An optional note to show (e.g. cost of proposed transaction). */
     note?: string;
+    /**
+     * Whether the step should render as a warning instead of successful. This should be the case if the proposed
+     * transaction signals detection of invalid submissions.
+     */
     warn?: boolean;
 }>;
 
+/**
+ * The status of an action flow step. This will be derived from the {@linkcode StepProps} supplied to the {@linkcode
+ * Step} component.
+ */
 const enum StepStatus {
+    /** The step is inactive, i.e. any previous step is being executed. */
     Inactive,
+    /** The step is being executed. */
     Active,
+    /** The step was successfully executed. */
     Success,
+    /** An error occured while executing the step. */
     Error,
+    /** Step was successfully executed, but produced a value which should be shown as a warning. */
+    Warn,
 }
 
 function Step({ step, activeStep, error, children, note, warn = false }: StepProps) {
@@ -57,18 +82,18 @@ function Step({ step, activeStep, error, children, note, warn = false }: StepPro
             return StepStatus.Inactive;
         }
         if (step < activeStep) {
-            return StepStatus.Success;
+            return warn ? StepStatus.Warn : StepStatus.Success;
         }
 
         return ownError !== undefined ? StepStatus.Error : StepStatus.Active;
-    }, [ownError, step, activeStep]);
+    }, [ownError, step, activeStep, warn]);
 
     return (
-        <li className={clsx('generate__step', warn && 'generate__step--warn')}>
+        <li className={clsx('generate__step', StepStatus.Error && 'generate__step--warn')}>
             <div className="generate__step-icon">
-                {!warn && status === StepStatus.Active && <Spinner animation="border" size="sm" />}
-                {(warn || status === StepStatus.Error) && <ErrorIcon width="20" />}
-                {!warn && status === StepStatus.Success && <SuccessIcon width="20" />}
+                {status === StepStatus.Active && <Spinner animation="border" size="sm" />}
+                {status === StepStatus.Error || (status === StepStatus.Warn && <ErrorIcon width="20" />)}
+                {status === StepStatus.Success && <SuccessIcon width="20" />}
             </div>
             <div>
                 {children}
@@ -123,7 +148,7 @@ function makeActionableStep<P>(
     return function ActionableStep() {
         const [isOpen, setIsOpen] = useState(false);
         const [error, setError] = useState<string>();
-        const [step, setStep] = useState<ActionStep>(ActionStep.Generate);
+        const [step, setStep] = useState<ActionStep>(ActionStep.Compute);
         const [proposal, setProposal] = useState<P>();
         const flow = useInteractionFlow(interactionFlow);
         const refreshGuardians = useSetAtom(guardiansStateAtom);
@@ -135,7 +160,7 @@ function makeActionableStep<P>(
             setIsOpen(false);
             setProposal(undefined);
             setError(undefined);
-            setStep(ActionStep.Generate);
+            setStep(ActionStep.Compute);
             flow.abort();
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, []);
@@ -179,7 +204,7 @@ function makeActionableStep<P>(
                 flow.next()
                     .then((res) => {
                         setProposal(res.value as P);
-                        setStep(ActionStep.ApproveTransaction);
+                        setStep(ActionStep.HandleProposal);
                     })
                     .catch((e: BackendError) => {
                         setError(e.message);
@@ -228,11 +253,11 @@ const GenerateGuardianKey = makeActionableStep(
                 <Modal.Header closeButton={error !== undefined}>Generating guardian key</Modal.Header>
                 <Modal.Body>
                     <ul className="generate__steps">
-                        <Step step={ActionStep.Generate} activeStep={step} error={error}>
+                        <Step step={ActionStep.Compute} activeStep={step} error={error}>
                             Generating guardian key pair
                         </Step>
                         <Step
-                            step={ActionStep.ApproveTransaction}
+                            step={ActionStep.HandleProposal}
                             activeStep={step}
                             error={error}
                             note={
@@ -247,7 +272,7 @@ const GenerateGuardianKey = makeActionableStep(
                         </Step>
                     </ul>
                 </Modal.Body>
-                {step === ActionStep.ApproveTransaction && error === undefined && (
+                {step === ActionStep.HandleProposal && error === undefined && (
                     <Modal.Footer className="justify-content-start">
                         <Button onClick={acceptProposal} variant="secondary">
                             Send key registration
@@ -313,7 +338,7 @@ const GenerateEncryptedShares = makeActionableStep(
                     <Modal.Body>
                         <ul className="generate__steps">
                             <Step
-                                step={ActionStep.Generate}
+                                step={ActionStep.Compute}
                                 activeStep={step}
                                 error={error}
                                 warn={peerValidationMessage !== undefined}
@@ -322,7 +347,7 @@ const GenerateEncryptedShares = makeActionableStep(
                                 Generating encrypted shares of guardian key
                             </Step>
                             <Step
-                                step={ActionStep.ApproveTransaction}
+                                step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
                                 note={
@@ -343,7 +368,7 @@ const GenerateEncryptedShares = makeActionableStep(
                             </Step>
                         </ul>
                     </Modal.Body>
-                    {step === ActionStep.ApproveTransaction && error === undefined && (
+                    {step === ActionStep.HandleProposal && error === undefined && (
                         <Modal.Footer className="justify-content-start">
                             <Button onClick={acceptProposal} variant="secondary">
                                 {peerValidationMessage !== undefined
@@ -397,14 +422,14 @@ const GenerateSecretShare = makeActionableStep(
                 </Button>
                 <p className="text-muted mt-3">
                     Creates your share of the decryption key from your secret key along with the encrypted shares of the
-                    secret keys of your peer guardians
+                    secret keys of your peer guardians.
                 </p>
                 <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
                     <Modal.Header closeButton={error !== undefined}>Generating share of secret key</Modal.Header>
                     <Modal.Body>
                         <ul className="generate__steps">
                             <Step
-                                step={ActionStep.Generate}
+                                step={ActionStep.Compute}
                                 activeStep={step}
                                 error={error}
                                 warn={peerValidationMessage !== undefined}
@@ -413,7 +438,7 @@ const GenerateSecretShare = makeActionableStep(
                                 Generating share of secret key
                             </Step>
                             <Step
-                                step={ActionStep.ApproveTransaction}
+                                step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
                                 note={
@@ -434,7 +459,7 @@ const GenerateSecretShare = makeActionableStep(
                             </Step>
                         </ul>
                     </Modal.Body>
-                    {step === ActionStep.ApproveTransaction && error === undefined && (
+                    {step === ActionStep.HandleProposal && error === undefined && (
                         <Modal.Footer className="justify-content-start">
                             <Button onClick={acceptProposal} variant="secondary">
                                 {peerValidationMessage !== undefined

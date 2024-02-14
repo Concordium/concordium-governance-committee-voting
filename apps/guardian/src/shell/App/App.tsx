@@ -12,7 +12,7 @@ import { version } from '../../../package.json';
 type ConfigurationItemProps = PropsWithChildren<{
     className?: string;
     /** Whether the configuration item should render as "connected" */
-    connected: boolean;
+    connected?: boolean;
     /** Whether the configuration item should signal an error */
     error?: boolean;
 }>;
@@ -20,7 +20,7 @@ type ConfigurationItemProps = PropsWithChildren<{
 /**
  * Renders a configuration item.
  */
-function ConfigurationItem({ className, connected, children, error }: ConfigurationItemProps) {
+function ConfigurationItem({ className, connected = false, children, error = false }: ConfigurationItemProps) {
     return (
         <div className={clsx(className)}>
             <span

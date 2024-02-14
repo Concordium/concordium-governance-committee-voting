@@ -14,6 +14,7 @@ import {
 
 /** The interval at which the guardians state will refresh from the contract */
 const GUARDIANS_UPDATE_INTERVAL = 30000;
+/** The interval at which the the election phase is recalculated based on the contract configuration */
 const REFRESH_ELECTION_PHASE_INTERVAL = 5000;
 
 /**
@@ -36,8 +37,18 @@ export const electionConfigAtom = atom(
  * Represents the different phases of the election
  */
 export const enum ElectionPhase {
+    /**
+     * The setup phase of the election where guardians generate and register the necessary keys to decrypt the election
+     * result in the tally phase.
+     */
     Setup = 'Setup',
+    /**
+     * The voting phase of the election where eligible voters cast their votes.
+     */
     Voting = 'Voting',
+    /**
+     * The tally/finalization phase where the election result is decrypted and registered.
+     */
     Tally = 'Tally',
 }
 
@@ -45,13 +56,24 @@ export const enum ElectionPhase {
  * Describes the different phases of the election setup phase
  */
 export const enum SetupStep {
+    /** Generate the guardian key pair to be used */
     GenerateKey,
+    /** Await peer submissions of public keys */
     AwaitPeerKeys,
+    /** Validate peer public key submissions and generate encrypted shares of secret key for each peer */
     GenerateEncryptedShares,
+    /** Await peer submissions of encrypted shares */
     AwaitPeerShares,
+    /** Validate peer shares submissions and generate secret share of decryption key */
     GenerateSecretShare,
+    /** Await peer validation of submissions by their peers */
     AwaitPeerValidation,
+    /** Setup phase completed */
     Done,
+    /**
+     * Setup phase invalidated. This occurs when one or more guardians have registered a validation error at some point
+     * during the setup phase
+     */
     Invalid,
 }
 
@@ -127,6 +149,9 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
         set(electionPhaseBaseAtom, phase);
     },
 );
+/**
+ * Holds significant errors (those which are relevant to the user) happening while communicating with the backend.
+ */
 export const connectionErrorAtom = atom<BackendError | undefined>(undefined);
 
 /** The base atom holding the {@linkcode GuardiansState} */
