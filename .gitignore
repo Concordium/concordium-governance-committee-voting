@@ -1,5 +1,6 @@
 .vscode
 .idea
+.cargo
 
 .editorconfig
 *.local

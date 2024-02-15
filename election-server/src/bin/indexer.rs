@@ -9,7 +9,7 @@ use concordium_rust_sdk::{
         hashes::BlockHash, smart_contracts::InstanceInfo, AbsoluteBlockHeight, BlockItemSummary,
         ContractAddress, ExecutionTree, ExecutionTreeV1,
     },
-    v2::{BlockIdentifier, Client, Endpoint},
+    v2::{self, BlockIdentifier, Client},
 };
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
@@ -17,7 +17,7 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::ByteConvert;
+use election_common::decode;
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::BallotSubmission,
@@ -32,6 +32,7 @@ use std::{
     },
     time::Duration,
 };
+use tonic::transport::ClientTlsConfig;
 
 const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 const CONFIG_VIEW: &str = "viewConfig";
@@ -47,7 +48,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:     Vec<concordium_rust_sdk::v2::Endpoint>,
+    node_endpoints:     Vec<v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -89,6 +90,13 @@ struct AppConfig {
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file: std::path::PathBuf,
+    /// The request timeout of the http server (in milliseconds)
+    #[clap(
+        long = "request-timeout-ms",
+        default_value_t = 5000,
+        env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
+    )]
+    request_timeout_ms: u64,
 }
 
 /// Verify the digest of `file` matches the expected `checksum`.
@@ -247,7 +255,7 @@ async fn run_db_process(
 /// defined by `db`. Everything is commited as a single transactions allowing
 /// for easy restoration from the last recorded block (by height) inserted into
 /// the database. Returns the duration it took to process the block.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip_all, fields(block_hash = %block_data.block_hash, block_time = %block_data.block_time))]
 async fn db_insert_block<'a>(
     db: &mut Database,
     block_data: &'a BlockData,
@@ -332,8 +340,9 @@ fn get_ballot_submission(
 
     let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
         .context("Failed to parse ballot from transaction message")
-        .and_then(|bytes| BallotEncrypted::decode(&bytes).context("Failed parse encrypted ballot"))
-    {
+        .and_then(|bytes| {
+            decode::<BallotEncrypted>(&bytes).context("Failed parse encrypted ballot")
+        }) {
         Ok(ballot) => ballot,
         Err(err) => {
             tracing::warn!("Could not parse ballot: {}", err);
@@ -489,12 +498,40 @@ async fn find_election_start_height(
     Ok(block_info.block_height)
 }
 
+/// Creates a [`v2::Client`] from the [`v2::Endpoint`], enabling TLS and setting
+/// connection and request timeouts
+async fn create_client(
+    endpoint: v2::Endpoint,
+    request_timeout: std::time::Duration,
+) -> anyhow::Result<v2::Client> {
+    let endpoint = if endpoint
+        .uri()
+        .scheme()
+        .map_or(false, |x| x == &v2::Scheme::HTTPS)
+    {
+        endpoint
+            .tls_config(ClientTlsConfig::new())
+            .context("Unable to construct TLS configuration for Concordium API.")?
+    } else {
+        endpoint
+    };
+    let endpoint = endpoint
+        .connect_timeout(request_timeout)
+        .timeout(request_timeout);
+    let node = Client::new(endpoint)
+        .await
+        .context("Could not connect to node.")?;
+    Ok(node)
+}
+
 /// Queries the node available at `node_endpoint` from `latest_height` until
 /// stopped. Sends the data structured by block to DB process through
 /// `block_sender`. Process runs until stopped or an error happens internally.
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip_all, fields(node_endpoint = %node_endpoint.uri(), from_height = ?from_height))]
 async fn node_process(
-    node_endpoint: Endpoint,
+    node_endpoint: v2::Endpoint,
+    request_timeout: std::time::Duration,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
     from_height: &mut AbsoluteBlockHeight,
@@ -502,11 +539,10 @@ async fn node_process(
     max_behind_s: u32,
     stop_flag: &AtomicBool,
 ) -> anyhow::Result<()> {
-    let mut node = Client::new(node_endpoint.clone())
-        .await
-        .context("Could not connect to node.")?;
+    let node_uri = node_endpoint.uri().clone();
+    let mut node = create_client(node_endpoint, request_timeout).await?;
 
-    tracing::info!("Processing blocks using node {}", node_endpoint.uri());
+    tracing::info!("Processing blocks using node {}", &node_uri);
 
     let mut blocks_stream = node
         .get_finalized_blocks_from(*from_height)
@@ -517,7 +553,7 @@ async fn node_process(
         let block = blocks_stream
             .next_timeout(timeout)
             .await
-            .with_context(|| format!("Timeout reached for node: {}", node_endpoint.uri()))?;
+            .with_context(|| format!("Timeout reached for node: {}", node_uri))?;
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
@@ -588,13 +624,14 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
+    let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
+
     let ep = config
         .node_endpoints
         .get(0)
-        .context("Expected endpoint to be defined")?;
-    let client = Client::new(ep.clone())
-        .await
-        .context("Could not create node client")?;
+        .context("Expected endpoint to be defined")?
+        .clone();
+    let client = create_client(ep, request_timeout).await?;
 
     let mut contract_client = verify_contract(client, config.contract_address).await?;
     let contract_config = get_election_config(&mut contract_client).await?;
@@ -647,7 +684,7 @@ async fn main() -> anyhow::Result<()> {
     let guardian_public_keys = contract_config
         .guardian_keys
         .iter()
-        .map(|bytes| GuardianPublicKey::decode(bytes))
+        .map(|bytes| decode::<GuardianPublicKey>(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
     let verification_context =
@@ -674,9 +711,11 @@ async fn main() -> anyhow::Result<()> {
             tokio::time::sleep(delay).await;
         }
 
+        let node_uri = node.uri().clone();
         // The process keeps running until stopped manually, or an error happens.
         let node_result = node_process(
-            node.clone(),
+            node,
+            request_timeout,
             &config.contract_address,
             &verification_context,
             &mut from_height,
@@ -689,7 +728,7 @@ async fn main() -> anyhow::Result<()> {
         if let Err(e) = node_result {
             tracing::warn!(
                 "Endpoint {} failed with error {}. Trying next.",
-                node.uri(),
+                node_uri,
                 e
             );
         } else {

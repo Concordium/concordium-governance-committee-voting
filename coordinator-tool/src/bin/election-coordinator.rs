@@ -33,7 +33,7 @@ use eg::{
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
-    ByteConvert, ElectionEncryptedTally, GuardianDecryptionProofResponseShares,
+    decode, encode, ElectionEncryptedTally, GuardianDecryptionProofResponseShares,
     GuardianDecryptionShares,
 };
 use futures::TryStreamExt;
@@ -463,7 +463,7 @@ async fn handle_decrypt(
         anyhow::bail!("Encrypted tally not yet registered.")
     };
 
-    let Ok(tally) = ElectionEncryptedTally::decode(&encrypted_tally) else {
+    let Ok(tally) = decode::<ElectionEncryptedTally>(&encrypted_tally) else {
         anyhow::bail!("Encrypted tally is not readable.")
     };
 
@@ -474,11 +474,11 @@ async fn handle_decrypt(
             guardian_state.decryption_share,
             guardian_state.decryption_share_proof,
         ) {
-            let Ok(share) = GuardianDecryptionShares::decode(&share) else {
+            let Ok(share) = decode::<GuardianDecryptionShares>(&share) else {
                 eprintln!("The decryption share registered by {guardian_address} is not readable.");
                 continue;
             };
-            let Ok(proof) = GuardianDecryptionProofResponseShares::decode(&proof) else {
+            let Ok(proof) = decode::<GuardianDecryptionProofResponseShares>(&proof) else {
                 eprintln!("The decryption proof response share registered by {guardian_address} is not readable.");
                 continue;
             };
@@ -693,7 +693,7 @@ async fn get_election_data(
     let mut guardian_public_keys = config
         .guardian_keys
         .iter()
-        .map(|bytes| GuardianPublicKey::decode(bytes))
+        .map(|bytes| decode::<GuardianPublicKey>(bytes))
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
 
@@ -775,7 +775,7 @@ async fn handle_tally(
                 continue;
             };
 
-            let Ok(ballot) = BallotEncrypted::decode(&param) else {
+            let Ok(ballot) = decode::<BallotEncrypted>(&param) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };
@@ -816,7 +816,7 @@ async fn handle_tally(
     }
     let tally = tally.finalize();
 
-    let serialized_tally = tally.encode()?;
+    let serialized_tally = encode(&tally)?;
     let param = concordium_std::OwnedParameter::from_serial(&serialized_tally)?;
 
     let json_param =

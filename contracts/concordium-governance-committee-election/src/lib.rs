@@ -5,8 +5,6 @@ use concordium_std::*;
 
 pub use concordium_std::HashSha2256;
 
-#[cfg(feature = "serde")]
-use serde::ser::SerializeStruct;
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
@@ -22,6 +20,8 @@ impl serde::Serialize for ChecksumUrl {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer, {
+        use serde::ser::SerializeStruct;
+
         let mut state = serializer.serialize_struct("ChecksumUrl", 2)?;
         state.serialize_field("url", &self.url)?;
         state.serialize_field("hash", &self.hash.to_string())?;

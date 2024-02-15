@@ -1,37 +1,11 @@
-use std::collections::BTreeMap;
-
 use eg::{
-    ballot::BallotEncrypted,
     election_manifest::ContestIndex,
-    guardian_public_key::GuardianPublicKey,
-    guardian_share::GuardianEncryptedShare,
     joint_election_public_key::Ciphertext,
     verifiable_decryption::{DecryptionProofResponseShare, DecryptionShareResult},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-/// Deduplication of code to encode/decode serializable structs
-pub trait ByteConvert
-where
-    Self: Serialize + Sized, {
-    /// Encodes the value.
-    ///
-    /// ## Errors
-    /// Fails if serialization fails
-    fn encode(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> { rmp_serde::to_vec(&self) }
-
-    /// Attempts to decode the value
-    ///
-    /// ## Errors
-    /// Fails if deserialization fails
-    fn decode<'de>(value: &'de [u8]) -> Result<Self, rmp_serde::decode::Error>
-    where
-        Self: Deserialize<'de>, {
-        rmp_serde::from_slice(value)
-    }
-}
-
-pub type GuardianEncryptedShares = Vec<GuardianEncryptedShare>;
 /// The representation of an encrypted tally of all contests in an election.
 pub type ElectionEncryptedTally = BTreeMap<ContestIndex, Vec<Ciphertext>>;
 /// The representation of a guardians decryption shares of the tally, i.e. one
@@ -44,9 +18,18 @@ pub type GuardianDecryptionShares = BTreeMap<ContestIndex, Vec<DecryptionShareRe
 pub type GuardianDecryptionProofResponseShares =
     BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>;
 
-impl ByteConvert for GuardianPublicKey {}
-impl ByteConvert for BallotEncrypted {}
-impl ByteConvert for GuardianEncryptedShares {}
-impl ByteConvert for ElectionEncryptedTally {}
-impl ByteConvert for GuardianDecryptionShares {}
-impl ByteConvert for GuardianDecryptionProofResponseShares {}
+/// Encodes the value.
+///
+/// ## Errors
+/// Fails if serialization fails
+pub fn encode<T: Serialize + Sized>(value: &T) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(value)
+}
+
+/// Decodes the value
+///
+/// ## Errors
+/// Fails if deserialization fails
+pub fn decode<'de, T: Deserialize<'de>>(value: &'de [u8]) -> Result<T, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(value)
+}

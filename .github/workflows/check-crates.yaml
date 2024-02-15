@@ -14,6 +14,9 @@ env:
   RUST_FMT: nightly-2023-04-01
   RUST_VERSION: "1.70"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
+  # The following environment variables need to be set for build to succeed.
+  CCD_ELECTION_NODE: ""
+  CCD_ELECTION_CONTRACT_ADDRESS: ""
 
 jobs:
   clippy:
