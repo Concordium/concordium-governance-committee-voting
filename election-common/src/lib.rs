@@ -1,7 +1,9 @@
 use eg::{
     election_manifest::ContestIndex,
     joint_election_public_key::Ciphertext,
-    verifiable_decryption::{DecryptionProofResponseShare, DecryptionShareResult},
+    verifiable_decryption::{
+        DecryptionProofResponseShare, DecryptionProofStateShare, DecryptionShareResult,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -12,6 +14,11 @@ pub type ElectionEncryptedTally = BTreeMap<ContestIndex, Vec<Ciphertext>>;
 /// [`DecryptionShareResult`] per [`Ciphertext`] included in the
 /// [`ElectionEncryptedTally`]
 pub type GuardianDecryptionShares = BTreeMap<ContestIndex, Vec<DecryptionShareResult>>;
+/// The representation of the secret states for the commitment shares
+/// corresponding to a list of [`eg::verifiable_decryption::DecryptionProof`]s
+/// for a guardian
+pub type GuardianDecryptionProofStateShares =
+    BTreeMap<ContestIndex, Vec<DecryptionProofStateShare>>;
 /// The representation of a guardians response shares for the cummulative
 /// election decryption, i.e. one [`DecryptionProofResponseShare`] per
 /// [`Ciphertext`] included in the [`ElectionEncryptedTally`]

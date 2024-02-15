@@ -14,23 +14,30 @@ use concordium_rust_sdk::{
     v2::{self, BlockIdentifier, Client, Endpoint, QueryError},
 };
 use eg::{
-    election_manifest::{ContestIndex, ElectionManifest},
+    election_manifest::ElectionManifest,
     election_parameters::ElectionParameters,
+    election_record::PreVotingData,
     fixed_parameters::FixedParameters,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
     guardian_secret_key::GuardianSecretKey,
     guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare},
+    joint_election_public_key::Ciphertext,
     verifiable_decryption::{
-        DecryptionProof, DecryptionProofStateShare, DecryptionShare, DecryptionShareResult,
+        CombinedDecryptionShare, DecryptionProof, DecryptionProofStateShare, DecryptionShare,
+        DecryptionShareResult,
     },
 };
-use election_common::{decode, encode, ElectionEncryptedTally, GuardianDecryptionShares};
+use election_common::{
+    decode, encode, ElectionEncryptedTally, GuardianDecryptionProofResponseShares,
+    GuardianDecryptionProofStateShares, GuardianDecryptionShares,
+};
+use itertools::{EitherOrBoth, Itertools};
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -193,6 +200,21 @@ struct ContractData {
     guardians:       contract::GuardiansState,
     /// The encrypted tally registered in the contract
     encrypted_tally: Option<ElectionEncryptedTally>,
+}
+
+impl ContractData {
+    fn guardian_public_keys(&self) -> anyhow::Result<Vec<GuardianPublicKey>> {
+        self.guardians
+            .iter()
+            .filter_map(|(acc, g)| {
+                g.public_key.as_ref().map(|public_key| {
+                    decode(public_key).with_context(|| {
+                        format!("Failed to decode public key for guardian with account {acc}")
+                    })
+                })
+            })
+            .collect()
+    }
 }
 
 /// The state read from the election contract
@@ -1076,10 +1098,7 @@ fn generate_decryption_shares(
     fixed_parameters: &FixedParameters,
     encrypted_tally: &ElectionEncryptedTally,
     secret_share: GuardianSecretKeyShare,
-) -> (
-    GuardianDecryptionShares,
-    BTreeMap<ContestIndex, Vec<DecryptionProofStateShare>>,
-) {
+) -> (GuardianDecryptionShares, GuardianDecryptionProofStateShares) {
     let mut election_decryptions = BTreeMap::new();
     let mut election_secret_states = BTreeMap::new();
     let mut rng = Csprng::new(&thread_rng().gen::<[u8; 32]>());
@@ -1181,6 +1200,289 @@ async fn register_decryption_shares_flow(
     }
 }
 
+/// The output from [`generate_decryption_proof_response_shares`]
+struct GenerateDecryptionProofsOutput {
+    /// The list of accounts used in the decryption
+    whitelist:       Vec<AccountAddress>,
+    /// The proposed list of accounts to blacklist in a finalization phase re-run
+    blacklist:       Vec<AccountAddress>,
+    /// The proofs of correct decryption of all ciphertexts in the election
+    election_proofs: GuardianDecryptionProofResponseShares,
+}
+
+async fn generate_decryption_proof_response_shares(
+    app_config: &mut AppConfig,
+    contract_data: &ContractData,
+    secret_states: &GuardianDecryptionProofStateShares,
+    secret_key_share: &GuardianSecretKeyShare,
+) -> Result<GenerateDecryptionProofsOutput, Error> {
+    let ElectionGuardConfig {
+        manifest,
+        parameters,
+    } = app_config.election_guard().await?;
+    let context = PreVotingData::compute(
+        manifest.clone(),
+        parameters.clone(),
+        &contract_data.guardian_public_keys()?,
+    )
+    .context("Failed to compute election guard context")?;
+    let encrypted_tally = contract_data
+        .encrypted_tally
+        .as_ref()
+        .context("Could not find encrypted tally in app state")?;
+
+    /// The decryption data corresponding to a single [`Ciphertext`]
+    struct ContestEntry<'a> {
+        /// The ciphertext
+        ciphertext:      &'a Ciphertext,
+        /// The secret state for the commitment share for active guardian
+        secret_state:    &'a DecryptionProofStateShare,
+        /// A map of guardians and their decryption share for the ciphertext
+        guardian_shares: BTreeMap<AccountAddress, &'a DecryptionShareResult>,
+    }
+
+    impl<'a> ContestEntry<'a> {
+        /// Insert a decryption share into the contest entry
+        fn insert_share(&mut self, account: AccountAddress, share: &'a DecryptionShareResult) {
+            self.guardian_shares.insert(account, share);
+        }
+
+        /// Gets the shares for the contest entry, filtering out any shares
+        /// registered by any [`AccountAddress`] from the `blacklist`
+        fn get_shares_excluding(
+            &self,
+            blacklist: &HashSet<AccountAddress>,
+        ) -> Vec<&DecryptionShareResult> {
+            self.guardian_shares
+                .iter()
+                .filter_map(|(account, &share)| {
+                    if blacklist.contains(account) {
+                        None
+                    } else {
+                        Some(share)
+                    }
+                })
+                .collect()
+        }
+
+        fn get_guardians_excluding(
+            &self,
+            blacklist: &HashSet<AccountAddress>,
+        ) -> Vec<AccountAddress> {
+            self.guardian_shares
+                .keys()
+                .cloned()
+                .filter(|account| !blacklist.contains(account))
+                .collect()
+        }
+    }
+
+    impl<'a> From<(&'a Ciphertext, &'a DecryptionProofStateShare)> for ContestEntry<'a> {
+        fn from(
+            (ciphertext, secret_state): (&'a Ciphertext, &'a DecryptionProofStateShare),
+        ) -> Self {
+            Self {
+                ciphertext,
+                secret_state,
+                guardian_shares: BTreeMap::new(),
+            }
+        }
+    }
+
+    // A map of ciphertexts paired with associated secret state + guardian shares
+    // for each contest in the election
+    let mut election_data: BTreeMap<_, _> = encrypted_tally
+        .iter()
+        .merge_join_by(secret_states, |(a, _), (b, _)| a.cmp(b))
+        .map(|joined_value| match joined_value {
+            EitherOrBoth::Both((contest_index, ciphertexts), (_, secret_states))
+                if ciphertexts.len() == secret_states.len() =>
+            {
+                anyhow::Ok((
+                    *contest_index,
+                    ciphertexts
+                        .iter()
+                        .zip(secret_states)
+                        .map(ContestEntry::from)
+                        .collect_vec(),
+                ))
+            }
+            _ => Err(anyhow!("Mismatch between ciphertexts and secret states")),
+        })
+        .try_collect()?;
+
+    // A blacklist containing accounts for which invalid decryption shares has been
+    // detected
+    let mut blacklist = HashSet::new();
+    // Find all decryption shares for all guardians. If the shares registered by a
+    // specific guardian cannot be decoded or does not match the structure of the
+    // tally, blacklist the guardian.
+    let election_shares = contract_data
+        .guardians
+        .iter()
+        .filter_map(|(account, guardian_state)| {
+            let bytes = guardian_state.decryption_share.as_ref()?;
+            let Ok(shares) = decode::<GuardianDecryptionShares>(bytes) else {
+                blacklist.insert(*account);
+                return None;
+            };
+            Some((account, shares))
+        })
+        .collect_vec();
+
+    // Map the decryption shares for each guardian into the election data. The
+    // guardian will be blacklisted if:
+    //
+    // - Any contest found in the preliminary election data cannot be found in the
+    //   decryption
+    // shares for the guardian
+    // - If the amount of decryption shares registered by the guardian for a contest
+    //   does not match
+    // the amount of decryptions expected
+    for (contest_index, contest_data) in election_data.iter_mut() {
+        let contest_len = contest_data.len();
+        for (i, entry) in contest_data.iter_mut().enumerate() {
+            for (&account, shares) in &election_shares {
+                match shares.get(contest_index) {
+                    Some(shares) if shares.len() == contest_len => {
+                        entry.insert_share(account, &shares[i])
+                    }
+                    _ => {
+                        blacklist.insert(account);
+                    }
+                }
+            }
+        }
+    }
+
+    // Compute the whitelist
+    let whitelist: HashSet<_> = election_data
+        .iter()
+        .take(1)
+        .flat_map(|(_, entries)| {
+            entries
+                .iter()
+                .take(1)
+                .flat_map(|entry| entry.get_guardians_excluding(&blacklist))
+                .collect_vec()
+        })
+        .collect();
+
+    // Run through the election data and construct proofs of correct decryption for
+    // all combined decryptions of each ciphertext in the encrypted tally
+    let election_proofs: BTreeMap<_, _> = election_data
+        .into_iter()
+        .map(|(contest_index, contest_data)| {
+            let contest_proofs: Vec<_> = contest_data
+                .into_iter()
+                .map(|contest_entry| {
+                    let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = contest_entry
+                        .get_shares_excluding(&blacklist)
+                        .iter()
+                        .map(|share| (share.proof_commit.clone(), &share.share))
+                        .unzip();
+
+                    // TODO: is it possible to validate anything at this point?
+                    let combined_decryption = CombinedDecryptionShare::combine(
+                        &parameters,
+                        decryption_shares.into_iter(),
+                    )
+                    .context("Failed to combine shares")?;
+                    let proof = DecryptionProof::generate_response_share(
+                        &parameters.fixed_parameters,
+                        &context.hashes_ext,
+                        &context.public_key,
+                        contest_entry.ciphertext,
+                        &combined_decryption,
+                        &commit_shares,
+                        contest_entry.secret_state,
+                        secret_key_share,
+                    )
+                    .context("Failed to compute response share")?;
+                    anyhow::Ok(proof)
+                })
+                .try_collect()?;
+
+            anyhow::Ok((contest_index, contest_proofs))
+        })
+        .try_collect()?;
+
+    let response = GenerateDecryptionProofsOutput {
+        blacklist: blacklist.into_iter().collect(),
+        whitelist: whitelist.into_iter().collect(),
+        election_proofs,
+    };
+    Ok(response)
+}
+
+#[tauri::command]
+async fn register_decryption_proof_response_shares_flow(
+    channel_id: String,
+    active_guardian: State<'_, ActiveGuardianState>,
+    app_config: State<'_, AppConfigState>,
+    contract_data: State<'_, ContractDataState>,
+    app_handle: AppHandle,
+    window: Window,
+) -> Result<(), Error> {
+    let cancel = handle_abort(&channel_id, &window);
+    let interaction = async {
+        let mut app_config = app_config.0.lock().await;
+        let contract_data = contract_data.0.lock().await;
+
+        let active_guardian = active_guardian.0.lock().await;
+        let active_guardian = active_guardian
+            .as_ref()
+            .context("Expected guardian account to be available in app state")?;
+        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
+
+        let response_shares = {
+            let secret_key_share = read_encrypted_file(
+                &active_guardian.password,
+                &guardian_data_dir.join(SECRET_SHARE_FILE),
+            )?;
+            let secret_states = read_encrypted_file(
+                &active_guardian.password,
+                &guardian_data_dir.join(DECRYPTION_SECRET_STATES),
+            )?;
+            generate_decryption_proof_response_shares(
+                &mut app_config,
+                &contract_data,
+                &secret_states,
+                &secret_key_share,
+            )
+            .await?
+        }
+        .election_proofs; // TODO: adapt contract to receive blacklist and whitelist as well.
+
+        let mut contract = app_config.connection().await?.contract;
+        let contract_update = contract
+            .dry_run_update::<Vec<u8>, Error>(
+                "postDecryptionShare",
+                Amount::zero(),
+                active_guardian.guardian.account,
+                &encode(&response_shares).context("Failed to serialize decryption shares")?,
+            )
+            .await?;
+        let ccd_cost = energy_to_ccd(contract_update.current_energy(), &mut app_config).await?;
+
+        // Wait for response from the user through the frontend
+        wait_for_approval(&channel_id, &window, &ccd_cost).await?;
+
+        contract_update
+            .send(&active_guardian.guardian.keys)
+            .await?
+            .wait_for_finalization()
+            .await?;
+
+        Ok(())
+    };
+
+    tokio::select! {
+        error = cancel => Err(error),
+        res = interaction => res
+    }
+}
+
 /// The data needed by the frontend, representing the current state of a
 /// guardian as registered in the election contract
 #[derive(serde::Serialize)]
@@ -1218,7 +1520,7 @@ async fn refresh_guardians(
     contract_data: State<'_, ContractDataState>,
 ) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, Error> {
     let mut contract = app_config.0.lock().await.connection().await?.contract;
-    let guardians_state_contract = contract
+    let guardians_state = contract
         .view::<_, contract::GuardiansState, Error>(
             "viewGuardiansState",
             &(),
@@ -1226,13 +1528,13 @@ async fn refresh_guardians(
         )
         .await?;
 
-    let response: Vec<_> = guardians_state_contract
+    let response: Vec<_> = guardians_state
         .iter()
         .map(|(account, guardian_state)| (*account, GuardianStateResponse::from(guardian_state)))
         .collect();
 
     let mut contract_state = contract_data.0.lock().await;
-    contract_state.guardians = guardians_state_contract;
+    contract_state.guardians = guardians_state;
 
     Ok(response)
 }
@@ -1300,6 +1602,7 @@ fn main() {
             generate_secret_share_flow,
             has_encrypted_tally,
             register_decryption_shares_flow,
+            register_decryption_proof_response_shares_flow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
