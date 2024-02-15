@@ -1,0 +1,28 @@
+.main-layout {
+    position: relative;
+    height: 100%;
+
+    &__back {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        display: block;
+        border: none;
+        background-color: $gray-300;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        transition: background-color 0.1s linear;
+
+        &:hover {
+            background-color: $gray-400;
+        }
+
+        svg {
+            fill: $gray-800 !important;
+            transform: rotate(180deg);
+            position: relative;
+            left: -2px;
+        }
+    }
+}

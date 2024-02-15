@@ -1,0 +1,24 @@
+.app-configuration {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 10px;
+    font-size: 12px;
+
+    &__status {
+        display: inline-block;
+        height: 8px;
+        width: 8px;
+        background-color: $gray-500;
+        border-radius: 50%;
+        margin-right: 5px;
+
+        &--connected {
+            background-color: $success;
+        }
+
+        &--error {
+            background-color: $danger;
+        }
+    }
+}

@@ -3,16 +3,16 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
 
-import { registerVotes } from '@shared/election-contract';
+import { registerVotes } from '~/shared/election-contract';
 import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
     electionConfigAtom,
     connectionViewAtom,
     activeWalletAtom,
-} from '@shared/store';
-import { ElectionOpenState, EligibleStatus, useCanVote, useIsElectionOpen } from '@shared/hooks';
-import { useElectionGuard } from '@shared/election-guard';
+} from '~/shared/store';
+import { ElectionOpenState, EligibleStatus, useCanVote, useIsElectionOpen } from '~/shared/hooks';
+import { useElectionGuard } from '~/shared/election-guard';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;

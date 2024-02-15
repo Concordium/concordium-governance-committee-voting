@@ -33,13 +33,20 @@ module.exports = {
             },
         ],
         '@typescript-eslint/consistent-type-definitions': 0,
+        'jsx-a11y/no-autofocus': 0,
     },
     parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
         sourceType: 'module',
         tsconfigRootDir: __dirname,
-        project: ['./voting/tsconfig.json', './voting/tsconfig.node.json'],
+        project: [
+            './voting/tsconfig.json',
+            './voting/tsconfig.node.json',
+            './guardian/tsconfig.json',
+            './guardian/tsconfig.node.json',
+            './shared/tsconfig.json',
+        ],
     },
     settings: {
         react: {
@@ -47,10 +54,10 @@ module.exports = {
         },
         'import/resolver': {
             typescript: {
-                project: ['./voting/tsconfig.json'],
+                project: ['./voting/tsconfig.json', './guardian/tsconfig.json', './shared/tsconfig.json'],
             },
             node: {
-                project: ['./voting/tsconfig.json'],
+                project: ['./voting/tsconfig.json', './guardian/tsconfig.json', './shared/tsconfig.json'],
             },
         },
     },

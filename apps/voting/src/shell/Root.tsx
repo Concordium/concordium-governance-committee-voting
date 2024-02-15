@@ -1,7 +1,7 @@
-import { WalletConnectionManager } from '@shared/wallet-connection';
+import { WalletConnectionManager } from '~/shared/wallet-connection';
 import App from './App';
 import { Provider, createStore, useAtomValue } from 'jotai';
-import { electionConfigAtom } from '@shared/store';
+import { electionConfigAtom } from '~/shared/store';
 
 const store = createStore();
 

@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-rust-sdk"
-version = "4.0.0"
+version = "4.1.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-smart-contract-testing"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "concordium-rust-sdk",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.0"
+version = "9.0.2"
 dependencies = [
  "concordium-contracts-common",
  "wee_alloc",
@@ -700,6 +700,7 @@ dependencies = [
  "chrono",
  "concordium-smart-contract-testing",
  "concordium-std",
+ "serde",
 ]
 
 [[package]]

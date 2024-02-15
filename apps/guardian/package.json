@@ -1,0 +1,46 @@
+{
+    "name": "guardian",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "tauri": "tauri",
+        "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "lint-fix": "yarn lint --fix",
+        "prettier": "prettier . --ignore-path ../.gitignore --ignore-path ../.prettierignore --ignore-path .gitignore",
+        "fmt": "yarn prettier --write",
+        "fmt-check": "yarn prettier --check"
+    },
+    "dependencies": {
+        "@concordium/web-sdk": "^7.1.0",
+        "@tauri-apps/api": "^1.5.2",
+        "buffer": "^6.0.3",
+        "ccd-bootstrap": "workspace:^",
+        "clsx": "^2.1.0",
+        "jotai": "^2.5.1",
+        "jotai-effect": "^0.2.3",
+        "react": "^18.2.0",
+        "react-bootstrap": "^2.9.2",
+        "react-dom": "^18.2.0",
+        "react-hook-form": "^7.49.3",
+        "react-router-dom": "^6.21.1",
+        "shared": "workspace:^"
+    },
+    "devDependencies": {
+        "@simbathesailor/use-what-changed": "^2.0.0",
+        "@tauri-apps/cli": "^1.5.8",
+        "@types/eslint": "^8",
+        "@types/react": "^18.2.15",
+        "@types/react-dom": "^18.2.7",
+        "@vitejs/plugin-react": "^4.2.1",
+        "eslint": "^8.56.0",
+        "prettier": "^3.1.1",
+        "typescript": "^5.0.2",
+        "vite": "^5.0.11",
+        "vite-plugin-svgr": "^4.2.0",
+        "vite-tsconfig-paths": "^4.2.3"
+    }
+}

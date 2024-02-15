@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
 
 env:
-  DUMMY: 0 # For cache busting.
+  DUMMY: 1 # For cache busting.
   NODE_VERSION: "18.16.0"
-  RUST_VERSION: "1.67"
+  RUST_VERSION: "1.70"
   RUST_FMT: nightly-2023-04-01-x86_64-unknown-linux-gnu
   CARGO_CONCORDIUM_VERSION: "3.0.0"
   CCD_ELECTION_CONTRACT_ADDRESS: <0,0> # Otherwise build will fail
@@ -47,6 +47,7 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn-${{ hashFiles('./apps/yarn.lock') }}-${{ env.DUMMY }}
           restore-keys: |
             ${{ runner.os }}-yarn
@@ -75,7 +76,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ./apps/voting/src/__generated__/election-contract
+            ./apps/shared/__generated__/election-contract
           key: ${{ runner.os }}-election-contract-${{ hashFiles('./contracts/concordium-governance-committee-election/src/lib.rs') }}-${{ env.DUMMY }}
           restore-keys: |
             ${{ runner.os }}-election-contract
@@ -102,15 +103,16 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Generate contract client
         if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
-        working-directory: ./apps/voting
+        working-directory: ./apps/shared
         run: |
           rustup default ${{ env.RUST_VERSION }}
           rustup target install wasm32-unknown-unknown
-          yarn build-election-contract && yarn generate-contract-client
+          yarn generate-contract-client
 
   check:
     if: github.event.pull_request.draft == false
@@ -136,13 +138,14 @@ jobs:
           path: |
             ./apps/node_modules
             ./apps/voting/node_modules
+            ./apps/guardian/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Restore generated contract client
         uses: actions/cache/restore@v3
         with:
           path: |
-            ./apps/voting/src/__generated__/election-contract
+            ./apps/shared/__generated__/election-contract
           key: ${{ runner.os }}-election-contract
 
       - name: Build
