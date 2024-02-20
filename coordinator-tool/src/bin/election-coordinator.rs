@@ -362,7 +362,12 @@ async fn handle_final_weights(
             let BlockItemSummaryDetails::AccountTransaction(atx) = tx.details else {
                 continue; // Ignore non-account transactions
             };
-            let AccountTransactionEffects::AccountTransferWithMemo { amount: _, to, memo } = atx.effects else {
+            let AccountTransactionEffects::AccountTransferWithMemo {
+                amount: _,
+                to,
+                memo,
+            } = atx.effects
+            else {
                 continue; // Only consider transfers with memo.
             };
             let Ok(value) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
@@ -469,6 +474,8 @@ async fn handle_decrypt(
 
     guardians_state.sort_by_key(|g| g.1.index);
 
+    let mut whitelist: Option<Vec<AccountAddress>> = None;
+    let mut blacklist: Option<Vec<AccountAddress>> = None;
     for (guardian_address, guardian_state) in guardians_state {
         if let (Some(share), Some(proof)) = (
             guardian_state.decryption_share,
@@ -478,7 +485,32 @@ async fn handle_decrypt(
                 eprintln!("The decryption share registered by {guardian_address} is not readable.");
                 continue;
             };
-            let Ok(proof) = decode::<GuardianDecryptionProofResponseShares>(&proof) else {
+            // Ensure that the same whitelist and blacklist has been used by all guardians
+            if let Some(whitelist) = &whitelist {
+                anyhow::ensure!(
+                    whitelist.len() == proof.whitelist.len()
+                        && proof.whitelist.iter().all(|item| whitelist.contains(item)),
+                    "Disagreement on whitelisted guardian accounts"
+                );
+            } else {
+                whitelist = Some(proof.whitelist)
+            }
+            if let Some(blacklist) = &blacklist {
+                anyhow::ensure!(
+                    blacklist.len() == proof.blacklist.len()
+                        && proof.blacklist.iter().all(|item| blacklist.contains(item)),
+                    "Disagreement on blacklisted guardian accounts"
+                );
+            } else {
+                blacklist = Some(proof.blacklist)
+            }
+            // TODO: the registration of the response shares decoded below is now
+            // accompanied by a whitelist and blacklist of guardian accounts. I
+            // would not think we need to use this here, but rather take this
+            // into account when deciding which guardians should be
+            // excluded from a re-run
+            let Ok(proof) = decode::<GuardianDecryptionProofResponseShares>(&proof.election_proofs)
+            else {
                 eprintln!("The decryption proof response share registered by {guardian_address} is not readable.");
                 continue;
             };
@@ -510,7 +542,9 @@ async fn handle_decrypt(
                         anyhow::bail!("Missing decryption share for contest {contest}");
                     };
                     let Some(share) = decryption_share.get(i) else {
-                        anyhow::bail!("Missing decryption share for contest {contest} and option {i}");
+                        anyhow::bail!(
+                            "Missing decryption share for contest {contest} and option {i}"
+                        );
                     };
                     decryption_shares_for_option.push(share);
                 }
@@ -770,7 +804,9 @@ async fn handle_tally(
         } in txs
         {
             let param = execution_tree.parameter();
-            let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref()) else {
+            let Ok(param) =
+                concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref())
+            else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };
@@ -973,8 +1009,8 @@ async fn handle_initial_weights(
     );
     for (balances, address) in account_balances.into_iter().zip(account_addresses) {
         let Some((&first, rest)) = balances.split_first() else {
-                    anyhow::bail!("A bug, there should always be at least one reading.");
-                };
+            anyhow::bail!("A bug, there should always be at least one reading.");
+        };
         let mut last_time = first.0;
         let mut weighted_sum = u128::from(first.1.micro_ccd);
         let mut last_balance = weighted_sum;
