@@ -67,18 +67,6 @@ pub enum GuardianStatus {
     VerificationSuccessful,
 }
 
-/// A collection of proofs for correct decryption of each decryption share
-#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
-pub struct DecryptionProofs {
-    /// The proposed list of accounts to blacklist in a re-run of the finalization phase.
-    pub blacklist: Vec<AccountAddress>,
-    /// The list of guardians from which the decryption shares were used.
-    pub whitelist: Vec<AccountAddress>,
-    /// The msgpack serialization of the proof of correct decryption, which is of type
-    /// `BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>`
-    pub election_proofs: Vec<u8>,
-}
-
 /// State associated with each guardian.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct GuardianState {
@@ -92,7 +80,7 @@ pub struct GuardianState {
     /// commitment share of a single guardian for a `DecryptionProof`.
     pub decryption_share:       Option<Vec<u8>>,
     /// The response share of a single guardian for a `DecryptionProof`.
-    pub decryption_share_proof: Option<DecryptionProofs>,
+    pub decryption_share_proof: Option<Vec<u8>>,
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
     pub status:                 Option<GuardianStatus>,
@@ -416,12 +404,13 @@ fn post_decryption_share(ctx: &ReceiveContext, host: &mut Host<State>) -> Result
     Ok(())
 }
 
-
 /// Entrypoint for registering the proof that the decryption share is correct.
+/// The parameter is meant to be Msgpack serialization of the
+/// `DecryptionProofResponseShare` type of electionguard.
 #[receive(
     contract = "election",
     name = "postDecryptionProofResponseShare",
-    parameter = "DecryptionProofs",
+    parameter = "Vec<u8>",
     error = "Error",
     mutable
 )]
@@ -429,17 +418,13 @@ fn post_decryption_proof_response_share(
     ctx: &ReceiveContext,
     host: &mut Host<State>,
 ) -> Result<(), Error> {
-    let guardian_accounts: Vec<_> = host.state().guardians.iter().map(|(account, _)| *account).collect();
     let mut guardian_state = validate_guardian_context(ctx, host, false)?;
     ensure!(
         guardian_state.decryption_share_proof.is_none(),
         Error::DuplicateEntry
     );
 
-    let parameter: DecryptionProofs = ctx.parameter_cursor().get()?;
-    ensure!(parameter.blacklist.iter().all(|bl_item| guardian_accounts.contains(bl_item)), Error::Malformed);
-    ensure!(parameter.whitelist.iter().all(|bl_item| guardian_accounts.contains(bl_item)), Error::Malformed);
-
+    let parameter: Vec<u8> = ctx.parameter_cursor().get()?;
     guardian_state.decryption_share_proof = Some(parameter);
     Ok(())
 }

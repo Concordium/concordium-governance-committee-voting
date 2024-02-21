@@ -491,10 +491,7 @@ async fn main() -> anyhow::Result<()> {
                     .context("Guardian share not registered.")?;
                 let mut shares = decode::<Vec<GuardianEncryptedShare>>(share)
                     .context("Unable to parse key shares.")?;
-                let Ok(i) = shares.binary_search_by_key(
-                    &GuardianIndex::from_one_based_index(g_i as u32)?,
-                    |x: &GuardianEncryptedShare| x.recipient,
-                ) else {
+                let Ok(i) = shares.binary_search_by_key(&GuardianIndex::from_one_based_index(g_i as u32)?, |x: &GuardianEncryptedShare| x.recipient) else {
                     anyhow::bail!("Could not find guardian's encrypted share.");
                 };
                 let share = shares.swap_remove(i);
@@ -784,21 +781,13 @@ async fn main() -> anyhow::Result<()> {
             // Publish response shares
 
             let shares = encode(&response_shares)?;
-            let decryption_proofs = contract::DecryptionProofs {
-                election_proofs: shares,
-                blacklist:       Vec::new(),
-                whitelist:       guardians_state
-                    .iter()
-                    .map(|(account, _)| *account)
-                    .collect(),
-            };
 
             let dry_run_result = contract_client
                 .dry_run_update::<_, ViewError>(
                     "postDecryptionProofResponseShare",
                     Amount::zero(),
                     guardian_wallet.address,
-                    &decryption_proofs,
+                    &shares,
                 )
                 .await?;
 
