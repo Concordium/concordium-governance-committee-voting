@@ -13,7 +13,7 @@ import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-con
 import { atomEffect } from 'jotai-effect';
 import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 import { ResourceVerificationError, getChecksumResource } from 'shared/util';
-import { ChecksumUrl, EligibleVoters, GuardianPublicKey } from 'shared/types';
+import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 
 import { getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
@@ -72,8 +72,6 @@ export interface ElectionConfig {
     manifest: ElectionManifest;
     /** The election parameters, used by election guard */
     parameters: ElectionParameters;
-    /** The eligible voters for the election */
-    voters: EligibleVoters;
     /** The registered public keys of the election guardians */
     guardianKeys: GuardianPublicKey[];
 }
@@ -121,13 +119,11 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
 
         const electionManifestPromise = getChecksumResource<ElectionManifest>(config.election_manifest);
         const electionParametersPromise = getChecksumResource<ElectionParameters>(config.election_parameters);
-        const eligibleVotersPromise = getChecksumResource<EligibleVoters>(config.eligible_voters);
         const candidatePromises = config.candidates.map(getCandidate);
 
-        const [manifest, parameters, voters, ...candidates] = await Promise.all([
+        const [manifest, parameters, ...candidates] = await Promise.all([
             electionManifestPromise,
             electionParametersPromise,
-            eligibleVotersPromise,
             ...candidatePromises,
         ]);
 
@@ -138,7 +134,6 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             description: config.election_description,
             manifest,
             parameters,
-            voters,
             guardianKeys: config.guardian_keys,
         };
 

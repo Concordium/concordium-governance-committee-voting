@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import Button from '~/shared/Button';
 import { Link } from 'react-router-dom';
 import { routes } from '~/shell/router';
+import { DecryptionActions } from './DecryptionActions';
 
 const Dots = () => <div className="actions__header-dots">• • • • •</div>;
 
@@ -47,7 +48,7 @@ export default function Actions() {
                 {electionStep.phase === ElectionPhase.Voting && (
                     <h1 className="text-muted">Waiting for voting to conclude...</h1>
                 )}
-                {electionStep.phase === ElectionPhase.Voting && <>Finalization phase...</>}
+                {electionStep.phase === ElectionPhase.Tally && <DecryptionActions />}
             </div>
         </>
     );

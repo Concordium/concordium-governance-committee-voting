@@ -25,6 +25,8 @@ export const enum BackendErrorType {
     QueryFailed = 'QueryFailed',
     /** Interaction with backend aborted by the user */
     AbortInteraction = 'AbortInteraction',
+    /** Internal error when something unexpected happens */
+    Internal = 'Internal',
 }
 
 type BackendErrorJSON = { type: BackendErrorType; message: string };
@@ -120,6 +122,8 @@ export type ElectionConfig = {
     electionEnd: Date;
     /** The election description */
     electionDescription: string;
+    /** Whether the encrypted tally has been registered in the contract */
+    hasEncryptedTally: boolean;
 };
 
 /**
@@ -162,6 +166,10 @@ export type GuardianState = {
      * has been registered yet.
      */
     status: GuardianStatus | null;
+    /** Whether the guardian has registered their share of the decryption. */
+    hasDecryptionShare: boolean;
+    /** Whether the guardian has registered proof of correct decryption. */
+    hasDecryptionProof: boolean;
 };
 
 /**
@@ -184,6 +192,18 @@ export async function refreshGuardians(): Promise<[AccountAddress.Type, Guardian
         state,
     ]);
     return mapped;
+}
+
+/**
+ * Refresh the the encrypted tally, returning whether the tally was found in the contract.
+ *
+ * @returns A boolean signalling whether the encrypted tally was found.
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
+ * - `BackendErrorType.NetworkError` if an error happened while querying the contract for the guardian information
+ * - `BackendErrorType.Internal` if the tally registered in the contract could not be deserialized
+ */
+export async function refreshEncryptedTally(): Promise<boolean> {
+    return invokeWrapped<boolean>('refresh_encrypted_tally');
 }
 
 /**

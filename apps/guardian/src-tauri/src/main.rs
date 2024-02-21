@@ -304,7 +304,7 @@ impl ConnectionConfig {
             endpoint
         };
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
-        let node = Client::new(endpoint).await?;
+        let node = Client::new(endpoint).await?; // TODO: figure out why SSL doesn't work...
         let contract = ElectionClient::create(node, contract_address).await?;
 
         let http = reqwest::Client::builder()
@@ -1063,40 +1063,6 @@ async fn generate_secret_share_flow(
     }
 }
 
-/// Attempts to read the encrypted tally from the election contract into the
-/// application state, returning whether it exists or not.
-///
-/// ## Errors
-/// - [`Error::NetworkError`] if contract query fails
-/// - [`Error::Internal`] if [`ElectionEncryptedTally`] could not be parsed from
-///   the registered value
-#[tauri::command]
-async fn has_encrypted_tally(
-    app_config: State<'_, AppConfigState>,
-    contract_data: State<'_, ContractDataState>,
-) -> Result<bool, Error> {
-    let mut contract = app_config.0.lock().await.connection().await?.contract;
-    let encrypted_tally = contract
-        .view::<(), Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
-        .await?;
-    let encrypted_tally = encrypted_tally
-        .map(|tally| {
-            // FIXME: this is likely not good enough for error handling
-            decode::<ElectionEncryptedTally>(&tally).context("Failed to parse the encrypted tally")
-        })
-        .transpose()?;
-
-    let has_encrypted_tally = if encrypted_tally.is_some() {
-        let mut contract_state = contract_data.0.lock().await;
-        contract_state.encrypted_tally = encrypted_tally;
-        true
-    } else {
-        false
-    };
-
-    Ok(has_encrypted_tally)
-}
-
 /// Generate the decryption shares and the proof commitment shares corresponding
 /// to each ciphertext in the encrypted tally
 fn generate_decryption_shares(
@@ -1243,23 +1209,11 @@ async fn generate_decryption_proof_response_shares(
     /// The decryption data corresponding to a single [`Ciphertext`]
     struct ContestEntry<'a> {
         /// The ciphertext
-        ciphertext:      &'a Ciphertext,
+        ciphertext:        &'a Ciphertext,
         /// The secret state for the commitment share for active guardian
-        secret_state:    &'a DecryptionProofStateShare,
+        secret_state:      &'a DecryptionProofStateShare,
         /// A map of guardians and their decryption share for the ciphertext
-        guardian_shares: Vec<&'a DecryptionShareResult>,
-    }
-
-    impl<'a> From<(&'a Ciphertext, &'a DecryptionProofStateShare)> for ContestEntry<'a> {
-        fn from(
-            (ciphertext, secret_state): (&'a Ciphertext, &'a DecryptionProofStateShare),
-        ) -> Self {
-            Self {
-                ciphertext,
-                secret_state,
-                guardian_shares: Vec::new(),
-            }
-        }
+        decryption_shares: Vec<&'a DecryptionShareResult>,
     }
 
     // Generate the decryption proof for a single contest entry. An error is
@@ -1269,7 +1223,7 @@ async fn generate_decryption_proof_response_shares(
     // - Decryption proof cannot be generated for some ciphertext
     let generate_decryption_proof = |contest_entry: &ContestEntry| -> Result<_, Error> {
         let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = contest_entry
-            .guardian_shares
+            .decryption_shares
             .iter()
             .map(|share| (share.proof_commit.clone(), &share.share))
             .unzip();
@@ -1298,28 +1252,6 @@ async fn generate_decryption_proof_response_shares(
         Ok(proof)
     };
 
-    // A map of ciphertexts paired with associated secret state + guardian shares
-    // for each contest in the election
-    let mut election_data: BTreeMap<_, _> = encrypted_tally
-        .iter()
-        .merge_join_by(secret_states, |(a, _), (b, _)| a.cmp(b))
-        .map(|joined_value| match joined_value {
-            EitherOrBoth::Both((contest_index, ciphertexts), (_, secret_states))
-                if ciphertexts.len() == secret_states.len() =>
-            {
-                anyhow::Ok((
-                    *contest_index,
-                    ciphertexts
-                        .iter()
-                        .zip(secret_states)
-                        .map(ContestEntry::from)
-                        .collect_vec(),
-                ))
-            }
-            _ => Err(anyhow!("Mismatch between ciphertexts and secret states")),
-        })
-        .try_collect()?;
-
     // Find all decryption shares for all guardians. If the shares registered by a
     // specific guardian cannot be decoded, return `Error::DecryptionShareError`.
     let election_shares: Vec<_> = contract_data
@@ -1340,32 +1272,59 @@ async fn generate_decryption_proof_response_shares(
         })
         .try_collect()?;
 
-    // Map the decryption shares for each guardian into the election data. An error
-    // is returned if:
-    //
-    // - Any contest found in the preliminary election data cannot be found in the
-    //   decryption
-    // shares for the guardian
-    // - If the amount of decryption shares registered by the guardian for a contest
-    //   does not match
-    // the amount of decryptions expected
-    for (contest_index, contest_data) in election_data.iter_mut() {
-        let contest_len = contest_data.len();
-        for (i, entry) in contest_data.iter_mut().enumerate() {
-            for shares in &election_shares {
-                match shares.get(contest_index) {
-                    Some(shares) if shares.len() == contest_len => {
-                        entry.guardian_shares.push(&shares[i])
-                    }
-                    _ => {
-                        return Err(Error::DecryptionShareError(
-                            "Invalid decryption shares were detected".into(),
-                        ));
-                    }
+    // A map of ciphertexts paired with associated secret state + guardian shares
+    // for each contest in the election
+    let election_data: BTreeMap<_, _> = encrypted_tally
+        .iter()
+        .merge_join_by(secret_states, |(a, _), (b, _)| a.cmp(b))
+        .map(|joined_value| {
+            let (contest_index, contest_data) = match joined_value {
+                EitherOrBoth::Both((contest_index, ciphertexts), (_, secret_states))
+                    if ciphertexts.len() == secret_states.len() =>
+                {
+                    let contest_data = ciphertexts.iter().zip(secret_states);
+                    (*contest_index, contest_data)
                 }
-            }
-        }
-    }
+                _ => return Err(anyhow!("Mismatch between ciphertexts and secret states")),
+            };
+
+            let num_decryptions = contest_data.len();
+            // Find all decryption shares for a single ciphertext
+            let find_decryption_shares = |decryption_index: usize| {
+                election_shares
+                    .iter()
+                    .try_fold(Vec::new(), |mut acc, shares| {
+                        match shares.get(&contest_index) {
+                            Some(shares) if shares.len() == num_decryptions => {
+                                // This is safe since we checked the length
+                                acc.push(&shares[decryption_index]);
+                            }
+                            _ => {
+                                return Err(Error::DecryptionShareError(
+                                    "Invalid decryption shares were detected".into(),
+                                ))
+                            }
+                        };
+                        Ok(acc)
+                    })
+            };
+            // For ciphertexts in a contest, find the corresponding decryption share from
+            // each guardian
+            let contest_data: Vec<_> = contest_data
+                .enumerate()
+                .map(|(i, (ciphertext, secret_state))| {
+                    let decryption_shares = find_decryption_shares(i)?;
+                    let contest_entry = ContestEntry {
+                        ciphertext,
+                        secret_state,
+                        decryption_shares,
+                    };
+                    Ok::<_, Error>(contest_entry)
+                })
+                .try_collect()?;
+            Ok((contest_index, contest_data))
+        })
+        .try_collect()?;
 
     // Run through the election data and construct proofs of correct decryption for
     // all combined decryptions of each ciphertext in the encrypted tally. An error
@@ -1479,6 +1438,10 @@ struct GuardianStateResponse {
     index:                u32,
     /// The guardian status registered for the guardian
     status:               Option<contract::GuardianStatus>,
+    /// Whether the guardian has registered a decryption share
+    has_decryption_share: bool,
+    /// Whether the guardian has proof of correct decryption
+    has_decryption_proof: bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
@@ -1488,11 +1451,13 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
             has_public_key:       value.public_key.is_some(),
             index:                value.index,
             status:               value.status.clone(),
+            has_decryption_share: value.decryption_share.is_some(),
+            has_decryption_proof: value.decryption_share_proof.is_some(),
         }
     }
 }
 
-/// Synchronizes the stored guardian state the election contract. Returns a
+/// Synchronizes the stored guardian state with the election contract. Returns a
 /// simplified version consisting of the data needed by the frontend
 ///
 /// ## Errors
@@ -1520,6 +1485,36 @@ async fn refresh_guardians(
     contract_state.guardians = guardians_state;
 
     Ok(response)
+}
+
+/// Synchronizes the stored encrypted tally with the election contract. Returns
+/// a `bool` which signals whether the encrypted tally was found in the contract
+/// or not.
+///
+/// ## Errors
+/// - [`Error::NetworkError`]
+/// - [`Error::Internal`] If the encrypted tally from the election contract
+///   could not be deserialized
+#[tauri::command]
+async fn refresh_encrypted_tally(
+    app_config: State<'_, AppConfigState>,
+    contract_data: State<'_, ContractDataState>,
+) -> Result<bool, Error> {
+    let mut contract = app_config.0.lock().await.connection().await?.contract;
+    let Some(tally) = contract
+        .view::<_, Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
+        .await?
+    else {
+        return Ok(false);
+    };
+
+    let tally: ElectionEncryptedTally =
+        decode(&tally).context("Failed to deserialize the encrypted tally")?;
+
+    let mut stored_tally = contract_data.0.lock().await;
+    stored_tally.encrypted_tally = Some(tally);
+
+    Ok(true)
 }
 
 /// Initializes a connection to the contract and queries the necessary election
@@ -1583,7 +1578,7 @@ fn main() {
             register_guardian_key_flow,
             register_guardian_shares_flow,
             generate_secret_share_flow,
-            has_encrypted_tally,
+            refresh_encrypted_tally,
             register_decryption_shares_flow,
             register_decryption_proof_response_shares_flow,
         ])
