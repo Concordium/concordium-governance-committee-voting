@@ -37,7 +37,7 @@ use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -101,6 +101,9 @@ enum Error {
     /// the inner [`AccountAddress`]
     #[error("Failed to validate peer submissions")]
     PeerValidation(Vec<AccountAddress>),
+    /// When a decryption share result shared by some guardian is invalid
+    #[error("{0}")]
+    DecryptionShareError(String),
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {
@@ -1094,6 +1097,8 @@ async fn has_encrypted_tally(
     Ok(has_encrypted_tally)
 }
 
+/// Generate the decryption shares and the proof commitment shares corresponding
+/// to each ciphertext in the encrypted tally
 fn generate_decryption_shares(
     fixed_parameters: &FixedParameters,
     encrypted_tally: &ElectionEncryptedTally,
@@ -1127,6 +1132,18 @@ fn generate_decryption_shares(
     (election_decryptions, election_secret_states)
 }
 
+/// This command executes the following steps:
+///
+/// - Generate a decryption share for each ciphertext found in the encrypted
+///   tally.
+/// - Request transaction fee estimate approval from user
+/// - Register decryption shares in the contract
+///
+/// ## Errors
+/// Expected errors include:
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::QueryFailed`]
 #[tauri::command]
 async fn register_decryption_shares_flow(
     channel_id: String,
@@ -1200,22 +1217,14 @@ async fn register_decryption_shares_flow(
     }
 }
 
-/// The output from [`generate_decryption_proof_response_shares`]
-struct GenerateDecryptionProofsOutput {
-    /// The list of accounts used in the decryption
-    whitelist:       Vec<AccountAddress>,
-    /// The proposed list of accounts to blacklist in a finalization phase re-run
-    blacklist:       Vec<AccountAddress>,
-    /// The proofs of correct decryption of all ciphertexts in the election
-    election_proofs: GuardianDecryptionProofResponseShares,
-}
-
+/// Generate the decryption proofs for each ciphertext decryption in the
+/// encrypted tally
 async fn generate_decryption_proof_response_shares(
     app_config: &mut AppConfig,
     contract_data: &ContractData,
     secret_states: &GuardianDecryptionProofStateShares,
     secret_key_share: &GuardianSecretKeyShare,
-) -> Result<GenerateDecryptionProofsOutput, Error> {
+) -> Result<GuardianDecryptionProofResponseShares, Error> {
     let ElectionGuardConfig {
         manifest,
         parameters,
@@ -1238,43 +1247,7 @@ async fn generate_decryption_proof_response_shares(
         /// The secret state for the commitment share for active guardian
         secret_state:    &'a DecryptionProofStateShare,
         /// A map of guardians and their decryption share for the ciphertext
-        guardian_shares: BTreeMap<AccountAddress, &'a DecryptionShareResult>,
-    }
-
-    impl<'a> ContestEntry<'a> {
-        /// Insert a decryption share into the contest entry
-        fn insert_share(&mut self, account: AccountAddress, share: &'a DecryptionShareResult) {
-            self.guardian_shares.insert(account, share);
-        }
-
-        /// Gets the shares for the contest entry, filtering out any shares
-        /// registered by any [`AccountAddress`] from the `blacklist`
-        fn get_shares_excluding(
-            &self,
-            blacklist: &HashSet<AccountAddress>,
-        ) -> Vec<&DecryptionShareResult> {
-            self.guardian_shares
-                .iter()
-                .filter_map(|(account, &share)| {
-                    if blacklist.contains(account) {
-                        None
-                    } else {
-                        Some(share)
-                    }
-                })
-                .collect()
-        }
-
-        fn get_guardians_excluding(
-            &self,
-            blacklist: &HashSet<AccountAddress>,
-        ) -> Vec<AccountAddress> {
-            self.guardian_shares
-                .keys()
-                .cloned()
-                .filter(|account| !blacklist.contains(account))
-                .collect()
-        }
+        guardian_shares: Vec<&'a DecryptionShareResult>,
     }
 
     impl<'a> From<(&'a Ciphertext, &'a DecryptionProofStateShare)> for ContestEntry<'a> {
@@ -1284,10 +1257,46 @@ async fn generate_decryption_proof_response_shares(
             Self {
                 ciphertext,
                 secret_state,
-                guardian_shares: BTreeMap::new(),
+                guardian_shares: Vec::new(),
             }
         }
     }
+
+    // Generate the decryption proof for a single contest entry. An error is
+    // returned if either:
+    //
+    // - Shares received from peers cannot be combined
+    // - Decryption proof cannot be generated for some ciphertext
+    let generate_decryption_proof = |contest_entry: &ContestEntry| -> Result<_, Error> {
+        let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = contest_entry
+            .guardian_shares
+            .iter()
+            .map(|share| (share.proof_commit.clone(), &share.share))
+            .unzip();
+
+        let combined_decryption = CombinedDecryptionShare::combine(
+            &parameters,
+            decryption_shares.into_iter(),
+        )
+        .map_err(|_| {
+            Error::DecryptionShareError("Failed to combine shares received from peers".into())
+        })?;
+        let proof = DecryptionProof::generate_response_share(
+            &parameters.fixed_parameters,
+            &context.hashes_ext,
+            &context.public_key,
+            contest_entry.ciphertext,
+            &combined_decryption,
+            &commit_shares,
+            contest_entry.secret_state,
+            secret_key_share,
+        )
+        .map_err(|_| {
+            Error::DecryptionShareError("Failed to generate the response share to register".into())
+        })?;
+
+        Ok(proof)
+    };
 
     // A map of ciphertexts paired with associated secret state + guardian shares
     // for each contest in the election
@@ -1311,27 +1320,28 @@ async fn generate_decryption_proof_response_shares(
         })
         .try_collect()?;
 
-    // A blacklist containing accounts for which invalid decryption shares has been
-    // detected
-    let mut blacklist = HashSet::new();
     // Find all decryption shares for all guardians. If the shares registered by a
-    // specific guardian cannot be decoded or does not match the structure of the
-    // tally, blacklist the guardian.
-    let election_shares = contract_data
+    // specific guardian cannot be decoded, return `Error::DecryptionShareError`.
+    let election_shares: Vec<_> = contract_data
         .guardians
         .iter()
-        .filter_map(|(account, guardian_state)| {
-            let bytes = guardian_state.decryption_share.as_ref()?;
-            let Ok(shares) = decode::<GuardianDecryptionShares>(bytes) else {
-                blacklist.insert(*account);
-                return None;
-            };
-            Some((account, shares))
+        .map(|(_, guardian_state)| {
+            let bytes =
+                guardian_state
+                    .decryption_share
+                    .as_ref()
+                    .ok_or(Error::DecryptionShareError(
+                        "Not all selected guardians posted their decryption shares".into(),
+                    ))?;
+            let shares = decode::<GuardianDecryptionShares>(bytes).map_err(|_| {
+                Error::DecryptionShareError("Invalid decryption shares were detected".into())
+            })?;
+            Ok::<_, Error>(shares)
         })
-        .collect_vec();
+        .try_collect()?;
 
-    // Map the decryption shares for each guardian into the election data. The
-    // guardian will be blacklisted if:
+    // Map the decryption shares for each guardian into the election data. An error
+    // is returned if:
     //
     // - Any contest found in the preliminary election data cannot be found in the
     //   decryption
@@ -1342,79 +1352,53 @@ async fn generate_decryption_proof_response_shares(
     for (contest_index, contest_data) in election_data.iter_mut() {
         let contest_len = contest_data.len();
         for (i, entry) in contest_data.iter_mut().enumerate() {
-            for (&account, shares) in &election_shares {
+            for shares in &election_shares {
                 match shares.get(contest_index) {
                     Some(shares) if shares.len() == contest_len => {
-                        entry.insert_share(account, &shares[i])
+                        entry.guardian_shares.push(&shares[i])
                     }
                     _ => {
-                        blacklist.insert(account);
+                        return Err(Error::DecryptionShareError(
+                            "Invalid decryption shares were detected".into(),
+                        ));
                     }
                 }
             }
         }
     }
 
-    // Compute the whitelist
-    let whitelist: HashSet<_> = election_data
-        .iter()
-        .take(1)
-        .flat_map(|(_, entries)| {
-            entries
-                .iter()
-                .take(1)
-                .flat_map(|entry| entry.get_guardians_excluding(&blacklist))
-                .collect_vec()
-        })
-        .collect();
-
     // Run through the election data and construct proofs of correct decryption for
-    // all combined decryptions of each ciphertext in the encrypted tally
-    let election_proofs: BTreeMap<_, _> = election_data
+    // all combined decryptions of each ciphertext in the encrypted tally. An error
+    // is returned if:
+    let election_proofs = election_data
         .into_iter()
         .map(|(contest_index, contest_data)| {
             let contest_proofs: Vec<_> = contest_data
-                .into_iter()
-                .map(|contest_entry| {
-                    let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = contest_entry
-                        .get_shares_excluding(&blacklist)
-                        .iter()
-                        .map(|share| (share.proof_commit.clone(), &share.share))
-                        .unzip();
-
-                    // TODO: is it possible to validate anything at this point?
-                    let combined_decryption = CombinedDecryptionShare::combine(
-                        &parameters,
-                        decryption_shares.into_iter(),
-                    )
-                    .context("Failed to combine shares")?;
-                    let proof = DecryptionProof::generate_response_share(
-                        &parameters.fixed_parameters,
-                        &context.hashes_ext,
-                        &context.public_key,
-                        contest_entry.ciphertext,
-                        &combined_decryption,
-                        &commit_shares,
-                        contest_entry.secret_state,
-                        secret_key_share,
-                    )
-                    .context("Failed to compute response share")?;
-                    anyhow::Ok(proof)
-                })
+                .iter()
+                .map(generate_decryption_proof)
                 .try_collect()?;
 
-            anyhow::Ok((contest_index, contest_proofs))
+            Ok::<_, Error>((contest_index, contest_proofs))
         })
         .try_collect()?;
 
-    let response = GenerateDecryptionProofsOutput {
-        blacklist: blacklist.into_iter().collect(),
-        whitelist: whitelist.into_iter().collect(),
-        election_proofs,
-    };
-    Ok(response)
+    Ok(election_proofs)
 }
 
+/// This command executes the following steps:
+///
+/// - Generate proof of correct decryption for all ciphertexts in the encrypted
+///   tally
+/// - Request transaction fee estimate approval from user
+/// - Register decryption proofs in the contract
+///
+/// ## Errors
+/// Expected errors include:
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::QueryFailed`]
+/// - [`Error::DecryptionShareError`] If the invalid decryption shares were
+///   detected
 #[tauri::command]
 async fn register_decryption_proof_response_shares_flow(
     channel_id: String,
@@ -1451,8 +1435,7 @@ async fn register_decryption_proof_response_shares_flow(
                 &secret_key_share,
             )
             .await?
-        }
-        .election_proofs; // TODO: adapt contract to receive blacklist and whitelist as well.
+        };
 
         let mut contract = app_config.connection().await?.contract;
         let contract_update = contract
