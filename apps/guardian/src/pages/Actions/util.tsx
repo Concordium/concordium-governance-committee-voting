@@ -13,7 +13,7 @@ import {
 import { ProgressBar, Spinner } from 'react-bootstrap';
 import { sleep } from 'shared/util';
 
-import { BackendError, GuardianState, GuardiansState } from '~/shared/ffi';
+import { BackendError, GuardianState } from '~/shared/ffi';
 import { guardiansStateAtom } from '~/shared/store';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';

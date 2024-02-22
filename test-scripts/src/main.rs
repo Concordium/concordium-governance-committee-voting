@@ -29,7 +29,7 @@ use eg::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
-use election_common::{decode, encode, ElectionEncryptedTally, GuardianDecryptionShares};
+use election_common::{decode, encode, EncryptedTally, GuardianDecryption};
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
@@ -665,7 +665,7 @@ async fn main() -> anyhow::Result<()> {
         };
         eprintln!("Retrieved encrypted tally.");
         let encrypted_tally =
-            decode::<ElectionEncryptedTally>(&serialized_tally).context("Unable to read tally.")?;
+            decode::<EncryptedTally>(&serialized_tally).context("Unable to read tally.")?;
 
         // State maintained by guardians for the proof of decryption.
         let mut secret_states = Vec::new();
@@ -753,7 +753,7 @@ async fn main() -> anyhow::Result<()> {
                         let Some(share_result) = gs.1.decryption_share.as_ref() else {
                             anyhow::bail!("Share not present even though it was registered.");
                         };
-                        let share_result = decode::<GuardianDecryptionShares>(share_result)
+                        let share_result = decode::<GuardianDecryption>(share_result)
                             .context("Unable to parse decryption share result.")?;
                         let result = &share_result
                             .get(index)

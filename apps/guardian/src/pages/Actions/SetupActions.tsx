@@ -1,19 +1,12 @@
 import { useMemo } from 'react';
-import { Modal, ProgressBar } from 'react-bootstrap';
+import { Modal } from 'react-bootstrap';
 import { useAtomValue } from 'jotai';
 import { CcdAmount } from '@concordium/web-sdk';
 
 import Button from '~/shared/Button';
-import {
-    GuardianStatus,
-    GuardiansState,
-    ValidatedProposalType,
-    generateSecretShare,
-    registerGuardianKey,
-    registerGuardianShares,
-} from '~/shared/ffi';
+import { ValidatedProposalType, generateSecretShare, registerGuardianKey, registerGuardianShares } from '~/shared/ffi';
 import { CCD_SYMBOL, useCountdown } from 'shared/util';
-import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, guardiansStateAtom } from '~/shared/store';
+import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom } from '~/shared/store';
 import { makeActionableStep, Step, ActionStep, AwaitPeers } from './util';
 
 const GenerateGuardianKey = makeActionableStep(
