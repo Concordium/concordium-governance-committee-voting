@@ -32,7 +32,7 @@ use election_common::{
     decode, encode, ElectionEncryptedTally, GuardianDecryptionProofResponseShares,
     GuardianDecryptionProofStateShares, GuardianDecryptionShares,
 };
-use itertools::{EitherOrBoth, Itertools};
+use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
 use sha2::Digest;
@@ -1185,7 +1185,7 @@ async fn register_decryption_shares_flow(
 
 /// Generate the decryption proofs for each ciphertext decryption in the
 /// encrypted tally
-async fn generate_decryption_proof_response_shares(
+async fn generate_decryption_proofs(
     app_config: &mut AppConfig,
     contract_data: &ContractData,
     secret_states: &GuardianDecryptionProofStateShares,
@@ -1206,55 +1206,10 @@ async fn generate_decryption_proof_response_shares(
         .as_ref()
         .context("Could not find encrypted tally in app state")?;
 
-    /// The decryption data corresponding to a single [`Ciphertext`]
-    struct ContestEntry<'a> {
-        /// The ciphertext
-        ciphertext:        &'a Ciphertext,
-        /// The secret state for the commitment share for active guardian
-        secret_state:      &'a DecryptionProofStateShare,
-        /// A map of guardians and their decryption share for the ciphertext
-        decryption_shares: Vec<&'a DecryptionShareResult>,
-    }
-
-    // Generate the decryption proof for a single contest entry. An error is
-    // returned if either:
-    //
-    // - Shares received from peers cannot be combined
-    // - Decryption proof cannot be generated for some ciphertext
-    let generate_decryption_proof = |contest_entry: &ContestEntry| -> Result<_, Error> {
-        let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = contest_entry
-            .decryption_shares
-            .iter()
-            .map(|share| (share.proof_commit.clone(), &share.share))
-            .unzip();
-
-        let combined_decryption = CombinedDecryptionShare::combine(
-            &parameters,
-            decryption_shares.into_iter(),
-        )
-        .map_err(|_| {
-            Error::DecryptionShareError("Failed to combine shares received from peers".into())
-        })?;
-        let proof = DecryptionProof::generate_response_share(
-            &parameters.fixed_parameters,
-            &context.hashes_ext,
-            &context.public_key,
-            contest_entry.ciphertext,
-            &combined_decryption,
-            &commit_shares,
-            contest_entry.secret_state,
-            secret_key_share,
-        )
-        .map_err(|_| {
-            Error::DecryptionShareError("Failed to generate the response share to register".into())
-        })?;
-
-        Ok(proof)
-    };
-
     // Find all decryption shares for all guardians. If the shares registered by a
-    // specific guardian cannot be decoded, return `Error::DecryptionShareError`.
-    let election_shares: Vec<_> = contract_data
+    // specific guardian are either missing or cannot be decoded, return
+    // `Error::DecryptionShareError`.
+    let decryption_shares: Vec<_> = contract_data
         .guardians
         .iter()
         .map(|(_, guardian_state)| {
@@ -1272,64 +1227,101 @@ async fn generate_decryption_proof_response_shares(
         })
         .try_collect()?;
 
-    // A map of ciphertexts paired with associated secret state + guardian shares
-    // for each contest in the election
-    let election_data: BTreeMap<_, _> = encrypted_tally
-        .iter()
-        .merge_join_by(secret_states, |(a, _), (b, _)| a.cmp(b))
-        .map(|joined_value| {
-            let (contest_index, contest_data) = match joined_value {
-                EitherOrBoth::Both((contest_index, ciphertexts), (_, secret_states))
-                    if ciphertexts.len() == secret_states.len() =>
-                {
-                    let contest_data = ciphertexts.iter().zip(secret_states);
-                    (*contest_index, contest_data)
-                }
-                _ => return Err(anyhow!("Mismatch between ciphertexts and secret states")),
-            };
+    /// The decryption data corresponding to a single [`Ciphertext`]
+    struct ProofData<'a> {
+        /// The ciphertext
+        ciphertext:        &'a Ciphertext,
+        /// The secret state for the commitment share for active guardian
+        secret_state:      &'a DecryptionProofStateShare,
+        /// A map of guardians and their decryption share for the ciphertext
+        decryption_shares: Vec<&'a DecryptionShareResult>,
+    }
 
-            let num_decryptions = contest_data.len();
-            // Find all decryption shares for a single ciphertext
-            let find_decryption_shares = |decryption_index: usize| {
-                election_shares
-                    .iter()
-                    .try_fold(Vec::new(), |mut acc, shares| {
-                        match shares.get(&contest_index) {
-                            Some(shares) if shares.len() == num_decryptions => {
-                                // This is safe since we checked the length
-                                acc.push(&shares[decryption_index]);
-                            }
-                            _ => {
-                                return Err(Error::DecryptionShareError(
-                                    "Invalid decryption shares were detected".into(),
-                                ))
-                            }
-                        };
-                        Ok(acc)
-                    })
+    // Generate the decryption proof for a single contest entry. An error is
+    // returned if either:
+    //
+    // - Shares received from peers cannot be combined
+    // - Decryption proof cannot be generated for some ciphertext
+    let generate_decryption_proof = |proof_data: &ProofData| -> Result<_, Error> {
+        let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = proof_data
+            .decryption_shares
+            .iter()
+            .map(|share| (share.proof_commit.clone(), &share.share))
+            .unzip();
+
+        let combined_decryption = CombinedDecryptionShare::combine(&parameters, decryption_shares)
+            .map_err(|e| {
+                eprintln!("{e}");
+                Error::DecryptionShareError("Failed to combine shares received from peers".into())
+            })?;
+        let proof = DecryptionProof::generate_response_share(
+            &parameters.fixed_parameters,
+            &context.hashes_ext,
+            &context.public_key,
+            proof_data.ciphertext,
+            &combined_decryption,
+            &commit_shares,
+            proof_data.secret_state,
+            secret_key_share,
+        )
+        .map_err(|e| {
+            eprintln!("{e}");
+            Error::DecryptionShareError("Failed to generate the response share to register".into())
+        })?;
+
+        Ok(proof)
+    };
+
+    // A map of ciphertexts paired with associated secret state + guardian shares
+    // for each contest in the election. Errors are returned if:
+    //
+    // - Decryption shares do not match the format of the tally
+    let proof_data: BTreeMap<_, _> = encrypted_tally
+        .iter()
+        .map(|(contest_index, ciphertexts)| {
+            let secret_states = match secret_states.get(contest_index) {
+                Some(secret_states) if secret_states.len() == ciphertexts.len() => secret_states,
+                _ => return Err(anyhow!("Invalid secret states for tally")),
             };
+            let decryption_shares: Vec<_> = decryption_shares
+                .iter()
+                .map(|shares| match shares.get(contest_index) {
+                    Some(shares) if shares.len() == ciphertexts.len() => Ok(shares),
+                    _ => Err(Error::DecryptionShareError(
+                        "Invalid decryption shares detected".into(),
+                    )),
+                })
+                .try_collect()?;
+
             // For ciphertexts in a contest, find the corresponding decryption share from
             // each guardian
-            let contest_data: Vec<_> = contest_data
+            let proof_data = ciphertexts
+                .iter()
+                .zip(secret_states)
                 .enumerate()
                 .map(|(i, (ciphertext, secret_state))| {
-                    let decryption_shares = find_decryption_shares(i)?;
-                    let contest_entry = ContestEntry {
+                    let decryption_shares =
+                        decryption_shares
+                            .iter()
+                            .fold(Vec::new(), |mut acc, shares| {
+                                acc.push(&shares[i]);
+                                acc
+                            });
+                    let row = ProofData {
                         ciphertext,
                         secret_state,
                         decryption_shares,
                     };
-                    Ok::<_, Error>(contest_entry)
+                    row
                 })
-                .try_collect()?;
-            Ok((contest_index, contest_data))
+                .collect_vec();
+            Ok((*contest_index, proof_data))
         })
         .try_collect()?;
 
     // Run through the election data and construct proofs of correct decryption for
-    // all combined decryptions of each ciphertext in the encrypted tally. An error
-    // is returned if:
-    let election_proofs = election_data
+    // all combined decryptions of each ciphertext in the encrypted tally
+    let election_proofs = proof_data
         .into_iter()
         .map(|(contest_index, contest_data)| {
             let contest_proofs: Vec<_> = contest_data
@@ -1359,7 +1351,7 @@ async fn generate_decryption_proof_response_shares(
 /// - [`Error::DecryptionShareError`] If the invalid decryption shares were
 ///   detected
 #[tauri::command]
-async fn register_decryption_proof_response_shares_flow(
+async fn register_decryption_proofs_flow(
     channel_id: String,
     active_guardian: State<'_, ActiveGuardianState>,
     app_config: State<'_, AppConfigState>,
@@ -1387,7 +1379,7 @@ async fn register_decryption_proof_response_shares_flow(
                 &active_guardian.password,
                 &guardian_data_dir.join(DECRYPTION_SECRET_STATES),
             )?;
-            generate_decryption_proof_response_shares(
+            generate_decryption_proofs(
                 &mut app_config,
                 &contract_data,
                 &secret_states,
@@ -1399,7 +1391,7 @@ async fn register_decryption_proof_response_shares_flow(
         let mut contract = app_config.connection().await?.contract;
         let contract_update = contract
             .dry_run_update::<Vec<u8>, Error>(
-                "postDecryptionShare",
+                "postDecryptionProofResponseShare",
                 Amount::zero(),
                 active_guardian.guardian.account,
                 &encode(&response_shares).context("Failed to serialize decryption shares")?,
@@ -1500,7 +1492,8 @@ async fn refresh_encrypted_tally(
     app_config: State<'_, AppConfigState>,
     contract_data: State<'_, ContractDataState>,
 ) -> Result<bool, Error> {
-    let mut contract = app_config.0.lock().await.connection().await?.contract;
+    let mut app_config = app_config.0.lock().await;
+    let mut contract = app_config.connection().await?.contract;
     let Some(tally) = contract
         .view::<_, Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
         .await?
@@ -1508,8 +1501,16 @@ async fn refresh_encrypted_tally(
         return Ok(false);
     };
 
+    let manifest = app_config.election_guard().await?.manifest;
+
     let tally: ElectionEncryptedTally =
         decode(&tally).context("Failed to deserialize the encrypted tally")?;
+    if !tally
+        .keys()
+        .all(|k| manifest.contests.indices().contains(k))
+    {
+        return Err(anyhow!("Malformed tally read from the contract").into());
+    }
 
     let mut stored_tally = contract_data.0.lock().await;
     stored_tally.encrypted_tally = Some(tally);
@@ -1580,7 +1581,7 @@ fn main() {
             generate_secret_share_flow,
             refresh_encrypted_tally,
             register_decryption_shares_flow,
-            register_decryption_proof_response_shares_flow,
+            register_decryption_proofs_flow,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -216,6 +216,22 @@ export async function refreshEncryptedTally(): Promise<boolean> {
  * @param convert - A function for converting the payload JSON type emitted from the backend to the type yielded
  *
  * @returns A generator function for interacting with the backend
+ *
+ * @example
+ * const someBackendFlow = makeInteractionFlow<number, CcdAmount.Type>(
+ *   'some_backend_flow',
+ *   (proposal) => CcdAmount.fromMicroCcd(payload), // or whichever conversion wanted corresponding to P => Y
+ * );
+ * const abortController = new AbortController();
+ * const generator = someBackendFlow(abortController.signal);
+ * try {
+ *   // Generate the keypair, create transaction proposal
+ *   const proposal = await generator.next();
+ *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
+ *   await generator.next(true);
+ * } catch (e: Error) {
+ *   // Do something with the error.
+ * }
  */
 function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
     return async function* (abortSignal: AbortSignal): AsyncGenerator<Y, void, boolean> {
@@ -265,18 +281,6 @@ function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
- *
- * @example
- * const abortController = new AbortController();
- * const generator = registerGuardianKey(abortController.signal);
- * try {
- *   // Generate the keypair, create transaction proposal
- *   const proposal = await generator.next();
- *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
- *   await generator.next(true);
- * } catch (e: Error) {
- *   // Do something with the error.
- * }
  */
 export const registerGuardianKey = makeInteractionFlow<number, CcdAmount.Type>(
     'register_guardian_key_flow',
@@ -325,18 +329,6 @@ type ValidatedProposalJSON = {
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
- *
- * @example
- * const abortController = new AbortController();
- * const generator = registerGuardianShares(abortController.signal);
- * try {
- *   // Generate encrypted shares, create transaction proposal
- *   const proposal = await generator.next();
- *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
- *   await generator.next(true);
- * } catch (e: Error) {
- *   // Do something with the error.
- * }
  */
 export const registerGuardianShares = makeInteractionFlow<ValidatedProposalJSON, ValidatedProposal>(
     'register_guardian_shares_flow',
@@ -360,20 +352,52 @@ export const registerGuardianShares = makeInteractionFlow<ValidatedProposalJSON,
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
- *
- * @example
- * const abortController = new AbortController();
- * const generator = generateSecretShare(abortController.signal);
- * try {
- *   // Generate encrypted shares, create transaction proposal
- *   const proposal = await generator.next();
- *   // Approve transaction proposal (by supplying `true`), submit transaction and await finalization
- *   await generator.next(true);
- * } catch (e: Error) {
- *   // Do something with the error.
- * }
  */
 export const generateSecretShare = makeInteractionFlow<ValidatedProposalJSON, ValidatedProposal>(
     'generate_secret_share_flow',
     (payload) => ({ ...payload, ccdCost: CcdAmount.fromMicroCcd(payload.ccdCost) }),
+);
+
+/**
+ * Creates a generator for interacting with the backend to generate decryption shares for all ciphertexts in the
+ * encrypted tally. The protocol for the interaction is:
+ *
+ * 1. Generate decryption shares
+ * 2. Send transaction, await finalization on chain
+ *
+ * @param abortSignal - An abort signal which will terminate the interaction
+ *
+ * @yields 1. A {@linkcode CcdAmount.Type} to either accept or reject
+ * @yields 2. `void`, which signals the transaction has been submitted and finalized
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.NetworkError`
+ * - `BackendErrorType.QueryFailed`
+ */
+export const registerDecryptionShares = makeInteractionFlow<number, CcdAmount.Type>(
+    'register_decryption_shares_flow',
+    (payload) => CcdAmount.fromMicroCcd(payload),
+);
+
+/**
+ * Creates a generator for interacting with the backend to generate decryption proofs for each decryption share registered.
+ * The protocol for the interaction is:
+ *
+ * 1. Generate decryption proofs
+ * 2. Send transaction, await finalization on chain
+ *
+ * @param abortSignal - An abort signal which will terminate the interaction
+ *
+ * @yields 1. A {@linkcode CcdAmount.Type} to either accept or reject
+ * @yields 2. `void`, which signals the transaction has been submitted and finalized
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.NetworkError`
+ * - `BackendErrorType.QueryFailed`
+ * - `BackendErrorType.DecryptionShareError` If one or more invalid decryption shares were detected, requiring manual
+ *   intervention by the election coordinator (i.e. restart the tally phase)
+ */
+export const registerDecryptionProofs = makeInteractionFlow<number, CcdAmount.Type>(
+    'register_decryption_proofs_flow',
+    (payload) => CcdAmount.fromMicroCcd(payload),
 );

@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import {
     PropsWithChildren,
     useMemo,
@@ -10,10 +10,10 @@ import {
     useState,
     useEffect,
 } from 'react';
-import { Spinner } from 'react-bootstrap';
+import { ProgressBar, Spinner } from 'react-bootstrap';
 import { sleep } from 'shared/util';
 
-import { BackendError } from '~/shared/ffi';
+import { BackendError, GuardianState, GuardiansState } from '~/shared/ffi';
 import { guardiansStateAtom } from '~/shared/store';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
@@ -239,4 +239,29 @@ export function makeActionableStep<P>(
 
         return <Component {...props} />;
     };
+}
+
+type AwaitPeersProps = PropsWithChildren<{
+    predicate(g: GuardianState): boolean;
+}>;
+
+/**
+ * Shows the progress of peer registrations for a specific step in the election
+ */
+export function AwaitPeers({ predicate, children }: AwaitPeersProps) {
+    const { guardians } = useAtomValue(guardiansStateAtom);
+
+    if (guardians === undefined) {
+        return null;
+    }
+
+    const numRegistered = guardians.filter(([, g]) => predicate(g)).length;
+    const progress = numRegistered * (100 / guardians.length);
+
+    return (
+        <div>
+            <h3 className="text-center">{children}</h3>
+            <ProgressBar now={progress} label={`${numRegistered}/${guardians.length}`} />
+        </div>
+    );
 }

@@ -85,7 +85,6 @@ export const enum TallyStep {
     GenerateDecryptionShare,
     AwaitPeerShares,
     GenerateDecryptionProof,
-    DecryptionProofError,
     Done,
 }
 
@@ -141,6 +140,9 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
             const hasTally = get(hasTallyAtom);
 
             const step = (() => {
+                if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
+                if (guardians.every(([, g]) => g.hasDecryptionShare)) return TallyStep.GenerateDecryptionProof;
+                if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
                 if (hasTally instanceof BackendError) return TallyStep.TallyError;
                 if (hasTally) return TallyStep.GenerateDecryptionShare;
                 return TallyStep.AwaitEncryptedTally;

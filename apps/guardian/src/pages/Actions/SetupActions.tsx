@@ -14,7 +14,7 @@ import {
 } from '~/shared/ffi';
 import { CCD_SYMBOL, useCountdown } from 'shared/util';
 import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, guardiansStateAtom } from '~/shared/store';
-import { makeActionableStep, Step, ActionStep } from './util';
+import { makeActionableStep, Step, ActionStep, AwaitPeers } from './util';
 
 const GenerateGuardianKey = makeActionableStep(
     registerGuardianKey,
@@ -28,7 +28,7 @@ const GenerateGuardianKey = makeActionableStep(
                 public key, which is needed for encryption of the ballot submissions by voters.
             </p>
             <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                <Modal.Header closeButton={error !== undefined}>Generating guardian key</Modal.Header>
+                <Modal.Header closeButton={error !== undefined}>Generate & register guardian key</Modal.Header>
                 <Modal.Body>
                     <ul className="generate__steps">
                         <Step step={ActionStep.Compute} activeStep={step} error={error}>
@@ -65,25 +65,6 @@ const GenerateGuardianKey = makeActionableStep(
     ),
 );
 
-type GuardiansProps = {
-    guardians: GuardiansState;
-};
-
-/**
- * Shows the progress of key registrations for guardians.
- */
-function AwaitPeerKeys({ guardians }: GuardiansProps) {
-    const numWithKeys = useMemo(() => guardians.filter(([, g]) => g.hasPublicKey).length, [guardians]);
-    const progress = useMemo(() => numWithKeys * (100 / guardians.length), [numWithKeys, guardians]);
-
-    return (
-        <div>
-            <h3 className="text-center">Waiting for other guardians to register their keys</h3>
-            <ProgressBar now={progress} label={`${numWithKeys}/${guardians.length}`} />
-        </div>
-    );
-}
-
 /**
  * Flow for generating and registering encrypted shares
  */
@@ -111,7 +92,7 @@ const GenerateEncryptedShares = makeActionableStep(
                 </p>
                 <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
                     <Modal.Header closeButton={error !== undefined}>
-                        Generating encrypted shares of guardian key
+                        Generate & register encrypted shares of guardian key
                     </Modal.Header>
                     <Modal.Body>
                         <ul className="generate__steps">
@@ -163,21 +144,6 @@ const GenerateEncryptedShares = makeActionableStep(
         );
     },
 );
-
-/**
- * Shows the progress of encrypted shares registrations for guardians.
- */
-function AwaitPeerShares({ guardians }: GuardiansProps) {
-    const numWithShares = useMemo(() => guardians.filter(([, g]) => g.hasEncryptedShares).length, [guardians]);
-    const progress = useMemo(() => numWithShares * (100 / guardians.length), [numWithShares, guardians]);
-
-    return (
-        <div>
-            <h3 className="text-center">Waiting for other guardians to register their encrypted shares</h3>
-            <ProgressBar now={progress} label={`${numWithShares}/${guardians.length}`} />
-        </div>
-    );
-}
 
 /**
  * Flow for generating the secret share, and registering validation of peer shares.
@@ -256,24 +222,6 @@ const GenerateSecretShare = makeActionableStep(
 );
 
 /**
- * Shows the progress of encrypted shares validation and secret key generation for guardians.
- */
-function AwaitPeerValidation({ guardians }: GuardiansProps) {
-    const numValidations = useMemo(
-        () => guardians.filter(([, g]) => g.status === GuardianStatus.VerificationSuccessful).length,
-        [guardians],
-    );
-    const progress = useMemo(() => numValidations * (100 / guardians.length), [numValidations, guardians]);
-
-    return (
-        <div>
-            <h3 className="text-center">Waiting for other guardians to generate their secret share</h3>
-            <ProgressBar now={progress} label={`${numValidations}/${guardians.length}`} />
-        </div>
-    );
-}
-
-/**
  * Component shown when the setup phase is completed for all guardians.
  */
 function Ready() {
@@ -312,20 +260,31 @@ function Invalid() {
  */
 export default function SetupActions() {
     const electionStep = useAtomValue(electionStepAtom);
-    const { guardians } = useAtomValue(guardiansStateAtom);
 
-    if (electionStep?.phase !== ElectionPhase.Setup || guardians === undefined) {
+    if (electionStep?.phase !== ElectionPhase.Setup) {
         return null;
     }
 
     return (
         <div className="text-center">
             {electionStep.step === SetupStep.GenerateKey && <GenerateGuardianKey />}
-            {electionStep.step === SetupStep.AwaitPeerKeys && <AwaitPeerKeys guardians={guardians} />}
+            {electionStep.step === SetupStep.AwaitPeerKeys && (
+                <AwaitPeers predicate={(g) => g.hasPublicKey}>
+                    Waiting for other guardians to register their keys
+                </AwaitPeers>
+            )}
             {electionStep.step === SetupStep.GenerateEncryptedShares && <GenerateEncryptedShares />}
-            {electionStep.step === SetupStep.AwaitPeerShares && <AwaitPeerShares guardians={guardians} />}
+            {electionStep.step === SetupStep.AwaitPeerKeys && (
+                <AwaitPeers predicate={(g) => g.hasPublicKey}>
+                    Waiting for other guardians to register their encrypted shares
+                </AwaitPeers>
+            )}
             {electionStep.step === SetupStep.GenerateSecretShare && <GenerateSecretShare />}
-            {electionStep.step === SetupStep.AwaitPeerValidation && <AwaitPeerValidation guardians={guardians} />}
+            {electionStep.step === SetupStep.AwaitPeerKeys && (
+                <AwaitPeers predicate={(g) => g.hasPublicKey}>
+                    Waiting for other guardians to generate their secret share
+                </AwaitPeers>
+            )}
             {electionStep.step === SetupStep.Done && <Ready />}
             {electionStep.step === SetupStep.Invalid && <Invalid />}
         </div>
