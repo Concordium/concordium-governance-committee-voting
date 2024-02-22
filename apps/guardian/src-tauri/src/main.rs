@@ -905,51 +905,55 @@ async fn generate_secret_share(
         .collect::<Result<Vec<_>, Error>>()?;
 
     let parameters = app_config.election_guard().await?.parameters;
-
     // First we validate the shares registered by peers.
-    let mut guardian_key_shares = Vec::new();
-    let mut invalid_share_submissions = Vec::new();
-    for (guardian_account, guardian_state) in guardians_state {
-        let share = guardian_state
-            .encrypted_share
-            .as_ref()
-            .context("Guardian share not registered.")?;
-        let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(share) else {
-            // If we cannot decode, the shares are invalid
-            invalid_share_submissions.push(*guardian_account);
-            break;
-        };
-        let Ok(i) = shares.binary_search_by_key(
-            &active_guardian.guardian.index,
-            |x: &GuardianEncryptedShare| x.recipient,
-        ) else {
-            // If we cannot find our share, the list of shares submitted is invalid
-            invalid_share_submissions.push(*guardian_account);
-            continue;
-        };
-        let share = shares.swap_remove(i);
-        drop(shares);
-        let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
+    let encrypted_shares = guardians_state
+        .iter()
+        .try_fold(Ok(Vec::new()), |result, (account, guardian_state)| {
+            let share = guardian_state
+                .encrypted_share
+                .as_ref()
+                .context("Guardian share not registered.")?;
 
-        if share
-            .decrypt_and_validate(&parameters, dealer_public_key, &secret_key)
-            .is_err()
-        {
-            // Finally, if the share cannot be validated, the individual share is invalid
-            invalid_share_submissions.push(*guardian_account);
-        } else {
-            guardian_key_shares.push(share);
-        }
-    }
+            let add_invalid = |result: Result<_, _>| {
+                let result = result
+                    .and(Err(vec![*account]))
+                    .map_err(|accounts| [&accounts[..], &[*account]].concat());
+                anyhow::Ok(result)
+            };
 
-    if !invalid_share_submissions.is_empty() {
-        return Err(Error::PeerValidation(invalid_share_submissions));
-    }
+            let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(share) else {
+                // If we cannot decode, the shares are invalid
+                return add_invalid(result);
+            };
+            let Ok(i) = shares.binary_search_by_key(
+                &active_guardian.guardian.index,
+                |x: &GuardianEncryptedShare| x.recipient,
+            ) else {
+                // If we cannot find our share, the list of shares submitted is invalid
+                return add_invalid(result);
+            };
+
+            let share = shares.swap_remove(i);
+            drop(shares);
+            let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
+            if share
+                .decrypt_and_validate(&parameters, dealer_public_key, &secret_key)
+                .is_err()
+            {
+                // Finally, if the share cannot be validated, the individual share is invalid
+                return add_invalid(result);
+            }
+
+            let result = result.map(|shares| [&shares[..], &[share]].concat());
+            anyhow::Ok(result)
+        })?
+        .map_err(Error::PeerValidation)?;
+
     // Then we generate the secret share
     let secret_share = GuardianSecretKeyShare::compute(
         &parameters,
         &guardian_public_keys,
-        &guardian_key_shares,
+        &encrypted_shares,
         &secret_key,
     )
     .context("Failed to combine guardian shares")?;
@@ -1197,7 +1201,7 @@ async fn generate_decryption_proofs(
         parameters,
     } = app_config.election_guard().await?;
     let context = PreVotingData::compute(
-        manifest.clone(),
+        manifest,
         parameters.clone(),
         &contract_data.guardian_public_keys()?,
     )
