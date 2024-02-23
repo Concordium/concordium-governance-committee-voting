@@ -99,7 +99,7 @@ export type ElectionStep =
 
 const electionPhaseBaseAtom = atom<ElectionPhase | undefined>(undefined);
 
-const setupCompleted = (guardian: GuardianState) =>
+export const setupCompleted = (guardian: GuardianState) =>
     guardian.hasPublicKey && guardian.hasEncryptedShares && guardian.status === GuardianStatus.VerificationSuccessful;
 
 /**

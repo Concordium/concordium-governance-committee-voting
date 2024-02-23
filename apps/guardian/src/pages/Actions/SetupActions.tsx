@@ -6,7 +6,7 @@ import { CcdAmount } from '@concordium/web-sdk';
 import Button from '~/shared/Button';
 import { ValidatedProposalType, generateSecretShare, registerGuardianKey, registerGuardianShares } from '~/shared/ffi';
 import { CCD_SYMBOL, useCountdown } from 'shared/util';
-import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom } from '~/shared/store';
+import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, setupCompleted } from '~/shared/store';
 import { makeActionableStep, Step, ActionStep, AwaitPeers } from './util';
 
 const GenerateGuardianKey = makeActionableStep(
@@ -267,14 +267,14 @@ export default function SetupActions() {
                 </AwaitPeers>
             )}
             {electionStep.step === SetupStep.GenerateEncryptedShares && <GenerateEncryptedShares />}
-            {electionStep.step === SetupStep.AwaitPeerKeys && (
-                <AwaitPeers predicate={(g) => g.hasPublicKey}>
+            {electionStep.step === SetupStep.AwaitPeerShares && (
+                <AwaitPeers predicate={(g) => g.hasEncryptedShares}>
                     Waiting for other guardians to register their encrypted shares
                 </AwaitPeers>
             )}
             {electionStep.step === SetupStep.GenerateSecretShare && <GenerateSecretShare />}
-            {electionStep.step === SetupStep.AwaitPeerKeys && (
-                <AwaitPeers predicate={(g) => g.hasPublicKey}>
+            {electionStep.step === SetupStep.AwaitPeerValidation && (
+                <AwaitPeers predicate={setupCompleted}>
                     Waiting for other guardians to generate their secret share
                 </AwaitPeers>
             )}
