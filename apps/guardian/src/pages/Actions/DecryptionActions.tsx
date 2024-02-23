@@ -124,7 +124,7 @@ export function DecryptionActions() {
     const { step } = electionStep;
 
     return (
-        <div className="text-center">
+        <>
             {step === TallyStep.AwaitEncryptedTally && <>Waiting for tally to be registered</>}
             {step === TallyStep.TallyError && <DecryptionError>Could not read the election tally</DecryptionError>}
             {step === TallyStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
@@ -139,6 +139,6 @@ export function DecryptionActions() {
                     Your decryption is complete. Combined decryption progress:
                 </AwaitPeers>
             )}
-        </div>
+        </>
     );
 }

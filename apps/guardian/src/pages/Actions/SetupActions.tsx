@@ -259,7 +259,7 @@ export default function SetupActions() {
     }
 
     return (
-        <div className="text-center">
+        <>
             {electionStep.step === SetupStep.GenerateKey && <GenerateGuardianKey />}
             {electionStep.step === SetupStep.AwaitPeerKeys && (
                 <AwaitPeers predicate={(g) => g.hasPublicKey}>
@@ -280,6 +280,6 @@ export default function SetupActions() {
             )}
             {electionStep.step === SetupStep.Done && <Ready />}
             {electionStep.step === SetupStep.Invalid && <Invalid />}
-        </div>
+        </>
     );
 }
