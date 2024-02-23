@@ -85,11 +85,11 @@ struct AppConfig {
         env = "CCD_ELECTION_CANDIDATES_METADATA_DIR"
     )]
     candidates_metadata_dir: std::path::PathBuf,
-    /// A json file consisting of the list of eligible voters and their
+    /// A csv file consisting of the list of eligible voters and their
     /// respective voting weights
     #[clap(
         long = "eligible-voters-file",
-        default_value = "../resources/config-example/eligible-voters.json",
+        default_value = "../resources/config-example/initial-weights.csv",
         env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
     )]
     eligible_voters_file:    std::path::PathBuf,
