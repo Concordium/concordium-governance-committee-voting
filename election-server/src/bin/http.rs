@@ -10,15 +10,21 @@ use axum_prometheus::{
     metrics_exporter_prometheus::PrometheusHandle, GenericMetricLayer, PrometheusMetricLayerBuilder,
 };
 use clap::Parser;
+use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress,
     types::{hashes::TransactionHash, ContractAddress},
 };
-use election_server::db::{DatabasePool, StoredBallotSubmission};
+use concordium_std::Amount;
+use election_common::WeightRow;
+use election_server::{
+    db::{DatabasePool, StoredBallotSubmission},
+    util::{create_client, get_election_config, verify_checksum, verify_contract},
+};
 use futures::FutureExt;
 use handlebars::{no_escape, Handlebars};
 use serde::{Deserialize, Serialize};
-use std::cmp;
+use std::{cmp, collections::HashMap};
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -147,13 +153,44 @@ impl AppConfig {
             serde_json::to_string(&config).expect("JSON serialization always succeeds");
         serde_json::json!({ "config": config_string })
     }
+
+    /// Deserializes the election guard config files. The supplied [`Client`] is
+    /// used to verify the files match the checksum registered in the
+    /// election contract.
+    fn verify_config_files(&self, contract_config: &ElectionConfig) -> Result<(), anyhow::Error> {
+        verify_checksum(
+            &self.eg_manifest_file,
+            contract_config.election_manifest.hash.0,
+        )?;
+        verify_checksum(
+            &self.eg_parameters_file,
+            contract_config.election_parameters.hash.0,
+        )?;
+        verify_checksum(
+            &self.eligible_voters_file,
+            contract_config.eligible_voters.hash.0,
+        )?;
+
+        for url in &contract_config.candidates {
+            let file_name = url
+                .url
+                .split('/')
+                .last()
+                .context("Failed to parse candidate file name from registered URL")?;
+            let path = &self.candidates_metadata_dir.join(file_name);
+            verify_checksum(path, url.hash.0)?;
+        }
+        Ok(())
+    }
 }
 
 /// The app state shared across http requests made to the server.
 #[derive(Clone, Debug)]
 struct AppState {
     /// The DB connection pool from.
-    db_pool: DatabasePool,
+    db_pool:         DatabasePool,
+    /// The computed initial weights of each eligible voter.
+    initial_weights: HashMap<AccountAddress, Amount>,
 }
 
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
@@ -296,10 +333,22 @@ async fn setup_http(
     config: &AppConfig,
     prometheus_layer: PrometheusLayer,
 ) -> Result<tokio::task::JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
+    let reader = csv::Reader::from_path(&config.eligible_voters_file)
+        .context("Failed to read eligible voters file")?;
+    let initial_weights = reader
+        .into_deserialize::<WeightRow>()
+        .try_fold(HashMap::new(), |mut initial_weights, row| {
+            let WeightRow { account, amount } = row?;
+            initial_weights.insert(account, amount);
+            anyhow::Ok(initial_weights)
+        })
+        .context("Failed to deserialize eligible voters file")?;
+
     let state = AppState {
         db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
             .await
             .context("Failed to connect to the database")?,
+        initial_weights,
     };
     // Render index.html with config
     let index_template = std::fs::read_to_string(config.frontend_dir.join("index.html"))
@@ -323,7 +372,7 @@ async fn setup_http(
         .with_state(state)
         .nest_service("/static/concordium/candidates", ServeDir::new(&config.candidates_metadata_dir))
         .route_service(
-            "/static/concordium/eligible-voters.json",
+            "/static/concordium/eligible-voters.csv",
             ServeFile::new(&config.eligible_voters_file),
         )
         .route_service(
@@ -392,6 +441,15 @@ async fn main() -> anyhow::Result<()> {
             .with(tracing_subscriber::fmt::layer())
             .with(log_filter)
             .init();
+    }
+
+    // Verify that we serve the files matching what is registered in the contract
+    {
+        let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
+        let client = create_client(config.node_endpoint.clone(), request_timeout).await?;
+        let mut contract_client = verify_contract(client, config.contract_address).await?;
+        let contract_config = get_election_config(&mut contract_client).await?;
+        config.verify_config_files(&contract_config)?;
     }
 
     let (prometheus_layer, prometheus_handle) = setup_prometheus(&config);

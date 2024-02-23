@@ -35,7 +35,7 @@ use eg::{
         DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
     },
 };
-use election_common::{decode, encode};
+use election_common::{decode, encode, WeightRow};
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
@@ -293,12 +293,6 @@ async fn range_setup(
         last_block.block_slot_time
     );
     Ok((first_block, last_block))
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct WeightRow {
-    account: AccountAddress,
-    amount:  Amount,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
