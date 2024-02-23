@@ -35,7 +35,7 @@ use eg::{
         DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
     },
 };
-use election_common::{decode, encode, WeightRow};
+use election_common::{decode, encode, get_scaling_factor, WeightRow};
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
@@ -797,7 +797,7 @@ async fn handle_tally(
             delegators,
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
-            let factor = amount.micro_ccd() / 1_000_000u64;
+            let factor = get_scaling_factor(&amount);
             eprintln!(
                 "Scaling the ballot cast by transaction {hash} by a factor {factor}. Delegators \
                  {delegators}."

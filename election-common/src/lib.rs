@@ -22,5 +22,10 @@ pub fn decode<'de, T: Deserialize<'de>>(value: &'de [u8]) -> Result<T, rmp_serde
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct WeightRow {
     pub account: AccountAddress,
-    pub amount:  Amount,
+    pub amount: Amount,
+}
+
+/// Get the scaling factor used to scale the encrypted ballots
+pub fn get_scaling_factor(amount: &Amount) -> u64 {
+    amount.micro_ccd() / 1_000_000u64
 }
