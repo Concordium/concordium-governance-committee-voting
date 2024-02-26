@@ -1,4 +1,5 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
+import JSONBig from 'json-bigint';
 
 const PAGINATION_SIZE = 10;
 
@@ -121,4 +122,30 @@ export async function getAccountSubmissions(
 
     const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
     return { ...json, results: json.results.map(reviveBallotSubmission) };
+}
+
+/**
+ * Gets the voting weight for the account
+ *
+ * @param account - The account address to query ballot submissions for
+ *
+ * @returns The voting weight for the account
+ * @throws On http errors.
+ */
+export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<bigint | null> {
+    const acccoutBase58 = AccountAddress.toBase58(accountAddress);
+    const url = `${BACKEND_API}/api/weight/${acccoutBase58}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        throw new Error(
+            `Error happened while trying to fetch ballot submission by transaction ${transactionHex} - ${res.status} (${res.statusText})`,
+        );
+    }
+
+    const json = JSONBig({
+        alwaysParseAsBig: true,
+        useNativeBigInt: true,
+    }).parse(await res.text()) as bigint | null;
+    return json;
 }
