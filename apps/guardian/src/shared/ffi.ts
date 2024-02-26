@@ -277,7 +277,7 @@ function makeInteractionFlow<P, Y>(cmd: string, convert: (payload: P) => Y) {
  *
  * @yields 1. A proposed amount of {@linkcode Energy.Type} to use for the transaction
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
@@ -325,7 +325,7 @@ type ValidatedProposalJSON = {
  *
  * @yields 1. A {@linkcode ValidatedProposal} to either accept or reject
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
@@ -348,7 +348,7 @@ export const registerGuardianShares = makeInteractionFlow<ValidatedProposalJSON,
  *
  * @yields 1. A {@linkcode ValidatedProposal} to either accept or reject
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
@@ -369,7 +369,7 @@ export const generateSecretShare = makeInteractionFlow<ValidatedProposalJSON, Va
  *
  * @yields 1. A {@linkcode CcdAmount.Type} to either accept or reject
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`
@@ -390,7 +390,7 @@ export const registerDecryptionShares = makeInteractionFlow<number, CcdAmount.Ty
  *
  * @yields 1. A {@linkcode CcdAmount.Type} to either accept or reject
  * @yields 2. `void`, which signals the transaction has been submitted and finalized
- * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, which additional information on the `type` property:
+ * @throws At any step in the interaction, {@linkcode BackendError} can be thrown, with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.QueryFailed`

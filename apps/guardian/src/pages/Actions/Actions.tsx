@@ -51,7 +51,7 @@ export default function Actions() {
                         <h1 className="text-muted">Election is in progress.</h1>
                         <p>
                             Voting concludes at <b>{electionConfig.electionEnd.toLocaleString()}</b>.<br />
-                            After this point, your help is needed to decrypt the election tally.
+                            After this point, your help is needed to decrypt the election results.
                         </p>
                     </>
                 )}

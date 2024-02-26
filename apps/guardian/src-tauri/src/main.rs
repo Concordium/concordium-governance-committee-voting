@@ -206,15 +206,19 @@ struct ContractData {
 }
 
 impl ContractData {
+    /// Parse the public keys of all guardians in the [`ContractData`],
+    /// returning an error if any public key is missing or not parsable.
     fn guardian_public_keys(&self) -> anyhow::Result<Vec<GuardianPublicKey>> {
         self.guardians
             .iter()
-            .filter_map(|(acc, g)| {
-                g.public_key.as_ref().map(|public_key| {
-                    decode(public_key).with_context(|| {
-                        format!("Failed to decode public key for guardian with account {acc}")
-                    })
-                })
+            .map(|(acc, g)| {
+                let public_key = g.public_key.as_ref().with_context(|| {
+                    format!("Public key registration missing for guardian with account {acc}")
+                })?;
+                let public_key = decode(public_key).with_context(|| {
+                    format!("Failed to decode public key for guardian with account {acc}")
+                })?;
+                Ok(public_key)
             })
             .collect()
     }
@@ -689,6 +693,7 @@ async fn register_guardian_key_flow(
     };
 
     tokio::select! {
+        biased;
         error = cancel => Err(error),
         res = interaction => res
     }
@@ -703,56 +708,36 @@ async fn register_guardian_key_flow(
 /// - [`Error::NodeConnection`]
 /// - [`Error::PeerValidation`]
 async fn generate_encrypted_shares(
-    app_config: &mut AppConfig,
+    election_parameters: &ElectionParameters,
+    guardians_state: &contract::GuardiansState,
     secret_key: GuardianSecretKey,
 ) -> Result<Vec<GuardianEncryptedShare>, Error> {
-    let mut contract = app_config.connection().await?.contract;
-    let election_parameters = app_config.election_guard().await?.parameters;
-    let guardians_state = contract
-        .view::<_, contract::GuardiansState, Error>(
-            "viewGuardiansState",
-            &(),
-            BlockIdentifier::LastFinal,
-        )
-        .await?;
-    let validation_results = guardians_state
-        .iter()
-        .map(|(acc, gs)| {
-            gs.public_key
-                .as_ref()
-                .with_context(|| format!("Public key not found for guardian with account {}", acc))
-                .map_err(Error::from)
-                .map(|pub_key| {
-                    // Attempt to decode the public key. Failure to do so means the key submitted by
-                    // that guardian is invalid, and should be reported to the
-                    // election contract.
-                    decode::<GuardianPublicKey>(pub_key).map_err(|_| *acc)
-                })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let mut keys = Vec::with_capacity(guardians_state.len());
+    let mut errors = Vec::with_capacity(guardians_state.len());
+    for (account, guardian_state) in guardians_state {
+        let bytes = guardian_state
+            .public_key
+            .as_ref()
+            .with_context(|| format!("Public key not found for guardian with account {account}"))?;
+        let Ok(public_key) = decode::<GuardianPublicKey>(bytes) else {
+            errors.push(*account);
+            continue;
+        };
 
-    let (guardian_public_keys, invalid_submissions) =
-        validation_results
-            .into_iter()
-            .fold((vec![], vec![]), |mut acc, res| {
-                match res {
-                    Ok(key) => acc.0.push(key),
-                    Err(account) => acc.1.push(account),
-                };
-                acc
-            });
+        keys.push(public_key);
+    }
 
-    if !invalid_submissions.is_empty() {
-        return Err(Error::PeerValidation(invalid_submissions));
+    if !errors.is_empty() {
+        return Err(Error::PeerValidation(errors));
     }
 
     let mut rng = Csprng::new(&thread_rng().gen::<[u8; 32]>());
-    let encrypted_shares: Vec<_> = guardian_public_keys
+    let encrypted_shares: Vec<_> = keys
         .into_iter()
         .map(|recipient_public_key| {
             GuardianEncryptedShare::new(
                 &mut rng,
-                &election_parameters,
+                election_parameters,
                 &secret_key,
                 &recipient_public_key,
             )
@@ -810,6 +795,7 @@ impl Serialize for ValidatedProposal {
 async fn register_guardian_shares_flow(
     channel_id: String,
     active_guardian: State<'_, ActiveGuardianState>,
+    contract_data: State<'_, ContractDataState>,
     app_config: State<'_, AppConfigState>,
     app_handle: AppHandle,
     window: Window,
@@ -821,11 +807,19 @@ async fn register_guardian_shares_flow(
             .as_ref()
             .context("Guardian account not available in app state")?;
         let mut app_config = app_config.0.lock().await;
+        let election_parameters = app_config.election_guard().await?.parameters;
+        let contract_data = contract_data.0.lock().await;
 
         let secret_key_path =
             guardian_data_dir(&app_handle, active_guardian.guardian.account).join(SECRET_KEY_FILE);
         let secret_key = read_encrypted_file(&active_guardian.password, &secret_key_path)?;
-        let encrypted_shares = match generate_encrypted_shares(&mut app_config, secret_key).await {
+        let encrypted_shares = match generate_encrypted_shares(
+            &election_parameters,
+            &contract_data.guardians,
+            secret_key,
+        )
+        .await
+        {
             Ok(shares) => Ok(shares),
             Err(Error::PeerValidation(accounts)) => Err(accounts),
             Err(error) => return Err(error),
@@ -846,7 +840,7 @@ async fn register_guardian_shares_flow(
                     )
                     .await?;
 
-                let ccd_cost = energy_to_ccd(update.current_energy(), &mut app_config).await?;
+                let ccd_cost = energy_to_ccd(update.current_energy(), &mut contract.client).await?;
                 let proposal = ValidatedProposal::Success(ccd_cost);
                 (proposal, update)
             }
@@ -859,7 +853,7 @@ async fn register_guardian_shares_flow(
                         &contract::GuardianStatus::KeyVerificationFailed(accounts), // Serialization will not fail
                     )
                     .await?;
-                let ccd_cost = energy_to_ccd(update.current_energy(), &mut app_config).await?;
+                let ccd_cost = energy_to_ccd(update.current_energy(), &mut contract.client).await?;
                 let proposal = ValidatedProposal::Complaint(ccd_cost);
                 (proposal, update)
             }
@@ -878,6 +872,7 @@ async fn register_guardian_shares_flow(
     };
 
     tokio::select! {
+        biased;
         error = cancel => Err(error),
         res = interaction => res
     }
@@ -886,68 +881,52 @@ async fn register_guardian_shares_flow(
 async fn generate_secret_share(
     active_guardian: &ActiveGuardian,
     app_config: &mut AppConfig,
-    guardians_state: &contract::GuardiansState,
+    contract_data: &ContractData,
     secret_key: GuardianSecretKey,
 ) -> Result<GuardianSecretKeyShare, Error> {
-    let guardian_public_keys: Vec<_> = guardians_state
-        .iter()
-        .map(|(_, guardian_state)| {
-            guardian_state
-                .public_key
-                .as_ref()
-                .ok_or(anyhow!("Missing public key registration in contract").into())
-                .and_then(|bytes| {
-                    decode::<GuardianPublicKey>(bytes)
-                        .context("Could not decode guardian public key")
-                        .map_err(Error::from)
-                })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let guardian_public_keys = contract_data.guardian_public_keys()?;
+    let guardians = &contract_data.guardians;
 
     let parameters = app_config.election_guard().await?.parameters;
-    // First we validate the shares registered by peers.
-    let encrypted_shares = guardians_state
-        .iter()
-        .try_fold(Ok(Vec::new()), |result, (account, guardian_state)| {
-            let share = guardian_state
-                .encrypted_share
-                .as_ref()
-                .context("Guardian share not registered.")?;
+    let mut encrypted_shares = Vec::with_capacity(guardians.len());
+    let mut errors = Vec::with_capacity(guardians.len());
+    for (account, guardian_state) in guardians {
+        let share = guardian_state
+            .encrypted_share
+            .as_ref()
+            .context("Guardian share not registered.")?;
 
-            let add_invalid = |result: Result<_, _>| {
-                let result = result
-                    .and(Err(vec![*account]))
-                    .map_err(|accounts| [&accounts[..], &[*account]].concat());
-                anyhow::Ok(result)
-            };
+        let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(share) else {
+            // If we cannot decode, the shares are invalid
+            errors.push(*account);
+            continue;
+        };
+        let Ok(i) = shares.binary_search_by_key(
+            &active_guardian.guardian.index,
+            |x: &GuardianEncryptedShare| x.recipient,
+        ) else {
+            // If we cannot find our share, the list of shares submitted is invalid
+            errors.push(*account);
+            continue;
+        };
 
-            let Ok(mut shares) = decode::<Vec<GuardianEncryptedShare>>(share) else {
-                // If we cannot decode, the shares are invalid
-                return add_invalid(result);
-            };
-            let Ok(i) = shares.binary_search_by_key(
-                &active_guardian.guardian.index,
-                |x: &GuardianEncryptedShare| x.recipient,
-            ) else {
-                // If we cannot find our share, the list of shares submitted is invalid
-                return add_invalid(result);
-            };
+        let share = shares.swap_remove(i);
+        drop(shares);
+        let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
+        if share
+            .decrypt_and_validate(&parameters, dealer_public_key, &secret_key)
+            .is_err()
+        {
+            // Finally, if the share cannot be validated, the individual share is invalid
+            errors.push(*account);
+            continue;
+        }
+        encrypted_shares.push(share)
+    }
 
-            let share = shares.swap_remove(i);
-            drop(shares);
-            let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
-            if share
-                .decrypt_and_validate(&parameters, dealer_public_key, &secret_key)
-                .is_err()
-            {
-                // Finally, if the share cannot be validated, the individual share is invalid
-                return add_invalid(result);
-            }
-
-            let result = result.map(|shares| [&shares[..], &[share]].concat());
-            anyhow::Ok(result)
-        })?
-        .map_err(Error::PeerValidation)?;
+    if !errors.is_empty() {
+        return Err(Error::PeerValidation(errors));
+    }
 
     // Then we generate the secret share
     let secret_share = GuardianSecretKeyShare::compute(
@@ -999,13 +978,9 @@ async fn generate_secret_share_flow(
         let secret_key: GuardianSecretKey =
             read_encrypted_file(&active_guardian.password, &secret_key_path)?;
         let secret_share_path = guardian_data_dir.join(SECRET_SHARE_FILE);
-        let secret_share = generate_secret_share(
-            active_guardian,
-            &mut app_config,
-            &contract_data.guardians,
-            secret_key,
-        )
-        .await;
+        let secret_share =
+            generate_secret_share(active_guardian, &mut app_config, &contract_data, secret_key)
+                .await;
         let secret_share = match secret_share {
             Ok(secret_share) => {
                 // Write to disk regardless of whether it already exists to avoid data
@@ -1034,7 +1009,8 @@ async fn generate_secret_share_flow(
                 &guardian_status,
             )
             .await?;
-        let ccd_cost = energy_to_ccd(contract_update.current_energy(), &mut app_config).await?;
+        let ccd_cost =
+            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
         let proposal = match guardian_status {
             contract::GuardianStatus::VerificationSuccessful => {
                 ValidatedProposal::Success(ccd_cost)
@@ -1058,6 +1034,7 @@ async fn generate_secret_share_flow(
     };
 
     tokio::select! {
+        biased;
         error = cancel => Err(error),
         res = interaction => res
     }
@@ -1071,32 +1048,29 @@ fn generate_decryption_shares(
     secret_share: GuardianSecretKeyShare,
 ) -> (GuardianDecryption, GuardianDecryptionProofState) {
     let mut rng = Csprng::new(&thread_rng().gen::<[u8; 32]>());
-    let (decryption_shares, secret_states) = encrypted_tally.iter().fold(
-        (BTreeMap::new(), BTreeMap::new()),
-        |(mut decryption_shares, mut secret_states), (&contest_index, ciphertexts)| {
-            let (shares, states): (Vec<_>, Vec<_>) = ciphertexts
-                .iter()
-                .map(|ciphertext| {
-                    let share = DecryptionShare::from(fixed_parameters, &secret_share, ciphertext);
-                    let (proof_commit, secret_state) = DecryptionProof::generate_commit_share(
-                        &mut rng,
-                        fixed_parameters,
-                        ciphertext,
-                        &share.i,
-                    );
-                    let share = DecryptionShareResult {
-                        share,
-                        proof_commit,
-                    };
-                    (share, secret_state)
-                })
-                .unzip();
-
-            decryption_shares.insert(contest_index, shares);
-            secret_states.insert(contest_index, states);
-            (decryption_shares, secret_states)
-        },
-    );
+    let mut decryption_shares = BTreeMap::new();
+    let mut secret_states = BTreeMap::new();
+    for (&contest_index, ciphertexts) in encrypted_tally {
+        let (shares, states): (Vec<_>, Vec<_>) = ciphertexts
+            .iter()
+            .map(|ciphertext| {
+                let share = DecryptionShare::from(fixed_parameters, &secret_share, ciphertext);
+                let (proof_commit, secret_state) = DecryptionProof::generate_commit_share(
+                    &mut rng,
+                    fixed_parameters,
+                    ciphertext,
+                    &share.i,
+                );
+                let share = DecryptionShareResult {
+                    share,
+                    proof_commit,
+                };
+                (share, secret_state)
+            })
+            .unzip();
+        decryption_shares.insert(contest_index, shares);
+        secret_states.insert(contest_index, states);
+    }
 
     (decryption_shares, secret_states)
 }
@@ -1168,7 +1142,8 @@ async fn register_decryption_shares_flow(
                 &encode(&decryption_shares).context("Failed to serialize decryption shares")?,
             )
             .await?;
-        let ccd_cost = energy_to_ccd(contract_update.current_energy(), &mut app_config).await?;
+        let ccd_cost =
+            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
 
         // Wait for response from the user through the frontend
         wait_for_approval(&channel_id, &window, &ccd_cost).await?;
@@ -1183,6 +1158,7 @@ async fn register_decryption_shares_flow(
     };
 
     tokio::select! {
+        biased;
         error = cancel => Err(error),
         res = interaction => res
     }
@@ -1232,45 +1208,35 @@ async fn generate_decryption_proofs(
         })
         .try_collect()?;
 
-    /// The decryption data corresponding to a single [`Ciphertext`]
-    struct ProofData<'a> {
-        /// The ciphertext
-        ciphertext:        &'a Ciphertext,
-        /// The secret state for the commitment share for active guardian
-        secret_state:      &'a DecryptionProofStateShare,
-        /// A map of guardians and their decryption share for the ciphertext
-        decryption_shares: Vec<&'a DecryptionShareResult>,
-    }
-
     // Generate the decryption proof for a single contest entry. An error is
     // returned if either:
     //
     // - Shares received from peers cannot be combined
     // - Decryption proof cannot be generated for some ciphertext
-    let generate_decryption_proof = |proof_data: &ProofData| -> Result<_, Error> {
-        let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = proof_data
-            .decryption_shares
+    let generate_decryption_proof = |ciphertext: &Ciphertext,
+                                     secret_state: &DecryptionProofStateShare,
+                                     decryption_shares: Vec<&DecryptionShareResult>|
+     -> Result<_, Error> {
+        let (commit_shares, decryption_shares): (Vec<_>, Vec<_>) = decryption_shares
             .iter()
             .map(|share| (share.proof_commit.clone(), &share.share))
             .unzip();
 
         let combined_decryption = CombinedDecryptionShare::combine(&parameters, decryption_shares)
-            .map_err(|e| {
-                eprintln!("{e}");
+            .map_err(|_| {
                 Error::DecryptionShareError("Failed to combine shares received from peers".into())
             })?;
         let proof = DecryptionProof::generate_response_share(
             &parameters.fixed_parameters,
             &context.hashes_ext,
             &context.public_key,
-            proof_data.ciphertext,
+            ciphertext,
             &combined_decryption,
             &commit_shares,
-            proof_data.secret_state,
+            secret_state,
             &secret_key_share,
         )
-        .map_err(|e| {
-            eprintln!("{e}");
+        .map_err(|_| {
             Error::DecryptionShareError("Failed to generate the response share to register".into())
         })?;
 
@@ -1281,63 +1247,32 @@ async fn generate_decryption_proofs(
     // for each contest in the election. Errors are returned if:
     //
     // - Decryption shares do not match the format of the tally
-    let proof_data: BTreeMap<_, _> = encrypted_tally
-        .iter()
-        .map(|(contest_index, ciphertexts)| {
-            let secret_states = match secret_states.get(contest_index) {
-                Some(secret_states) if secret_states.len() == ciphertexts.len() => secret_states,
-                _ => return Err(anyhow!("Invalid secret states for tally")),
-            };
-            let decryption_shares: Vec<_> = decryption_shares
-                .iter()
-                .map(|shares| match shares.get(contest_index) {
-                    Some(shares) if shares.len() == ciphertexts.len() => Ok(shares),
-                    _ => Err(Error::DecryptionShareError(
-                        "Invalid decryption shares detected".into(),
-                    )),
-                })
-                .try_collect()?;
+    let mut proofs = BTreeMap::new();
+    for (contest_index, ciphertexts) in encrypted_tally {
+        let secret_states = match secret_states.get(contest_index) {
+            Some(secret_states) if secret_states.len() == ciphertexts.len() => secret_states,
+            _ => return Err(anyhow!("Invalid secret states for tally").into()),
+        };
+        let decryption_shares: Vec<_> = decryption_shares
+            .iter()
+            .map(|shares| match shares.get(contest_index) {
+                Some(shares) if shares.len() == ciphertexts.len() => Ok(shares),
+                _ => Err(Error::DecryptionShareError(
+                    "Invalid decryption shares detected".into(),
+                )),
+            })
+            .try_collect()?;
+        let proofs = proofs
+            .entry(*contest_index)
+            .or_insert(Vec::with_capacity(ciphertexts.len()));
+        for (i, (ciphertext, secret_state)) in ciphertexts.iter().zip(secret_states).enumerate() {
+            let decryption_shares = decryption_shares.iter().map(|shares| &shares[i]).collect();
+            let proof = generate_decryption_proof(ciphertext, secret_state, decryption_shares)?;
+            proofs.push(proof);
+        }
+    }
 
-            // For ciphertexts in a contest, find the corresponding decryption share from
-            // each guardian
-            let proof_data = ciphertexts
-                .iter()
-                .zip(secret_states)
-                .enumerate()
-                .map(|(i, (ciphertext, secret_state))| {
-                    let decryption_shares =
-                        decryption_shares
-                            .iter()
-                            .fold(Vec::new(), |mut acc, shares| {
-                                acc.push(&shares[i]);
-                                acc
-                            });
-                    ProofData {
-                        ciphertext,
-                        secret_state,
-                        decryption_shares,
-                    }
-                })
-                .collect_vec();
-            Ok((*contest_index, proof_data))
-        })
-        .try_collect()?;
-
-    // Run through the election data and construct proofs of correct decryption for
-    // all combined decryptions of each ciphertext in the encrypted tally
-    let election_proofs = proof_data
-        .into_iter()
-        .map(|(contest_index, contest_data)| {
-            let contest_proofs: Vec<_> = contest_data
-                .iter()
-                .map(generate_decryption_proof)
-                .try_collect()?;
-
-            Ok::<_, Error>((contest_index, contest_proofs))
-        })
-        .try_collect()?;
-
-    Ok(election_proofs)
+    Ok(proofs)
 }
 
 /// This command executes the following steps:
@@ -1399,7 +1334,8 @@ async fn register_decryption_proofs_flow(
                 &encode(&response_shares).context("Failed to serialize decryption shares")?,
             )
             .await?;
-        let ccd_cost = energy_to_ccd(contract_update.current_energy(), &mut app_config).await?;
+        let ccd_cost =
+            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
 
         // Wait for response from the user through the frontend
         wait_for_approval(&channel_id, &window, &ccd_cost).await?;
@@ -1414,6 +1350,7 @@ async fn register_decryption_proofs_flow(
     };
 
     tokio::select! {
+        biased;
         error = cancel => Err(error),
         res = interaction => res
     }
@@ -1540,9 +1477,7 @@ async fn connect(app_config: State<'_, AppConfigState>) -> Result<ElectionConfig
 /// ## Errors
 /// - [`Error::NodeConnection`]
 /// - [`Error::NetworkError`]
-async fn energy_to_ccd(energy: Energy, app_config: &mut AppConfig) -> Result<Amount, Error> {
-    let mut node = app_config.connection().await?.contract.client;
-
+async fn energy_to_ccd(energy: Energy, node: &mut v2::Client) -> Result<Amount, Error> {
     let chain_parameters = node
         .get_block_chain_parameters(BlockIdentifier::LastFinal)
         .await?
