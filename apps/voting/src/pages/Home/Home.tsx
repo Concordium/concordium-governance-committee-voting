@@ -146,9 +146,6 @@ export default function Home() {
                     </Button>
                 </div>
             )}
-            {isElectionOpen && (
-                <div className="d-flex justify-content-center mt-4 small text-muted">Connected account cannot vote</div>
-            )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">
                 <Modal.Header closeButton>
                     <Modal.Title>Confirm candidate selection</Modal.Title>

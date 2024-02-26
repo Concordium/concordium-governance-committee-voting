@@ -209,7 +209,7 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
             </section>
             <section className="mb-4">
                 <h5>Account details</h5>
-                <div className="active-connection__text-small">{votingPower?.toString()} voting power*</div>
+                <div className="active-connection__text-small">Voting power: {votingPower?.toString()}*</div>
                 <div className="active-connection__text-small mt-3 text-muted">
                     *The voting power listed does not include any voting power delegated from other accounts.
                 </div>

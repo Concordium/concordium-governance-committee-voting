@@ -172,13 +172,19 @@ export interface Wallet {
  */
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
+/**
+ * Holds the voting weight for each account
+ */
 const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_: AccountAddress.Type) => atom<bigint | undefined>(undefined),
     (a, b) => a.address === b.address,
 );
 
-const lazyVotingPowerAtom = atomEffect((get, set) => {
+/**
+ * Fetches the voting power for the selected account when changed
+ */
+const accountVotingPowerSubscribeAtom = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return;
 
@@ -186,8 +192,11 @@ const lazyVotingPowerAtom = atomEffect((get, set) => {
     void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, weight));
 });
 
+/**
+ * Gets the voting power for the selected account
+ */
 export const activeWalletVotingPowerAtom = atom((get) => {
-    get(lazyVotingPowerAtom);
+    get(accountVotingPowerSubscribeAtom);
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return undefined;
 

@@ -272,7 +272,7 @@ async fn get_account_weight(
     let amount = state
         .initial_weights
         .get(&account)
-        .map(|x| *x)
+        .copied()
         .unwrap_or(Amount::from_micro_ccd(0));
     let weight = get_scaling_factor(&amount);
     Json(weight)
