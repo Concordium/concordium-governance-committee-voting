@@ -12,6 +12,7 @@ import {
     BallotSubmissionStatus,
     Wallet,
     activeWalletAtom,
+    activeWalletVotingPowerAtom,
     connectionViewAtom,
     loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
@@ -186,6 +187,7 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
     const submissions = useAtomValue(submittedBallotsAtom);
     const loadMore = useSetAtom(loadMoreSubmittedBallotsAtom);
     const [loading, setLoading] = useState(false);
+    const votingPower = useAtomValue(activeWalletVotingPowerAtom);
 
     const handleLoadMore = useCallback(async () => {
         setLoading(true);
@@ -205,10 +207,17 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
                     Disconnect
                 </Button>
             </section>
+            <section className="mb-4">
+                <h5>Account details</h5>
+                <div className="active-connection__text-small">{votingPower?.toString()} voting power*</div>
+                <div className="active-connection__text-small mt-3 text-muted">
+                    *The voting power listed does not include any voting power delegated from other accounts.
+                </div>
+            </section>
             <section>
                 <h5>Ballot submissions</h5>
                 {submissions?.ballots.length === 0 && (
-                    <span className="active-connection__no-submissions text-muted">
+                    <span className="active-connection__text-small text-muted">
                         No ballot submissions registered for the selected account
                     </span>
                 )}

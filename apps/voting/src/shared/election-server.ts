@@ -132,20 +132,18 @@ export async function getAccountSubmissions(
  * @returns The voting weight for the account
  * @throws On http errors.
  */
-export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<bigint | null> {
+export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<bigint> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
     const url = `${BACKEND_API}/api/weight/${acccoutBase58}`;
     const res = await fetch(url);
 
     if (!res.ok) {
-        throw new Error(
-            `Error happened while trying to fetch ballot submission by transaction ${transactionHex} - ${res.status} (${res.statusText})`,
-        );
+        throw new Error(`Error happened while trying to get account weight - ${res.status} (${res.statusText})`);
     }
 
     const json = JSONBig({
         alwaysParseAsBig: true,
         useNativeBigInt: true,
-    }).parse(await res.text()) as bigint | null;
+    }).parse(await res.text()) as bigint;
     return json;
 }

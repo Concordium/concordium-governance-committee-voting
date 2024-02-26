@@ -174,7 +174,7 @@ export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
 const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_: AccountAddress.Type) => atom<bigint | null | undefined>(undefined),
+    (_: AccountAddress.Type) => atom<bigint | undefined>(undefined),
     (a, b) => a.address === b.address,
 );
 

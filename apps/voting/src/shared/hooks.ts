@@ -1,6 +1,6 @@
 import { useAtomValue } from 'jotai';
 import { useMemo } from 'react';
-import { activeWalletVotingPowerAtom, electionConfigAtom } from './store';
+import { electionConfigAtom } from './store';
 
 export const enum ElectionOpenState {
     NotStarted,
@@ -26,24 +26,4 @@ export function useIsElectionOpen(): ElectionOpenState | undefined {
     }, [electionConfig]);
 
     return isElectionOpen;
-}
-
-/**
- * Possible values describing whether a user can cast votes in the election.
- */
-export const enum EligibleStatus {
-    /** Either election config or account connection missing */
-    MissingValues,
-    /** Account ineligible for voting */
-    Ineligible,
-    /** Account eligible for voting */
-    Eligible,
-}
-
-/**
- * Returns a {@linkcode EligibleStatus} describing whether a user account can cast votes.
- */
-export function useCanVote(): EligibleStatus {
-    const votingPower = useAtomValue(activeWalletVotingPowerAtom);
-    return typeof votingPower === 'bigint' ? EligibleStatus.Eligible : EligibleStatus.Ineligible;
 }

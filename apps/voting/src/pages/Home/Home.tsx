@@ -11,7 +11,7 @@ import {
     connectionViewAtom,
     activeWalletAtom,
 } from '~/shared/store';
-import { ElectionOpenState, EligibleStatus, useCanVote, useIsElectionOpen } from '~/shared/hooks';
+import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import { useElectionGuard } from '~/shared/election-guard';
 
 interface CandidateProps {
@@ -69,7 +69,6 @@ export default function Home() {
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
     const { getEncryptedBallot } = useElectionGuard();
     const [loading, setLoading] = useState(false);
-    const canVote = useCanVote();
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -118,16 +117,11 @@ export default function Home() {
 
     // Handle connecting due to a submission attempt while not connected.
     useEffect(() => {
-        if (
-            awaitConnection &&
-            wallet?.connection !== undefined &&
-            wallet?.account !== undefined &&
-            canVote === EligibleStatus.Eligible
-        ) {
+        if (awaitConnection && wallet?.connection !== undefined && wallet?.account !== undefined) {
             submit();
             setAwaitConnection(false);
         }
-    }, [awaitConnection, wallet?.connection, submit, wallet?.account, canVote]);
+    }, [awaitConnection, wallet?.connection, submit, wallet?.account]);
 
     if (electionConfig === undefined) {
         return null;
@@ -145,14 +139,14 @@ export default function Home() {
                     />
                 ))}
             </Row>
-            {isElectionOpen && canVote !== EligibleStatus.Ineligible && (
+            {isElectionOpen && (
                 <div className="d-flex justify-content-center mt-4">
                     <Button className="text-center" variant="primary" onClick={submit}>
                         Submit
                     </Button>
                 </div>
             )}
-            {isElectionOpen && canVote === EligibleStatus.Ineligible && (
+            {isElectionOpen && (
                 <div className="d-flex justify-content-center mt-4 small text-muted">Connected account cannot vote</div>
             )}
             <Modal show={confirmOpen} onHide={closeConfirm} backdrop="static">

@@ -263,20 +263,18 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
-/// Get the voting weight of an account address. If `0` is found, `None` is
-/// returned in its place.
+/// Get the voting weight of an account address.
 #[tracing::instrument(skip(state))]
 async fn get_account_weight(
     State(state): State<AppState>,
     Path(account): Path<AccountAddress>,
-) -> Json<Option<u64>> {
-    let weight = state.initial_weights.get(&account).and_then(|amount| {
-        if amount.micro_ccd() == 0 {
-            None
-        } else {
-            Some(get_scaling_factor(amount))
-        }
-    });
+) -> Json<u64> {
+    let amount = state
+        .initial_weights
+        .get(&account)
+        .map(|x| *x)
+        .unwrap_or(Amount::from_micro_ccd(0));
+    let weight = get_scaling_factor(&amount);
     Json(weight)
 }
 
