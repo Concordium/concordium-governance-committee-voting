@@ -14,9 +14,9 @@ export const enum BackendErrorType {
     /** Failed to connect to the node */
     NodeConnection = 'NodeConnection',
     /** Error happened while querying the node */
-    NetworkError = 'NetworkError',
+    Network = 'Network',
     /** Failed to decrypt the resource */
-    DecryptionError = 'DecryptionError',
+    DecryptionFailed = 'DecryptionFailed',
     /** Error happened while trying to fetch remote resource */
     Http = 'Http',
     /** Attempted to import an account which already exists on disk */

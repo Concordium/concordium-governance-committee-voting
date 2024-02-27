@@ -33,7 +33,8 @@ use eg::{
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
-    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
+    decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
+    GuardianDecryptionProof, WeightRow,
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -292,12 +293,6 @@ async fn range_setup(
         last_block.block_slot_time
     );
     Ok((first_block, last_block))
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct WeightRow {
-    account: AccountAddress,
-    amount:  Amount,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -802,7 +797,7 @@ async fn handle_tally(
             delegators,
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
-            let factor = amount.micro_ccd() / 1_000_000u64;
+            let factor = get_scaling_factor(&amount);
             eprintln!(
                 "Scaling the ballot cast by transaction {hash} by a factor {factor}. Delegators \
                  {delegators}."

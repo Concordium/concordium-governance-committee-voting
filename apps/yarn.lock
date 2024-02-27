@@ -2009,6 +2009,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/json-bigint@npm:^1.0.4":
+  version: 1.0.4
+  resolution: "@types/json-bigint@npm:1.0.4"
+  checksum: bb567bac8d64f541abb3cb716d5c699c460b9aa4a9fc5fc81a3cee9cb57fe8c03914022049dcdadff213972979a5d08267405d55d2ed6aa95d3558f08347008a
+  languageName: node
+  linkType: hard
+
 "@types/json-schema@npm:*, @types/json-schema@npm:^7.0.12":
   version: 7.0.14
   resolution: "@types/json-schema@npm:7.0.14"
@@ -7463,6 +7470,7 @@ __metadata:
     "@swc-jotai/react-refresh": "npm:^0.1.0"
     "@types/bootstrap": "npm:^5"
     "@types/eslint": "npm:^8"
+    "@types/json-bigint": "npm:^1.0.4"
     "@types/react": "npm:^18.2.15"
     "@types/react-dom": "npm:^18.2.7"
     "@types/uuid": "npm:^9"
@@ -7476,6 +7484,7 @@ __metadata:
     eslint: "npm:^8.52.0"
     jotai: "npm:^2.5.1"
     jotai-effect: "npm:^0.2.3"
+    json-bigint: "npm:^1.0.0"
     prettier: "npm:^3.0.3"
     react: "npm:^18.2.0"
     react-bootstrap: "npm:^2.9.1"

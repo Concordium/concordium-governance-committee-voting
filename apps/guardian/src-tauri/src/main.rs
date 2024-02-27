@@ -69,7 +69,7 @@ enum Error {
     /// Decryption of file contents failed. This can either indicate incorrect
     /// password given by the user, or file corruption.
     #[error("Decryption of data failed")]
-    DecryptionError,
+    DecryptionFailed,
     /// IO error while attempting read/write
     #[error("{0}")]
     IO(#[from] std::io::Error),
@@ -88,7 +88,7 @@ enum Error {
     QueryFailed(RejectReason),
     /// A network error happened while querying the node
     #[error("Network error: {0}")]
-    NetworkError(#[from] QueryError),
+    Network(#[from] QueryError),
     /// Duplicate account found when importing
     #[error("Account has already been imported")]
     ExistingAccount,
@@ -103,7 +103,7 @@ enum Error {
     PeerValidation(Vec<AccountAddress>),
     /// When a decryption share result shared by some guardian is invalid
     #[error("{0}")]
-    DecryptionShareError(String),
+    InvalidDecryptionShare(String),
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {
@@ -454,8 +454,8 @@ fn read_encrypted_file<D: serde::de::DeserializeOwned>(
     let encrypted: EncryptedData = serde_json::from_slice(&encrypted_bytes)
         .map_err(|_| Error::Corrupted(file_path.clone()))?;
 
-    let decrypted_bytes = decrypt(password, &encrypted).map_err(|_| Error::DecryptionError)?;
-    let value = serde_json::from_slice(&decrypted_bytes).map_err(|_| Error::DecryptionError)?;
+    let decrypted_bytes = decrypt(password, &encrypted).map_err(|_| Error::DecryptionFailed)?;
+    let value = serde_json::from_slice(&decrypted_bytes).map_err(|_| Error::DecryptionFailed)?;
     Ok(value)
 }
 
@@ -1190,23 +1190,22 @@ async fn generate_decryption_proofs(
     // Find all decryption shares for all guardians. If the shares registered by a
     // specific guardian are either missing or cannot be decoded, return
     // `Error::DecryptionShareError`.
-    let decryption_shares: Vec<_> = contract_data
-        .guardians
-        .iter()
-        .map(|(_, guardian_state)| {
-            let bytes =
-                guardian_state
-                    .decryption_share
-                    .as_ref()
-                    .ok_or(Error::DecryptionShareError(
+    let decryption_shares: Vec<_> =
+        contract_data
+            .guardians
+            .iter()
+            .map(|(_, guardian_state)| {
+                let bytes = guardian_state.decryption_share.as_ref().ok_or(
+                    Error::InvalidDecryptionShare(
                         "Not all selected guardians posted their decryption shares".into(),
-                    ))?;
-            let shares = decode::<GuardianDecryption>(bytes).map_err(|_| {
-                Error::DecryptionShareError("Invalid decryption shares were detected".into())
-            })?;
-            Ok::<_, Error>(shares)
-        })
-        .try_collect()?;
+                    ),
+                )?;
+                let shares = decode::<GuardianDecryption>(bytes).map_err(|_| {
+                    Error::InvalidDecryptionShare("Invalid decryption shares were detected".into())
+                })?;
+                Ok::<_, Error>(shares)
+            })
+            .try_collect()?;
 
     // Generate the decryption proof for a single contest entry. An error is
     // returned if either:
@@ -1224,7 +1223,7 @@ async fn generate_decryption_proofs(
 
         let combined_decryption = CombinedDecryptionShare::combine(&parameters, decryption_shares)
             .map_err(|_| {
-                Error::DecryptionShareError("Failed to combine shares received from peers".into())
+                Error::InvalidDecryptionShare("Failed to combine shares received from peers".into())
             })?;
         let proof = DecryptionProof::generate_response_share(
             &parameters.fixed_parameters,
@@ -1237,7 +1236,9 @@ async fn generate_decryption_proofs(
             &secret_key_share,
         )
         .map_err(|_| {
-            Error::DecryptionShareError("Failed to generate the response share to register".into())
+            Error::InvalidDecryptionShare(
+                "Failed to generate the response share to register".into(),
+            )
         })?;
 
         Ok(proof)
@@ -1257,7 +1258,7 @@ async fn generate_decryption_proofs(
             .iter()
             .map(|shares| match shares.get(contest_index) {
                 Some(shares) if shares.len() == ciphertexts.len() => Ok(shares),
-                _ => Err(Error::DecryptionShareError(
+                _ => Err(Error::InvalidDecryptionShare(
                     "Invalid decryption shares detected".into(),
                 )),
             })

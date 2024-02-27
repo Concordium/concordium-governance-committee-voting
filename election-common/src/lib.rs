@@ -1,3 +1,4 @@
+use concordium_base::contracts_common::{AccountAddress, Amount};
 use eg::{
     election_manifest::ContestIndex,
     joint_election_public_key::Ciphertext,
@@ -8,7 +9,8 @@ use eg::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// The representation of an encrypted tally, i.e. one [`Ciphertext`] per candidate.
+/// The representation of an encrypted tally, i.e. one [`Ciphertext`] per
+/// candidate.
 pub type EncryptedTally = BTreeMap<ContestIndex, Vec<Ciphertext>>;
 /// The representation of a guardians decryption shares of the tally, i.e. one
 /// [`DecryptionShareResult`] per [`Ciphertext`] included in the
@@ -17,13 +19,11 @@ pub type GuardianDecryption = BTreeMap<ContestIndex, Vec<DecryptionShareResult>>
 /// The representation of the secret states for the commitment shares
 /// corresponding to a list of [`eg::verifiable_decryption::DecryptionProof`]s
 /// for a guardian.
-pub type GuardianDecryptionProofState =
-    BTreeMap<ContestIndex, Vec<DecryptionProofStateShare>>;
-/// The representation of a guardians proofs of correct decryption for the cummulative
-/// election decryption, i.e. one [`DecryptionProofResponseShare`] per
-/// [`Ciphertext`] included in the [`EncryptedTally`].
-pub type GuardianDecryptionProof =
-    BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>;
+pub type GuardianDecryptionProofState = BTreeMap<ContestIndex, Vec<DecryptionProofStateShare>>;
+/// The representation of a guardians proofs of correct decryption for the
+/// cummulative election decryption, i.e. one [`DecryptionProofResponseShare`]
+/// per [`Ciphertext`] included in the [`EncryptedTally`].
+pub type GuardianDecryptionProof = BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>;
 
 /// Encodes the value.
 ///
@@ -40,3 +40,14 @@ pub fn encode<T: Serialize + Sized>(value: &T) -> Result<Vec<u8>, rmp_serde::enc
 pub fn decode<'de, T: Deserialize<'de>>(value: &'de [u8]) -> Result<T, rmp_serde::decode::Error> {
     rmp_serde::from_slice(value)
 }
+
+/// Represents a row in the eligible voters table written the csv file
+/// containing the initial weights for each account
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct WeightRow {
+    pub account: AccountAddress,
+    pub amount:  Amount,
+}
+
+/// Get the scaling factor used to scale the encrypted ballots
+pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_000u64 }

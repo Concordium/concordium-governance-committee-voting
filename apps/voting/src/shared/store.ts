@@ -18,7 +18,7 @@ import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 import { getElectionConfig } from './election-contract';
 import { expectValue, isDefined, pollUntil } from './util';
 import { NETWORK } from './constants';
-import { DatabaseBallotSubmission, getAccountSubmissions, getSubmission } from './election-server';
+import { DatabaseBallotSubmission, getAccountSubmissions, getAccountWeight, getSubmission } from './election-server';
 
 /**
  * Representation of an election candidate.
@@ -171,6 +171,37 @@ export interface Wallet {
  * Holds the currently active {@linkcode Wallet} (if any).
  */
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
+
+/**
+ * Holds the voting weight for each account
+ */
+const votingWeightAtomFamily = atomFamily(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_: AccountAddress.Type) => atom<bigint | undefined>(undefined),
+    (a, b) => a.address === b.address,
+);
+
+/**
+ * Fetches the voting power for the selected account when changed
+ */
+const accountVotingPowerSubscribeAtom = atomEffect((get, set) => {
+    const wallet = get(activeWalletAtom);
+    if (wallet?.account === undefined) return;
+
+    const votingWeightAtom = votingWeightAtomFamily(wallet.account);
+    void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, weight));
+});
+
+/**
+ * Gets the voting power for the selected account
+ */
+export const activeWalletVotingPowerAtom = atom((get) => {
+    get(accountVotingPowerSubscribeAtom);
+    const wallet = get(activeWalletAtom);
+    if (wallet?.account === undefined) return undefined;
+
+    return get(votingWeightAtomFamily(wallet.account));
+});
 
 /**
  * Represents the different status' a ballot submission can have.

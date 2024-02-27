@@ -1,15 +1,14 @@
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{anyhow, Context};
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
 use concordium_rust_sdk::{
-    contract_client::{ContractClient, ViewError},
     smart_contracts::common::{self as contracts_common},
     types::{
-        hashes::BlockHash, smart_contracts::InstanceInfo, AbsoluteBlockHeight, BlockItemSummary,
-        ContractAddress, ExecutionTree, ExecutionTreeV1,
+        hashes::BlockHash, AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree,
+        ExecutionTreeV1,
     },
-    v2::{self, BlockIdentifier, Client},
+    v2::{self, Client},
 };
 use eg::{
     ballot::BallotEncrypted, election_manifest::ElectionManifest,
@@ -20,22 +19,20 @@ use eg::{
 use election_common::decode;
 use election_server::{
     db::{Database, DatabasePool, Transaction},
-    util::BallotSubmission,
+    util::{
+        create_client, get_election_config, verify_checksum, verify_contract, BallotSubmission,
+        ElectionContract, REGISTER_VOTES_RECEIVE,
+    },
 };
 use futures::{future, TryStreamExt};
 use std::{
     fs,
-    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
     time::Duration,
 };
-use tonic::transport::ClientTlsConfig;
-
-const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
-const CONFIG_VIEW: &str = "viewConfig";
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
@@ -97,21 +94,6 @@ struct AppConfig {
         env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
     )]
     request_timeout_ms: u64,
-}
-
-/// Verify the digest of `file` matches the expected `checksum`.
-fn verify_checksum(file: &Path, expected_checksum: [u8; 32]) -> anyhow::Result<()> {
-    use sha2::Digest;
-    let computed_hash: [u8; 32] = sha2::Sha256::digest(
-        std::fs::read(file)
-            .with_context(|| format!("Could not digest file at location: {:?}", file))?,
-    )
-    .into();
-    ensure!(
-        computed_hash == expected_checksum,
-        "Hash of file did not match checksum"
-    );
-    Ok(())
 }
 
 impl AppConfig {
@@ -411,45 +393,6 @@ async fn process_block(
     Ok(block_data)
 }
 
-/// Verify that the contract instance represented by `contract_address` is an
-/// election contract. We check this to avoid failing silently from not indexing
-/// any transactions made to the contract due to either listening to
-/// transactions made to the wrong contract of a wrong contract entrypoint.
-async fn verify_contract(
-    mut node: Client,
-    contract_address: ContractAddress,
-) -> anyhow::Result<ElectionContract> {
-    let instance_info = node
-        .get_instance_info(contract_address, BlockIdentifier::LastFinal)
-        .await
-        .context("Could not get instance info for election contract")?
-        .response;
-    let (name, methods) = match instance_info {
-        InstanceInfo::V0 { .. } => anyhow::bail!("Expected V1 contract"),
-        InstanceInfo::V1 { methods, name, .. } => (name, methods),
-    };
-
-    anyhow::ensure!(
-        methods.iter().any(|m| m == REGISTER_VOTES_RECEIVE),
-        "Expected method with receive name \"{}\" to be available on contract",
-        REGISTER_VOTES_RECEIVE
-    );
-
-    Ok(ElectionContract::new(node, contract_address, name))
-}
-
-enum ElectionContractMarker {}
-
-type ElectionContract = ContractClient<ElectionContractMarker>;
-
-/// Gets the [`ElectionConfig`] from the contract.
-async fn get_election_config(client: &mut ElectionContract) -> anyhow::Result<ElectionConfig> {
-    let election_config = client
-        .view::<_, ElectionConfig, ViewError>(CONFIG_VIEW, &(), BlockIdentifier::LastFinal)
-        .await?;
-    Ok(election_config)
-}
-
 /// Find the block height corresponding to the start time of the election. If
 /// the election start time is in the future, this function will pause the
 /// thread until the election has started, after which it will return the block
@@ -496,32 +439,6 @@ async fn find_election_start_height(
 
     let block_info = result.unwrap(); // We already checked for errors in the loop above.
     Ok(block_info.block_height)
-}
-
-/// Creates a [`v2::Client`] from the [`v2::Endpoint`], enabling TLS and setting
-/// connection and request timeouts
-async fn create_client(
-    endpoint: v2::Endpoint,
-    request_timeout: std::time::Duration,
-) -> anyhow::Result<v2::Client> {
-    let endpoint = if endpoint
-        .uri()
-        .scheme()
-        .map_or(false, |x| x == &v2::Scheme::HTTPS)
-    {
-        endpoint
-            .tls_config(ClientTlsConfig::new())
-            .context("Unable to construct TLS configuration for Concordium API.")?
-    } else {
-        endpoint
-    };
-    let endpoint = endpoint
-        .connect_timeout(request_timeout)
-        .timeout(request_timeout);
-    let node = Client::new(endpoint)
-        .await
-        .context("Could not connect to node.")?;
-    Ok(node)
 }
 
 /// Queries the node available at `node_endpoint` from `latest_height` until
@@ -628,7 +545,7 @@ async fn main() -> anyhow::Result<()> {
 
     let ep = config
         .node_endpoints
-        .get(0)
+        .first()
         .context("Expected endpoint to be defined")?
         .clone();
     let client = create_client(ep, request_timeout).await?;
