@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use anyhow::{ensure, Context};
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
@@ -11,6 +9,7 @@ use concordium_rust_sdk::{
 use concordium_std::ContractAddress;
 use eg::ballot::BallotEncrypted;
 use serde::Serialize;
+use std::{fs::File, path::Path};
 use tonic::transport::ClientTlsConfig;
 
 pub const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
@@ -30,17 +29,19 @@ pub struct BallotSubmission {
 }
 
 pub enum ElectionContractMarker {}
-
 pub type ElectionContract = ContractClient<ElectionContractMarker>;
 
 /// Verify the digest of `file` matches the expected `checksum`.
 pub fn verify_checksum(file: &Path, expected_checksum: [u8; 32]) -> anyhow::Result<()> {
     use sha2::Digest;
-    let computed_hash: [u8; 32] = sha2::Sha256::digest(
-        std::fs::read(file)
-            .with_context(|| format!("Could not digest file at location: {:?}", file))?,
-    )
-    .into();
+
+    let mut hasher = sha2::Sha256::new();
+    let mut source =
+        File::open(file).with_context(|| format!("Unable to open file at path {file:?}"))?;
+
+    std::io::copy(&mut source, &mut hasher)
+        .with_context(|| format!("Could not digest file at location {file:?}"))?;
+    let computed_hash: [u8; 32] = hasher.finalize().into();
     ensure!(
         computed_hash == expected_checksum,
         "Hash of file did not match checksum"

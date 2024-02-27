@@ -1,3 +1,4 @@
+use concordium_base::contracts_common::{AccountAddress, Amount};
 use eg::{
     election_manifest::ContestIndex,
     joint_election_public_key::Ciphertext,
@@ -42,15 +43,11 @@ pub fn decode<'de, T: Deserialize<'de>>(value: &'de [u8]) -> Result<T, rmp_serde
 
 /// Represents a row in the eligible voters table written the csv file
 /// containing the initial weights for each account
-#[cfg(feature = "full")]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct WeightRow {
-    pub account: concordium_rust_sdk::smart_contracts::common::AccountAddress,
-    pub amount:  concordium_rust_sdk::smart_contracts::common::Amount,
+    pub account: AccountAddress,
+    pub amount:  Amount,
 }
 
 /// Get the scaling factor used to scale the encrypted ballots
-#[cfg(feature = "full")]
-pub fn get_scaling_factor(amount: &concordium_rust_sdk::smart_contracts::common::Amount) -> u64 {
-    amount.micro_ccd() / 1_000_000u64
-}
+pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_000u64 }

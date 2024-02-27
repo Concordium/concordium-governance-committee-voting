@@ -333,14 +333,12 @@ async fn setup_http(
 ) -> Result<tokio::task::JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     let reader = csv::Reader::from_path(&config.eligible_voters_file)
         .context("Failed to read eligible voters file")?;
-    let initial_weights = reader
-        .into_deserialize::<WeightRow>()
-        .try_fold(HashMap::new(), |mut initial_weights, row| {
-            let WeightRow { account, amount } = row?;
-            initial_weights.insert(account, amount);
-            anyhow::Ok(initial_weights)
-        })
-        .context("Failed to deserialize eligible voters file")?;
+
+    let mut initial_weights = HashMap::new();
+    for row in reader.into_deserialize::<WeightRow>() {
+        let WeightRow { account, amount } = row.context("Failed to parse eligible voters file")?;
+        initial_weights.insert(account, amount);
+    }
 
     let state = AppState {
         db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
