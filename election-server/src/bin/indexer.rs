@@ -545,7 +545,7 @@ async fn main() -> anyhow::Result<()> {
 
     let ep = config
         .node_endpoints
-        .get(0)
+        .first()
         .context("Expected endpoint to be defined")?
         .clone();
     let client = create_client(ep, request_timeout).await?;

@@ -24,13 +24,12 @@ use eg::{
     guardian::GuardianIndex,
     guardian_secret_key::GuardianSecretKey,
     guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare},
-    joint_election_public_key::Ciphertext,
     varying_parameters::VaryingParameters,
     verifiable_decryption::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
-use election_common::{decode, encode};
+use election_common::{decode, encode, EncryptedTally, GuardianDecryption};
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
@@ -665,8 +664,8 @@ async fn main() -> anyhow::Result<()> {
             }
         };
         eprintln!("Retrieved encrypted tally.");
-        let serialized_tally = decode::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&serialized_tally)
-            .context("Unable to read tally.")?;
+        let encrypted_tally =
+            decode::<EncryptedTally>(&serialized_tally).context("Unable to read tally.")?;
 
         // State maintained by guardians for the proof of decryption.
         let mut secret_states = Vec::new();
@@ -674,7 +673,7 @@ async fn main() -> anyhow::Result<()> {
         for (share, guardian_wallet) in guardian_secret_shares.iter().zip(&guardians) {
             let mut decryptions = BTreeMap::new();
             let mut secret_states_map = BTreeMap::new();
-            for (&index, ciphertexts) in &serialized_tally {
+            for (&index, ciphertexts) in &encrypted_tally {
                 let secret_states_for_i = secret_states_map.entry(index).or_insert(Vec::new());
                 let decryption_shares = decryptions
                     .entry(index)
@@ -722,7 +721,7 @@ async fn main() -> anyhow::Result<()> {
                 guardian_wallet.address
             );
         }
-        (secret_states, serialized_tally)
+        (secret_states, encrypted_tally)
     };
 
     // Now for each guardian gather decrypted shares.
@@ -754,10 +753,8 @@ async fn main() -> anyhow::Result<()> {
                         let Some(share_result) = gs.1.decryption_share.as_ref() else {
                             anyhow::bail!("Share not present even though it was registered.");
                         };
-                        let share_result = decode::<
-                            BTreeMap<ContestIndex, Vec<DecryptionShareResult>>,
-                        >(share_result)
-                        .context("Unable to parse decryption share result.")?;
+                        let share_result = decode::<GuardianDecryption>(share_result)
+                            .context("Unable to parse decryption share result.")?;
                         let result = &share_result
                             .get(index)
                             .context("Contest index not present")?[i];
@@ -779,7 +776,7 @@ async fn main() -> anyhow::Result<()> {
                     )?;
                     response_shares_i.push(proof);
                 }
-                response_shares.insert(index, response_shares_i);
+                response_shares.insert(*index, response_shares_i);
             }
             // Publish response shares
 

@@ -17,7 +17,7 @@ on:
 env:
   DUMMY: 1 # For cache busting.
   NODE_VERSION: "18.16.0"
-  RUST_VERSION: "1.70"
+  RUST_VERSION: "1.74"
   RUST_FMT: nightly-2023-04-01-x86_64-unknown-linux-gnu
   CARGO_CONCORDIUM_VERSION: "3.0.0"
   CCD_ELECTION_CONTRACT_ADDRESS: <0,0> # Otherwise build will fail

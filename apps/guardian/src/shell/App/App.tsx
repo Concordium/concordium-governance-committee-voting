@@ -45,7 +45,7 @@ function Configuration() {
     const configError = useAtomValue(connectionErrorAtom);
     const hasConnectionError =
         configError?.type !== undefined &&
-        [BackendErrorType.NodeConnection, BackendErrorType.NetworkError].includes(configError.type);
+        [BackendErrorType.NodeConnection, BackendErrorType.Network].includes(configError.type);
 
     return (
         <div className="app-configuration">

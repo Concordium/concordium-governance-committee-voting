@@ -2,7 +2,7 @@
 import * as SDK from "@concordium/web-sdk";
 
 /** The reference of the smart contract module supported by the provided client. */
-export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('be0a707dde28fc97e8d206d784fe1d213c46704815e98de5edfc2c05f86d8108');
+export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('5154cd5ec3c6c7086bc35efad941af867e22f8df61a7a2c5e6eb8bb5aed0baac');
 /** Name of the smart contract supported by this client. */
 export const contractName: SDK.ContractName.Type = /*#__PURE__*/ SDK.ContractName.fromStringUnchecked('election');
 
@@ -457,7 +457,7 @@ export function parseErrorMessagePostDecryptionProofResponseShare(invokeResult: 
 }
 
 /** Parameter type for update transaction for 'registerGuardianStatus' entrypoint of the 'election' contract. */
-export type RegisterGuardianStatusParameter = { type: 'VerificationFailed', content: string } | { type: 'VerificationSuccessful'};
+export type RegisterGuardianStatusParameter = { type: 'KeyVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'SharesVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'VerificationSuccessful'};
 
 /**
  * Construct Parameter for update transactions for 'registerGuardianStatus' entrypoint of the 'election' contract.
@@ -465,16 +465,27 @@ export type RegisterGuardianStatusParameter = { type: 'VerificationFailed', cont
  * @returns {SDK.Parameter.Type} The smart contract parameter.
  */
 export function createRegisterGuardianStatusParameter(parameter: RegisterGuardianStatusParameter): SDK.Parameter.Type {
-    let match63: {'VerificationFailed' : [string] } | {'VerificationSuccessful' : [] };
+    let match63: {'KeyVerificationFailed' : [Array<SDK.AccountAddress.SchemaValue>] } | {'SharesVerificationFailed' : [Array<SDK.AccountAddress.SchemaValue>] } | {'VerificationSuccessful' : [] };
     switch (parameter.type) {
-        case 'VerificationFailed':
-            match63 = { VerificationFailed: [parameter.content], };
+        case 'KeyVerificationFailed':
+    const list64 = parameter.content.map((item65) => {
+    const accountAddress66 = SDK.AccountAddress.toSchemaValue(item65);
+    return accountAddress66;
+    });
+            match63 = { KeyVerificationFailed: [list64], };
+        break;
+        case 'SharesVerificationFailed':
+    const list67 = parameter.content.map((item68) => {
+    const accountAddress69 = SDK.AccountAddress.toSchemaValue(item68);
+    return accountAddress69;
+    });
+            match63 = { SharesVerificationFailed: [list67], };
         break;
         case 'VerificationSuccessful':
             match63 = { VerificationSuccessful: [], };
         break;
     }
-    const out = SDK.Parameter.fromBase64SchemaType('FQIAAAASAAAAVmVyaWZpY2F0aW9uRmFpbGVkAQEAAAAWAhYAAABWZXJpZmljYXRpb25TdWNjZXNzZnVsAg==', match63);
+    const out = SDK.Parameter.fromBase64SchemaType('FQMAAAAVAAAAS2V5VmVyaWZpY2F0aW9uRmFpbGVkAQEAAAAQAgsYAAAAU2hhcmVzVmVyaWZpY2F0aW9uRmFpbGVkAQEAAAAQAgsWAAAAVmVyaWZpY2F0aW9uU3VjY2Vzc2Z1bAI=', match63);
     return out;
 }
 
@@ -533,32 +544,32 @@ export function parseErrorMessageRegisterGuardianStatus(invokeResult: SDK.Invoke
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match64: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match70: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match64 = {
+       match70 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match64 = {
+       match70 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match64 = {
+       match70 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match64 = {
+       match70 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match64 = {
+       match70 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match64
+    return match70
 }
 
 /** Parameter type for update transaction for 'viewGuardiansState' entrypoint of the 'election' contract. */
@@ -618,7 +629,7 @@ export type ReturnValueViewGuardiansState = Array<[SDK.AccountAddress.Type, {
     encrypted_share: { type: 'None'} | { type: 'Some', content: Array<number> },
     decryption_share: { type: 'None'} | { type: 'Some', content: Array<number> },
     decryption_share_proof: { type: 'None'} | { type: 'Some', content: Array<number> },
-    status: { type: 'None'} | { type: 'Some', content: { type: 'VerificationFailed', content: string } | { type: 'VerificationSuccessful'} },
+    status: { type: 'None'} | { type: 'Some', content: { type: 'KeyVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'SharesVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'VerificationSuccessful'} },
     }]>;
 
 /**
@@ -640,28 +651,12 @@ export function parseReturnValueViewGuardiansState(invokeResult: SDK.InvokeContr
     encrypted_share: {'None' : [] } | {'Some' : [Array<number>] },
     decryption_share: {'None' : [] } | {'Some' : [Array<number>] },
     decryption_share_proof: {'None' : [] } | {'Some' : [Array<number>] },
-    status: {'None' : [] } | {'Some' : [{'VerificationFailed' : [string] } | {'VerificationSuccessful' : [] }] },
-    }]>>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'EAIPCxQABgAAAAUAAABpbmRleAQKAAAAcHVibGljX2tleRUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABACAg8AAABlbmNyeXB0ZWRfc2hhcmUVAgAAAAQAAABOb25lAgQAAABTb21lAQEAAAAQAgIQAAAAZGVjcnlwdGlvbl9zaGFyZRUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABACAhYAAABkZWNyeXB0aW9uX3NoYXJlX3Byb29mFQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAICBgAAAHN0YXR1cxUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABUCAAAAEgAAAFZlcmlmaWNhdGlvbkZhaWxlZAEBAAAAFgIWAAAAVmVyaWZpY2F0aW9uU3VjY2Vzc2Z1bAI=');
-    const list70 = schemaJson.map((item71) => {
-    const accountAddress73 = SDK.AccountAddress.fromSchemaValue(item71[0]);
-    const field74 = item71[1].index;
-    const field75 = item71[1].public_key;
-    let match76: { type: 'None'} | { type: 'Some', content: Array<number> };
-    if ('None' in field75) {
-       match76 = {
-           type: 'None',
-       };
-    } else if ('Some' in field75) {
-       const variant78 = field75.Some;
-       match76 = {
-           type: 'Some',
-           content: variant78[0],
-       };
-    }
-     else {
-       throw new Error("Unexpected enum variant");
-    }
-    const field81 = item71[1].encrypted_share;
+    status: {'None' : [] } | {'Some' : [{'KeyVerificationFailed' : [Array<SDK.AccountAddress.SchemaValue>] } | {'SharesVerificationFailed' : [Array<SDK.AccountAddress.SchemaValue>] } | {'VerificationSuccessful' : [] }] },
+    }]>>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'EAIPCxQABgAAAAUAAABpbmRleAQKAAAAcHVibGljX2tleRUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABACAg8AAABlbmNyeXB0ZWRfc2hhcmUVAgAAAAQAAABOb25lAgQAAABTb21lAQEAAAAQAgIQAAAAZGVjcnlwdGlvbl9zaGFyZRUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABACAhYAAABkZWNyeXB0aW9uX3NoYXJlX3Byb29mFQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAICBgAAAHN0YXR1cxUCAAAABAAAAE5vbmUCBAAAAFNvbWUBAQAAABUDAAAAFQAAAEtleVZlcmlmaWNhdGlvbkZhaWxlZAEBAAAAEAILGAAAAFNoYXJlc1ZlcmlmaWNhdGlvbkZhaWxlZAEBAAAAEAILFgAAAFZlcmlmaWNhdGlvblN1Y2Nlc3NmdWwC');
+    const list76 = schemaJson.map((item77) => {
+    const accountAddress79 = SDK.AccountAddress.fromSchemaValue(item77[0]);
+    const field80 = item77[1].index;
+    const field81 = item77[1].public_key;
     let match82: { type: 'None'} | { type: 'Some', content: Array<number> };
     if ('None' in field81) {
        match82 = {
@@ -677,7 +672,7 @@ export function parseReturnValueViewGuardiansState(invokeResult: SDK.InvokeContr
      else {
        throw new Error("Unexpected enum variant");
     }
-    const field87 = item71[1].decryption_share;
+    const field87 = item77[1].encrypted_share;
     let match88: { type: 'None'} | { type: 'Some', content: Array<number> };
     if ('None' in field87) {
        match88 = {
@@ -693,7 +688,7 @@ export function parseReturnValueViewGuardiansState(invokeResult: SDK.InvokeContr
      else {
        throw new Error("Unexpected enum variant");
     }
-    const field93 = item71[1].decryption_share_proof;
+    const field93 = item77[1].decryption_share;
     let match94: { type: 'None'} | { type: 'Some', content: Array<number> };
     if ('None' in field93) {
        match94 = {
@@ -709,56 +704,86 @@ export function parseReturnValueViewGuardiansState(invokeResult: SDK.InvokeContr
      else {
        throw new Error("Unexpected enum variant");
     }
-    const field99 = item71[1].status;
-    let match100: { type: 'None'} | { type: 'Some', content: { type: 'VerificationFailed', content: string } | { type: 'VerificationSuccessful'} };
+    const field99 = item77[1].decryption_share_proof;
+    let match100: { type: 'None'} | { type: 'Some', content: Array<number> };
     if ('None' in field99) {
        match100 = {
            type: 'None',
        };
     } else if ('Some' in field99) {
        const variant102 = field99.Some;
-    let match103: { type: 'VerificationFailed', content: string } | { type: 'VerificationSuccessful'};
-    if ('VerificationFailed' in variant102[0]) {
-       const variant104 = variant102[0].VerificationFailed;
-       match103 = {
-           type: 'VerificationFailed',
-           content: variant104[0],
+       match100 = {
+           type: 'Some',
+           content: variant102[0],
        };
-    } else if ('VerificationSuccessful' in variant102[0]) {
-       match103 = {
+    }
+     else {
+       throw new Error("Unexpected enum variant");
+    }
+    const field105 = item77[1].status;
+    let match106: { type: 'None'} | { type: 'Some', content: { type: 'KeyVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'SharesVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'VerificationSuccessful'} };
+    if ('None' in field105) {
+       match106 = {
+           type: 'None',
+       };
+    } else if ('Some' in field105) {
+       const variant108 = field105.Some;
+    let match109: { type: 'KeyVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'SharesVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'VerificationSuccessful'};
+    if ('KeyVerificationFailed' in variant108[0]) {
+       const variant110 = variant108[0].KeyVerificationFailed;
+    const list111 = variant110[0].map((item112) => {
+    const accountAddress113 = SDK.AccountAddress.fromSchemaValue(item112);
+    return accountAddress113;
+    });
+       match109 = {
+           type: 'KeyVerificationFailed',
+           content: list111,
+       };
+    } else if ('SharesVerificationFailed' in variant108[0]) {
+       const variant114 = variant108[0].SharesVerificationFailed;
+    const list115 = variant114[0].map((item116) => {
+    const accountAddress117 = SDK.AccountAddress.fromSchemaValue(item116);
+    return accountAddress117;
+    });
+       match109 = {
+           type: 'SharesVerificationFailed',
+           content: list115,
+       };
+    } else if ('VerificationSuccessful' in variant108[0]) {
+       match109 = {
            type: 'VerificationSuccessful',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-       match100 = {
+       match106 = {
            type: 'Some',
-           content: match103,
+           content: match109,
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    const named106 = {
-    index: field74,
-    public_key: match76,
-    encrypted_share: match82,
-    decryption_share: match88,
-    decryption_share_proof: match94,
-    status: match100,
+    const named119 = {
+    index: field80,
+    public_key: match82,
+    encrypted_share: match88,
+    decryption_share: match94,
+    decryption_share_proof: match100,
+    status: match106,
     };
-    const pair72: [SDK.AccountAddress.Type, {
+    const pair78: [SDK.AccountAddress.Type, {
     index: number,
     public_key: { type: 'None'} | { type: 'Some', content: Array<number> },
     encrypted_share: { type: 'None'} | { type: 'Some', content: Array<number> },
     decryption_share: { type: 'None'} | { type: 'Some', content: Array<number> },
     decryption_share_proof: { type: 'None'} | { type: 'Some', content: Array<number> },
-    status: { type: 'None'} | { type: 'Some', content: { type: 'VerificationFailed', content: string } | { type: 'VerificationSuccessful'} },
-    }] = [accountAddress73, named106];
-    return pair72;
+    status: { type: 'None'} | { type: 'Some', content: { type: 'KeyVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'SharesVerificationFailed', content: Array<SDK.AccountAddress.Type> } | { type: 'VerificationSuccessful'} },
+    }] = [accountAddress79, named119];
+    return pair78;
     });
-    return list70;
+    return list76;
 }
 
 /** Parameter type for update transaction for 'registerVotes' entrypoint of the 'election' contract. */
@@ -829,32 +854,32 @@ export function parseErrorMessageRegisterVotes(invokeResult: SDK.InvokeContractR
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match109: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match122: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match109 = {
+       match122 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match109 = {
+       match122 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match109 = {
+       match122 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match109 = {
+       match122 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match109 = {
+       match122 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match109
+    return match122
 }
 
 /** Parameter type for update transaction for 'postEncryptedTally' entrypoint of the 'election' contract. */
@@ -925,32 +950,32 @@ export function parseErrorMessagePostEncryptedTally(invokeResult: SDK.InvokeCont
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match117: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match130: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match117 = {
+       match130 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match117 = {
+       match130 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match117 = {
+       match130 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match117 = {
+       match130 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match117 = {
+       match130 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match117
+    return match130
 }
 
 /** Parameter type for update transaction for 'postElectionResult' entrypoint of the 'election' contract. */
@@ -962,11 +987,11 @@ export type PostElectionResultParameter = Array<number | bigint>;
  * @returns {SDK.Parameter.Type} The smart contract parameter.
  */
 export function createPostElectionResultParameter(parameter: PostElectionResultParameter): SDK.Parameter.Type {
-    const list123 = parameter.map((item124) => {
-    const number125 = BigInt(item124);
-    return number125;
+    const list136 = parameter.map((item137) => {
+    const number138 = BigInt(item137);
+    return number138;
     });
-    const out = SDK.Parameter.fromBase64SchemaType('EAIF', list123);
+    const out = SDK.Parameter.fromBase64SchemaType('EAIF', list136);
     return out;
 }
 
@@ -1025,32 +1050,32 @@ export function parseErrorMessagePostElectionResult(invokeResult: SDK.InvokeCont
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match126: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match139: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match126 = {
+       match139 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match126 = {
+       match139 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match126 = {
+       match139 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match126 = {
+       match139 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match126 = {
+       match139 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match126
+    return match139
 }
 
 /** Parameter type for update transaction for 'viewConfig' entrypoint of the 'election' contract. */
@@ -1166,59 +1191,59 @@ export function parseReturnValueViewConfig(invokeResult: SDK.InvokeContractResul
     election_end: SDK.Timestamp.SchemaValue,
     delegation_string: string,
     }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FAAKAAAADQAAAGFkbWluX2FjY291bnQLCgAAAGNhbmRpZGF0ZXMQAhQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAANAAAAZ3VhcmRpYW5fa2V5cxACEAICDwAAAGVsaWdpYmxlX3ZvdGVycxQAAgAAAAMAAAB1cmwWAgQAAABoYXNoHiAAAAARAAAAZWxlY3Rpb25fbWFuaWZlc3QUAAIAAAADAAAAdXJsFgIEAAAAaGFzaB4gAAAAEwAAAGVsZWN0aW9uX3BhcmFtZXRlcnMUAAIAAAADAAAAdXJsFgIEAAAAaGFzaB4gAAAAFAAAAGVsZWN0aW9uX2Rlc2NyaXB0aW9uFgIOAAAAZWxlY3Rpb25fc3RhcnQNDAAAAGVsZWN0aW9uX2VuZA0RAAAAZGVsZWdhdGlvbl9zdHJpbmcWAg==');
-    const field132 = schemaJson.admin_account;
-    const accountAddress133 = SDK.AccountAddress.fromSchemaValue(field132);
-    const field134 = schemaJson.candidates;
-    const list135 = field134.map((item136) => {
-    const field137 = item136.url;
-    const field138 = item136.hash;
-    const named139 = {
-    url: field137,
-    hash: field138,
-    };
-    return named139;
-    });
-    const field140 = schemaJson.guardian_keys;
-    const field145 = schemaJson.eligible_voters;
-    const field146 = field145.url;
-    const field147 = field145.hash;
-    const named148 = {
-    url: field146,
-    hash: field147,
-    };
-    const field149 = schemaJson.election_manifest;
-    const field150 = field149.url;
-    const field151 = field149.hash;
+    const field145 = schemaJson.admin_account;
+    const accountAddress146 = SDK.AccountAddress.fromSchemaValue(field145);
+    const field147 = schemaJson.candidates;
+    const list148 = field147.map((item149) => {
+    const field150 = item149.url;
+    const field151 = item149.hash;
     const named152 = {
     url: field150,
     hash: field151,
     };
-    const field153 = schemaJson.election_parameters;
-    const field154 = field153.url;
-    const field155 = field153.hash;
-    const named156 = {
-    url: field154,
-    hash: field155,
+    return named152;
+    });
+    const field153 = schemaJson.guardian_keys;
+    const field158 = schemaJson.eligible_voters;
+    const field159 = field158.url;
+    const field160 = field158.hash;
+    const named161 = {
+    url: field159,
+    hash: field160,
     };
-    const field157 = schemaJson.election_description;
-    const field158 = schemaJson.election_start;
-    const timestamp159 = SDK.Timestamp.fromSchemaValue(field158);
-    const field160 = schemaJson.election_end;
-    const timestamp161 = SDK.Timestamp.fromSchemaValue(field160);
-    const field162 = schemaJson.delegation_string;
-    const named163 = {
-    admin_account: accountAddress133,
-    candidates: list135,
-    guardian_keys: field140,
-    eligible_voters: named148,
-    election_manifest: named152,
-    election_parameters: named156,
-    election_description: field157,
-    election_start: timestamp159,
-    election_end: timestamp161,
-    delegation_string: field162,
+    const field162 = schemaJson.election_manifest;
+    const field163 = field162.url;
+    const field164 = field162.hash;
+    const named165 = {
+    url: field163,
+    hash: field164,
     };
-    return named163;
+    const field166 = schemaJson.election_parameters;
+    const field167 = field166.url;
+    const field168 = field166.hash;
+    const named169 = {
+    url: field167,
+    hash: field168,
+    };
+    const field170 = schemaJson.election_description;
+    const field171 = schemaJson.election_start;
+    const timestamp172 = SDK.Timestamp.fromSchemaValue(field171);
+    const field173 = schemaJson.election_end;
+    const timestamp174 = SDK.Timestamp.fromSchemaValue(field173);
+    const field175 = schemaJson.delegation_string;
+    const named176 = {
+    admin_account: accountAddress146,
+    candidates: list148,
+    guardian_keys: field153,
+    eligible_voters: named161,
+    election_manifest: named165,
+    election_parameters: named169,
+    election_description: field170,
+    election_start: timestamp172,
+    election_end: timestamp174,
+    delegation_string: field175,
+    };
+    return named176;
 }
 
 /** Parameter type for update transaction for 'viewElectionResult' entrypoint of the 'election' contract. */
@@ -1300,7 +1325,7 @@ export function parseReturnValueViewElectionResult(invokeResult: SDK.InvokeContr
     },
     cummulative_votes: bigint,
     }>] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAIUAAIAAAAJAAAAY2FuZGlkYXRlFAACAAAAAwAAAHVybBYCBAAAAGhhc2geIAAAABEAAABjdW1tdWxhdGl2ZV92b3RlcwU=');
-    let match164: { type: 'None'} | { type: 'Some', content: Array<{
+    let match177: { type: 'None'} | { type: 'Some', content: Array<{
     candidate: {
     url: string,
     hash: SDK.HexString,
@@ -1308,35 +1333,35 @@ export function parseReturnValueViewElectionResult(invokeResult: SDK.InvokeContr
     cummulative_votes: number | bigint,
     }> };
     if ('None' in schemaJson) {
-       match164 = {
+       match177 = {
            type: 'None',
        };
     } else if ('Some' in schemaJson) {
-       const variant166 = schemaJson.Some;
-    const list167 = variant166[0].map((item168) => {
-    const field169 = item168.candidate;
-    const field170 = field169.url;
-    const field171 = field169.hash;
-    const named172 = {
-    url: field170,
-    hash: field171,
+       const variant179 = schemaJson.Some;
+    const list180 = variant179[0].map((item181) => {
+    const field182 = item181.candidate;
+    const field183 = field182.url;
+    const field184 = field182.hash;
+    const named185 = {
+    url: field183,
+    hash: field184,
     };
-    const field173 = item168.cummulative_votes;
-    const named174 = {
-    candidate: named172,
-    cummulative_votes: field173,
+    const field186 = item181.cummulative_votes;
+    const named187 = {
+    candidate: named185,
+    cummulative_votes: field186,
     };
-    return named174;
+    return named187;
     });
-       match164 = {
+       match177 = {
            type: 'Some',
-           content: list167,
+           content: list180,
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match164;
+    return match177;
 }
 
 /** Error message for dry-running update transaction for 'viewElectionResult' entrypoint of the 'election' contract. */
@@ -1356,32 +1381,32 @@ export function parseErrorMessageViewElectionResult(invokeResult: SDK.InvokeCont
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match175: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match188: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match175 = {
+       match188 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match175 = {
+       match188 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match175 = {
+       match188 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match175 = {
+       match188 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match175 = {
+       match188 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match175
+    return match188
 }
 
 /** Parameter type for update transaction for 'viewEncryptedTally' entrypoint of the 'election' contract. */
@@ -1451,22 +1476,22 @@ export function parseReturnValueViewEncryptedTally(invokeResult: SDK.InvokeContr
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'None' : [] } | {'Some' : [Array<number>] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQIAAAAEAAAATm9uZQIEAAAAU29tZQEBAAAAEAIC');
-    let match181: { type: 'None'} | { type: 'Some', content: Array<number> };
+    let match194: { type: 'None'} | { type: 'Some', content: Array<number> };
     if ('None' in schemaJson) {
-       match181 = {
+       match194 = {
            type: 'None',
        };
     } else if ('Some' in schemaJson) {
-       const variant183 = schemaJson.Some;
-       match181 = {
+       const variant196 = schemaJson.Some;
+       match194 = {
            type: 'Some',
-           content: variant183[0],
+           content: variant196[0],
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match181;
+    return match194;
 }
 
 /** Error message for dry-running update transaction for 'viewEncryptedTally' entrypoint of the 'election' contract. */
@@ -1486,30 +1511,30 @@ export function parseErrorMessageViewEncryptedTally(invokeResult: SDK.InvokeCont
         throw new Error('Unexpected missing \'returnValue\' in result of invocation. Client expected a V1 smart contract.');
     }
     const schemaJson = <{'ParseParams' : [] } | {'Unauthorized' : [] } | {'Malformed' : [] } | {'IncorrectElectionPhase' : [] } | {'DuplicateEntry' : [] }>SDK.ReturnValue.parseWithSchemaTypeBase64(invokeResult.returnValue, 'FQUAAAALAAAAUGFyc2VQYXJhbXMCDAAAAFVuYXV0aG9yaXplZAIJAAAATWFsZm9ybWVkAhYAAABJbmNvcnJlY3RFbGVjdGlvblBoYXNlAg4AAABEdXBsaWNhdGVFbnRyeQI=');
-    let match186: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
+    let match199: { type: 'ParseParams'} | { type: 'Unauthorized'} | { type: 'Malformed'} | { type: 'IncorrectElectionPhase'} | { type: 'DuplicateEntry'};
     if ('ParseParams' in schemaJson) {
-       match186 = {
+       match199 = {
            type: 'ParseParams',
        };
     } else if ('Unauthorized' in schemaJson) {
-       match186 = {
+       match199 = {
            type: 'Unauthorized',
        };
     } else if ('Malformed' in schemaJson) {
-       match186 = {
+       match199 = {
            type: 'Malformed',
        };
     } else if ('IncorrectElectionPhase' in schemaJson) {
-       match186 = {
+       match199 = {
            type: 'IncorrectElectionPhase',
        };
     } else if ('DuplicateEntry' in schemaJson) {
-       match186 = {
+       match199 = {
            type: 'DuplicateEntry',
        };
     }
      else {
        throw new Error("Unexpected enum variant");
     }
-    return match186
+    return match199
 }

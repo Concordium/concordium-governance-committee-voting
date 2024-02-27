@@ -354,7 +354,8 @@ fn register_guardian_public_key(ctx: &ReceiveContext, host: &mut Host<State>) ->
     Ok(())
 }
 
-/// The parameter expected by the [`register_guardian_final_key`] entrypoint.
+/// The parameter expected by the [`register_guardian_encrypted_share`]
+/// entrypoint.
 pub type RegisterGuardianEncryptedShareParameter = Vec<u8>;
 
 /// Entrypoint for registering an encryption share for the guardian
@@ -366,7 +367,10 @@ pub type RegisterGuardianEncryptedShareParameter = Vec<u8>;
     error = "Error",
     mutable
 )]
-fn register_guardian_final_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+fn register_guardian_encrypted_share(
+    ctx: &ReceiveContext,
+    host: &mut Host<State>,
+) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host, true)?;
     ensure!(
         guardian_state.encrypted_share.is_none(),
