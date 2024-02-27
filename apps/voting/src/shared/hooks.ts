@@ -1,7 +1,6 @@
 import { useAtomValue } from 'jotai';
 import { useMemo } from 'react';
 import { activeWalletAtom, electionConfigAtom } from './store';
-import { AccountAddress } from '@concordium/web-sdk';
 
 export const enum ElectionOpenState {
     NotStarted,
@@ -52,7 +51,9 @@ export function useCanVote(): EligibleStatus {
         return EligibleStatus.MissingValues;
     }
 
-    return AccountAddress.toBase58(activeWallet.account) in electionConfig.voters
-        ? EligibleStatus.Eligible
-        : EligibleStatus.Ineligible;
+    // TODO: change to query status from election server
+    return EligibleStatus.Eligible;
+    // return AccountAddress.toBase58(activeWallet.account) in electionConfig.voters
+    //     ? EligibleStatus.Eligible
+    //     : EligibleStatus.Ineligible;
 }

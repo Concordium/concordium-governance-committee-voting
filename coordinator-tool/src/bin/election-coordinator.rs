@@ -30,12 +30,11 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
-    joint_election_public_key::Ciphertext,
-    verifiable_decryption::{
-        DecryptionProofResponseShare, DecryptionShareResult, VerifiableDecryption,
-    },
+    verifiable_decryption::VerifiableDecryption,
 };
-use election_common::{decode, encode};
+use election_common::{
+    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
+};
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
@@ -463,7 +462,7 @@ async fn handle_decrypt(
         anyhow::bail!("Encrypted tally not yet registered.")
     };
 
-    let Ok(tally) = decode::<BTreeMap<ContestIndex, Vec<Ciphertext>>>(&encrypted_tally) else {
+    let Ok(tally) = decode::<EncryptedTally>(&encrypted_tally) else {
         anyhow::bail!("Encrypted tally is not readable.")
     };
 
@@ -474,11 +473,11 @@ async fn handle_decrypt(
             guardian_state.decryption_share,
             guardian_state.decryption_share_proof,
         ) {
-            let Ok(share) = decode::<BTreeMap<ContestIndex, Vec<DecryptionShareResult>>>(&share) else {
+            let Ok(share) = decode::<GuardianDecryption>(&share) else {
                 eprintln!("The decryption share registered by {guardian_address} is not readable.");
                 continue;
             };
-            let Ok(proof) = decode::<BTreeMap<ContestIndex, Vec<DecryptionProofResponseShare>>>(&proof) else {
+            let Ok(proof) = decode::<GuardianDecryptionProof>(&proof) else {
                 eprintln!("The decryption proof response share registered by {guardian_address} is not readable.");
                 continue;
             };

@@ -1265,7 +1265,7 @@ dependencies = [
  "digest",
  "hex-literal",
  "hmac",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -1287,6 +1287,7 @@ checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 name = "election-common"
 version = "0.1.0"
 dependencies = [
+ "eg",
  "rmp-serde",
  "serde",
 ]
@@ -1871,6 +1872,7 @@ dependencies = [
  "concordium_governance_committee_election",
  "eg",
  "election-common",
+ "itertools 0.12.1",
  "rand 0.8.5",
  "reqwest",
  "serde",
@@ -2236,9 +2238,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -3629,6 +3631,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-native-certs"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9aace74cb666635c918e9c12bc0d348266037aa8eb599b5cba565709a8dff00"
+dependencies = [
+ "openssl-probe",
+ "rustls-pemfile",
+ "schannel",
+ "security-framework",
+]
+
+[[package]]
 name = "rustls-pemfile"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4742,6 +4756,7 @@ dependencies = [
  "pin-project",
  "prost",
  "rustls",
+ "rustls-native-certs",
  "rustls-pemfile",
  "tokio",
  "tokio-rustls",
@@ -4933,7 +4948,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "num-bigint",
  "num-integer",
  "num-traits",

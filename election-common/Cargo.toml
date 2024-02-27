@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 rmp-serde = "1.1"
 serde = "1.0"
+eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
