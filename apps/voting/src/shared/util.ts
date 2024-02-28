@@ -1,13 +1,4 @@
 /**
- * Type predicate for checking if a value is defined.
- *
- * @param value - The value to check
- */
-export function isDefined<T>(value: T | undefined): value is T {
-    return value !== undefined;
-}
-
-/**
  * Helper for updating a map entry in an immutable fashion.
  *
  * @param map - The map to update
@@ -26,24 +17,6 @@ export function updateMapEntry<K, V>(map: Map<K, V>, key: K | undefined, value: 
         }
     }
     return res;
-}
-
-/**
- * Helper for unwrapping values.
- *
- * @param value - The value to unwrap
- * @param error - The error message to construct the {@linkcode Error} with
- *
- * @throws {@linkcode Error} if value is not undefined
- *
- * @returns The unwrapped value.
- */
-export function expectValue<T>(value: T | undefined, error: string): T {
-    if (value === undefined) {
-        throw new Error(error);
-    }
-
-    return value;
 }
 
 /**

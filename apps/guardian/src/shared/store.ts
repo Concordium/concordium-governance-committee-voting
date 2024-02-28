@@ -13,11 +13,12 @@ import {
     refreshEncryptedTally,
     refreshGuardians,
 } from './ffi';
+import { expectValue } from 'shared/util';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
 /** The interval at which the the election phase is recalculated based on the contract configuration */
-const REFRESH_ELECTION_PHASE_INTERVAL = 5000;
+const REFRESH_ELECTION_PHASE_INTERVAL = 1000;
 
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
@@ -138,10 +139,16 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
         if (phase === ElectionPhase.Tally) {
             const hasTally = get(hasTallyAtom);
+            const electionConfig = expectValue(
+                get(electionConfigAtom),
+                'Election config should be available at this point',
+            );
+            const now = new Date();
 
             const step = (() => {
                 if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
-                if (guardians.every(([, g]) => g.hasDecryptionShare)) return TallyStep.GenerateDecryptionProof;
+                if (guardians.every(([, g]) => g.hasDecryptionShare) || electionConfig.decryptionDeadline < now)
+                    return TallyStep.GenerateDecryptionProof;
                 if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
                 if (hasTally instanceof BackendError) return TallyStep.TallyError;
                 if (hasTally) return TallyStep.GenerateDecryptionShare;
