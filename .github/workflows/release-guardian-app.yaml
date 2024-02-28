@@ -5,7 +5,18 @@ on:
   #     - release
 
   workflow_dispatch: # allows manual trigger from main
-
+    inputs:
+      contract:
+        description: 'The election contract address in the format <index,subindex> (no spaces).'
+        required: true
+        type: string
+      network:
+        required: true
+        type: choice
+        description: 'Network for which this is built. Determines the node connection.'
+        options:
+          - testnet
+          - mainnet
 jobs:
   publish-tauri:
     permissions:
@@ -13,10 +24,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-20.04, windows-latest]
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
 
     runs-on: ${{ matrix.platform }}
     steps:
+      - name: Support longpaths on Windows
+        if: matrix.platform == 'windows-latest'
+        run: git config --system core.longpaths true
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -27,7 +41,7 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
       - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-20.04'
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
@@ -37,10 +51,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CCD_ELECTION_NODE: ${{ github.event.inputs.network == 'testnet' && 'https://grpc.testnet.concordium.com:20000' || 'https://grpc.mainnet.concordium.software:20000' }}
+          CCD_ELECTION_CONTRACT_ADDRESS: ${{ github.event.inputs.contract }}
+          CCD_ELECTION_NETWORK: ${{ github.event.inputs.network }} # e.g. "testnet", shown in the frontend of the app
         with:
           projectPath: 'apps/guardian'
-          tagName: release/guardian-app/v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
-          releaseName: 'Guardian App v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          tagName: release/guardian-app/v__VERSION__-${{ github.event.inputs.network }}-${{ github.event.inputs.contract }} # the action automatically replaces \_\_VERSION\_\_ with the app version
+          releaseName: ${{ format('Guardian App v__VERSION__ for {0} ({1})', github.event.inputs.contract, github.event.inputs.network) }}
+          releaseBody: 'See attached assets.'
           releaseDraft: true
           prerelease: false
