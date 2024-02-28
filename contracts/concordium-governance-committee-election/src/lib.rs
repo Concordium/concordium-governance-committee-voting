@@ -440,10 +440,7 @@ fn post_decryption_proof_response_share(
     host: &mut Host<State>,
 ) -> Result<(), Error> {
     let now = ctx.metadata().block_time();
-    ensure!(
-        host.state.decryption_deadline < now,
-        Error::IncorrectElectionPhase
-    );
+    ensure!(host.state.election_end < now, Error::IncorrectElectionPhase);
 
     let mut guardian_state = validate_guardian_context(ctx, host)?;
     ensure!(
