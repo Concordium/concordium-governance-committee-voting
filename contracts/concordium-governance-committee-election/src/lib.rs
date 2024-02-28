@@ -277,6 +277,9 @@ pub struct ElectionConfig {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// Guardians must add their [`GuardianState::decryption_share`] before this
+    /// timestamp for their shares to be included in the decrypted result.
+    pub decryption_deadline:  Timestamp,
     /// A string that should be used when delegating a vote to another account.
     pub delegation_string:    String,
 }
@@ -296,6 +299,7 @@ impl From<&State> for ElectionConfig {
             election_description: registered_data.election_description.clone(),
             election_start: value.election_start,
             election_end: value.election_end,
+            decryption_deadline: value.decryption_deadline,
             eligible_voters: registered_data.eligible_voters.clone(),
             election_manifest: registered_data.election_manifest.clone(),
             election_parameters: registered_data.election_parameters.clone(),
