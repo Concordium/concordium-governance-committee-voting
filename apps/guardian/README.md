@@ -34,7 +34,7 @@ Building for both development and production will fail if the correct environmen
 ```env
 CCD_ELECTION_NETWORK="testnet" # The network name. This is not strictly needed, but will show the user which network is shown to the user in the UI.
 CCD_ELECTION_CONTRACT_ADDRESS="<8011,0>" # Specify the contract address to target
-CCD_ELECTION_NODE="https://node.testnet.concordium.com:20000" # The node to use for queries
+CCD_ELECTION_NODE="http://node.testnet.concordium.com:20000" # The node to use for queries
 ```
 
 ### Optional configuration
