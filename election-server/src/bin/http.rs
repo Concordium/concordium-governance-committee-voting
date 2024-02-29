@@ -398,6 +398,10 @@ async fn setup_http(
             "/api/submissions/:account",
             get(get_ballot_submissions_by_account),
         )
+        .route(
+            "/api/delegations/:account",
+            get(get_delegations_by_account),
+        )
         .route("/api/weight/:account", get(get_account_weight))
         .with_state(state)
         .route_service(

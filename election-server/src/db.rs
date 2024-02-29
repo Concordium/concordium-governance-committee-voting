@@ -336,8 +336,7 @@ impl<'a> Transaction<'a> {
             .inner
             .prepare_cached(
                 "INSERT INTO delegations (id, transaction_hash, block_time, from_account, \
-                 to_account, verified) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4 FROM \
-                 ballots;",
+                 to_account) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4 FROM delegations;",
             )
             .await?;
 
