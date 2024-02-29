@@ -13,7 +13,7 @@ import {
 import { ProgressBar, Spinner } from 'react-bootstrap';
 import { sleep } from 'shared/util';
 
-import { BackendError, GuardianState } from '~/shared/ffi';
+import { BackendError, GuardianState, GuardiansState } from '~/shared/ffi';
 import { guardiansStateAtom } from '~/shared/store';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
@@ -242,14 +242,20 @@ export function makeActionableStep<P>(
 }
 
 type AwaitPeersProps = PropsWithChildren<{
+    /** The total amount of guardians awaiting submission from. Defaults to all guardians if not specified */
+    guardians?: GuardiansState;
+    /** Predicate for determing whether a guardian is done with step */
     predicate(g: GuardianState): boolean;
+    /** An optional note to show below the progress bar */
+    note?: string | JSX.Element;
 }>;
 
 /**
  * Shows the progress of peer registrations for a specific step in the election
  */
-export function AwaitPeers({ predicate, children }: AwaitPeersProps) {
-    const { guardians } = useAtomValue(guardiansStateAtom);
+export function AwaitPeers(props: AwaitPeersProps) {
+    const { guardians: defaultGuardians } = useAtomValue(guardiansStateAtom);
+    const { predicate, children, note, guardians = defaultGuardians } = props;
 
     if (guardians === undefined) {
         return null;
@@ -260,8 +266,9 @@ export function AwaitPeers({ predicate, children }: AwaitPeersProps) {
 
     return (
         <div>
-            <h3 className="text-center">{children}</h3>
+            <h3 className="text-center mb-3">{children}</h3>
             <ProgressBar now={progress} label={`${numRegistered}/${guardians.length}`} />
+            {note && <p className="mt-3">{note}</p>}
         </div>
     );
 }

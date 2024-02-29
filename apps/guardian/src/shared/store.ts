@@ -109,12 +109,9 @@ export const setupCompleted = (guardian: GuardianState) =>
 export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
     (get) => {
         const phase = get(electionPhaseBaseAtom);
-        const selectedAccount = get(selectedAccountAtom);
         const guardians = get(guardiansStateBaseAtom);
-        if (selectedAccount === undefined || guardians === undefined || phase === undefined) return undefined;
-
-        const guardian = guardians.find(([account]) => AccountAddress.equals(account, selectedAccount))?.[1];
-        if (guardian === undefined) return undefined;
+        const guardian = get(selectedGuardianAtom);
+        if (guardian === undefined || guardians === undefined || phase === undefined) return undefined;
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
@@ -215,6 +212,17 @@ export const guardiansStateAtom = atom(
  * Holds the account the application is currently using.
  */
 export const selectedAccountAtom = atom<AccountAddress.Type | undefined>(undefined);
+
+/**
+ * Exposes the {@linkcode GuardianState} of the currently selected guardian account
+ */
+export const selectedGuardianAtom = atom<GuardianState | undefined>((get) => {
+    const account = get(selectedAccountAtom);
+    const guardians = get(guardiansStateBaseAtom);
+
+    if (account === undefined || guardians === undefined) return undefined;
+    return guardians.find(([gAccount]) => AccountAddress.equals(gAccount, account))?.[1];
+});
 
 /**
  * Base atom holding the list of accounts imported into the application
