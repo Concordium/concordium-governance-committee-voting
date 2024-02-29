@@ -323,7 +323,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Extracts the ballot submission (if any) from `transaction`.
+/// Extracts the relevant [`TransactionData`] (if any) from `transaction`.
 #[tracing::instrument(skip(transaction), fields(tx_hash = %transaction.hash))]
 fn get_transaction_data(
     transaction: BlockItemSummary,
@@ -360,11 +360,9 @@ fn get_transaction_data(
             else {
                 return None;
             };
-
             if address != *contract_address || receive_name != REGISTER_VOTES_RECEIVE {
                 return None;
             };
-
             let ballot =
                 match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
                     .context("Failed to parse ballot from transaction message")
@@ -377,7 +375,6 @@ fn get_transaction_data(
                         return None;
                     }
                 };
-
             let verified = ballot.verify(
                 verification_context,
                 eg::index::Index::from_one_based_index(1).unwrap(),
