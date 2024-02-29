@@ -18,7 +18,7 @@ use concordium_rust_sdk::{
 use concordium_std::Amount;
 use election_common::{get_scaling_factor, WeightRow};
 use election_server::{
-    db::{DatabasePool, StoredBallotSubmission},
+    db::{DatabasePool, StoredBallotSubmission, StoredDelegation},
     util::{create_client, get_election_config, verify_checksum, verify_contract},
 };
 use futures::FutureExt;
@@ -198,12 +198,12 @@ impl SubmissionsQueryParams {
     fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
 }
 
-/// The response type for [`get_ballot_submissions_by_account`] queries
+/// The response type for paginated queries
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SubmissionsResponse {
-    /// Ballots returned in the response
-    results:  Vec<StoredBallotSubmission>,
+struct PaginationResponse<T> {
+    /// entries returned in the response
+    results:  Vec<T>,
     /// Whether there are more results in the database
     has_more: bool,
 }
@@ -215,7 +215,7 @@ async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
     Query(query_params): Query<SubmissionsQueryParams>,
-) -> Result<Json<SubmissionsResponse>, StatusCode> {
+) -> Result<Json<PaginationResponse<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -237,7 +237,40 @@ async fn get_ballot_submissions_by_account(
         results.pop();
     }
 
-    let response = SubmissionsResponse { results, has_more };
+    let response = PaginationResponse { results, has_more };
+    Ok(Json(response))
+}
+
+/// Get voting power delegations registered for `account_address`. Returns
+/// [`StatusCode`] signaling error if database connection or lookup fails.
+#[tracing::instrument(skip(state))]
+async fn get_delegations_by_account(
+    State(state): State<AppState>,
+    Path(account_address): Path<AccountAddress>,
+    Query(query_params): Query<SubmissionsQueryParams>,
+) -> Result<Json<PaginationResponse<StoredDelegation>>, StatusCode> {
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let page_size = query_params.page_size();
+    let mut results = db
+        // Add 1 to the page size to identify if there are more results on the next "page"
+        .get_delegations(account_address, query_params.from, page_size + 1)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations for account: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let has_more = results.len() > page_size;
+    if has_more {
+        // Pop the last item of results, which will be the first item on the next page.
+        results.pop();
+    }
+
+    let response = PaginationResponse { results, has_more };
     Ok(Json(response))
 }
 

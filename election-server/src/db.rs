@@ -12,7 +12,7 @@ use tokio_postgres::{
     NoTls,
 };
 
-use crate::util::BallotSubmission;
+use crate::util::{BallotSubmission, VotingPowerDelegation};
 
 /// Represents possible errors returned from [`Database`] or [`DatabasePool`]
 /// functions
@@ -103,6 +103,52 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
             account: AccountAddress(account_bytes),
             ballot,
             verified,
+        };
+
+        Ok(stored_ballot)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredDelegation {
+    /// The index of the ballot submission in the database
+    pub id:               u64,
+    /// The transaction hash of the ballot submission
+    pub transaction_hash: TransactionHash,
+    /// The timestamp of the block the ballot submission was included in
+    pub block_time:       DateTime<Utc>,
+    /// The delegator account
+    pub from_account:     AccountAddress,
+    /// The delegatee account
+    pub to_account:       AccountAddress,
+}
+
+impl TryFrom<tokio_postgres::Row> for StoredDelegation {
+    type Error = DatabaseError;
+
+    fn try_from(value: tokio_postgres::Row) -> DatabaseResult<Self> {
+        let id: i64 = value.try_get(0)?;
+        let transaction_hash: &[u8] = value.try_get(1)?;
+        let block_time: DateTime<Utc> = value.try_get(2)?;
+        let from_account: &[u8] = value.try_get(3)?;
+        let to_account: &[u8] = value.try_get(4)?;
+
+        let from_account: [u8; ACCOUNT_ADDRESS_SIZE] = from_account
+            .try_into()
+            .map_err(|_| DatabaseError::TypeConversion)?;
+        let to_account: [u8; ACCOUNT_ADDRESS_SIZE] = to_account
+            .try_into()
+            .map_err(|_| DatabaseError::TypeConversion)?;
+
+        let stored_ballot = Self {
+            id: id as u64,
+            transaction_hash: transaction_hash
+                .try_into()
+                .map_err(|_| DatabaseError::TypeConversion)?,
+            block_time,
+            from_account: AccountAddress(from_account),
+            to_account: AccountAddress(to_account),
         };
 
         Ok(stored_ballot)
@@ -201,6 +247,36 @@ impl Database {
             .map(StoredBallotSubmission::try_from)
             .collect()
     }
+
+    /// Get voting power delegations by account address within the give range.
+    /// The results returned are ordered by descending value of id, meaning
+    /// the most recently submitted ballots are returned first.
+    pub async fn get_delegations(
+        &self,
+        account_address: AccountAddress,
+        from: Option<usize>,
+        limit: usize,
+    ) -> DatabaseResult<Vec<StoredDelegation>> {
+        let from = if let Some(from) = from {
+            from as i64
+        } else {
+            i64::MAX
+        };
+        let get_ballot_submissions = self
+            .client
+            .prepare_cached(
+                "SELECT id, transaction_hash, block_time, from_account, to_account FROM \
+                 delegations WHERE from_account = $1 OR to_account = $1 AND id < $2 ORDER BY id \
+                 DESC LIMIT $3",
+            )
+            .await?;
+
+        let params: [&(dyn ToSql + Sync); 3] =
+            [&account_address.0.as_ref(), &(from), &(limit as i64)];
+        let rows = self.client.query(&get_ballot_submissions, &params).await?;
+
+        rows.into_iter().map(StoredDelegation::try_from).collect()
+    }
 }
 
 /// Wrapper around a database transaction
@@ -245,6 +321,31 @@ impl<'a> Transaction<'a> {
             &Json(&ballot.ballot),
             &ballot.account.0.as_ref(),
             &ballot.verified,
+        ];
+        self.inner.execute(&insert_ballot, &params).await?;
+        Ok(())
+    }
+
+    /// Insert a ballot submission into the DB.
+    pub async fn insert_delegation(
+        &self,
+        delegation: &VotingPowerDelegation,
+        block_time: DateTime<Utc>,
+    ) -> DatabaseResult<()> {
+        let insert_ballot = self
+            .inner
+            .prepare_cached(
+                "INSERT INTO delegations (id, transaction_hash, block_time, from_account, \
+                 to_account, verified) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4 FROM \
+                 ballots;",
+            )
+            .await?;
+
+        let params: [&(dyn ToSql + Sync); 4] = [
+            &delegation.transaction_hash.as_ref(),
+            &block_time,
+            &delegation.from_account.0.as_ref(),
+            &delegation.to_account.0.as_ref(),
         ];
         self.inner.execute(&insert_ballot, &params).await?;
         Ok(())
