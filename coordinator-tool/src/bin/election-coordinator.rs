@@ -484,10 +484,10 @@ async fn handle_decrypt(
         .parameters
         .varying_parameters
         .k
-        .get_zero_based_usize();
+        .get_one_based_usize();
     anyhow::ensure!(
         decryption_shares.len() >= quorum,
-        "Not enough shares. Require {} but only have {quorum}.",
+        "Not enough shares. Require {quorum} but only have {}.",
         decryption_shares.len()
     );
 
