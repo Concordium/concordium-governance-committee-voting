@@ -564,29 +564,36 @@ async fn main() -> anyhow::Result<()> {
     let contest = ContestIndex::from_one_based_index(1)?;
     {
         let device = Device::new(&uuid::Uuid::new_v4().to_string(), context);
+        let mut delegation_hashes = Vec::with_capacity(guardians.len() + 1);
         let mut hashes = Vec::with_capacity(guardians.len() + 1);
 
         // Delegate voting power from first account to second account
         let delegator = guardians.first().context("Failed to get first wallet")?;
-        let delegatee = guardians.get(1).context("Failed to get second wallet")?;
-        let nonce = client
-            .get_next_account_sequence_number(&delegator.address)
-            .await?;
+        for delegatee in [guardians.get(1), guardians.get(2)].into_iter().flatten() {
+            let nonce = client
+                .get_next_account_sequence_number(&delegator.address)
+                .await?;
 
-        let memo = serde_cbor::to_vec(&delegation_string)
-            .context("Failed to serialize string")?
-            .try_into()?;
-        let account_transaction = send::transfer_with_memo(
-            &delegator,
-            delegator.address,
-            nonce.nonce,
-            TransactionTime::hours_after(1),
-            delegatee.address,
-            Amount::from_micro_ccd(1),
-            memo,
-        );
+            let memo = serde_cbor::to_vec(&delegation_string)
+                .context("Failed to serialize string")?
+                .try_into()?;
+            let account_transaction = send::transfer_with_memo(
+                &delegator,
+                delegator.address,
+                nonce.nonce,
+                TransactionTime::hours_after(1),
+                delegatee.address,
+                Amount::from_micro_ccd(1),
+                memo,
+            );
 
-        let tx_hash = client.send_account_transaction(account_transaction).await?;
+            let tx_hash = client.send_account_transaction(account_transaction).await?;
+            eprintln!(
+                "Submitted delegation for {} to {} with transaction hash {tx_hash}",
+                delegator.address, delegatee.address,
+            );
+            delegation_hashes.push((delegator.address, delegatee.address, tx_hash));
+        }
 
         for voter in guardians.iter().chain(std::iter::once(&admin)) {
             let primary_nonce: [u8; 32] = rand::thread_rng().gen();
@@ -623,22 +630,20 @@ async fn main() -> anyhow::Result<()> {
                 "Submitted vote for {} with transaction hash {tx_hash}",
                 voter.address
             );
-
             hashes.push((voter.address, tx_hash));
         }
 
-        if let Some(err) = client
-            .wait_until_finalized(&tx_hash)
-            .await?
-            .1
-            .is_rejected_account_transaction()
-        {
-            anyhow::bail!("Registering delegation failed: {err:#?}");
+        for (delegator, delegatee, tx_hash) in delegation_hashes {
+            if let Some(err) = client
+                .wait_until_finalized(&tx_hash)
+                .await?
+                .1
+                .is_rejected_account_transaction()
+            {
+                anyhow::bail!("Registering delegation failed: {err:#?}");
+            }
+            eprintln!("Delegation for {} to {} registered", delegator, delegatee);
         }
-        eprintln!(
-            "Delegation for {} to {} registered",
-            delegator.address, delegatee.address
-        );
 
         for (voter, tx_hash) in hashes {
             if let Some(err) = client

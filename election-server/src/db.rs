@@ -200,7 +200,7 @@ impl Database {
     /// Get ballot submission by transaction hash
     pub async fn get_ballot_submission(
         &self,
-        transaction_hash: TransactionHash,
+        transaction_hash: &TransactionHash,
     ) -> DatabaseResult<Option<StoredBallotSubmission>> {
         let get_ballot_submission = self
             .client
@@ -222,7 +222,7 @@ impl Database {
     /// most recently submitted ballots are returned first.
     pub async fn get_ballot_submissions(
         &self,
-        account_address: AccountAddress,
+        account_address: &AccountAddress,
         from: Option<usize>,
         limit: usize,
     ) -> DatabaseResult<Vec<StoredBallotSubmission>> {
@@ -253,7 +253,7 @@ impl Database {
     /// the most recently submitted ballots are returned first.
     pub async fn get_delegations(
         &self,
-        account_address: AccountAddress,
+        account_address: &AccountAddress,
         from: Option<usize>,
         limit: usize,
     ) -> DatabaseResult<Vec<StoredDelegation>> {
@@ -262,7 +262,7 @@ impl Database {
         } else {
             i64::MAX
         };
-        let get_ballot_submissions = self
+        let get_delegations = self
             .client
             .prepare_cached(
                 "SELECT id, transaction_hash, block_time, from_account, to_account FROM \
@@ -273,7 +273,7 @@ impl Database {
 
         let params: [&(dyn ToSql + Sync); 3] =
             [&account_address.0.as_ref(), &(from), &(limit as i64)];
-        let rows = self.client.query(&get_ballot_submissions, &params).await?;
+        let rows = self.client.query(&get_delegations, &params).await?;
 
         rows.into_iter().map(StoredDelegation::try_from).collect()
     }
@@ -336,7 +336,10 @@ impl<'a> Transaction<'a> {
             .inner
             .prepare_cached(
                 "INSERT INTO delegations (id, transaction_hash, block_time, from_account, \
-                 to_account) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4 FROM delegations;",
+                 to_account) SELECT COALESCE(MAX(id) + 1, 0), $1, $2, $3, $4 FROM delegations ON \
+                 CONFLICT (from_account) DO UPDATE SET id = EXCLUDED.id, transaction_hash = \
+                 EXCLUDED.transaction_hash, block_time = EXCLUDED.block_time, to_account = \
+                 EXCLUDED.to_account;",
             )
             .await?;
 

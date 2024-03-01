@@ -237,7 +237,7 @@ async fn get_ballot_submissions_by_account(
     let page_size = query_params.page_size();
     let mut results = db
         // Add 1 to the page size to identify if there are more results on the next "page"
-        .get_ballot_submissions(account_address, query_params.from, page_size + 1)
+        .get_ballot_submissions(&account_address, query_params.from, page_size + 1)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get ballot submissions for account: {}", e);
@@ -300,7 +300,7 @@ async fn get_delegations_by_account(
     let page_size = query_params.page_size();
     let mut results = db
         // Add 1 to the page size to identify if there are more results on the next "page"
-        .get_delegations(account_address, query_params.from, page_size + 1)
+        .get_delegations(&account_address, query_params.from, page_size + 1)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get delegations for account: {}", e);
@@ -337,7 +337,7 @@ async fn get_ballot_submission_by_transaction(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let ballot_submission = db
-        .get_ballot_submission(transaction_hash)
+        .get_ballot_submission(&transaction_hash)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get ballot submission: {}", e);
