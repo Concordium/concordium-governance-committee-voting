@@ -270,14 +270,13 @@ async fn main() -> anyhow::Result<()> {
             std::io::copy(&mut file, &mut hasher)?;
             contract::HashSha2256(hasher.finalize().into())
         } else {
-            // give each account weight 3
             let accs = client
                 .get_account_list(BlockIdentifier::LastFinal)
                 .await?
                 .response
                 .map_ok(|account| WeightRow {
                     account,
-                    amount: Amount { micro_ccd: 3 },
+                    amount: Amount::from_ccd(1000),
                 })
                 .try_collect::<Vec<_>>()
                 .await?;

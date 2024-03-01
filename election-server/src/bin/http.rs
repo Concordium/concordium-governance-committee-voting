@@ -9,6 +9,7 @@ use axum::{
 use axum_prometheus::{
     metrics_exporter_prometheus::PrometheusHandle, GenericMetricLayer, PrometheusMetricLayerBuilder,
 };
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
@@ -176,6 +177,18 @@ struct AppState {
     initial_weights: HashMap<AccountAddress, Amount>,
 }
 
+impl AppState {
+    /// Gets the weight assigned to an account.
+    fn get_account_weight(&self, account: &AccountAddress) -> u64 {
+        let amount = self
+            .initial_weights
+            .get(account)
+            .copied()
+            .unwrap_or(Amount::from_micro_ccd(0));
+        get_scaling_factor(&amount)
+    }
+}
+
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
 
 fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
@@ -241,6 +254,36 @@ async fn get_ballot_submissions_by_account(
     Ok(Json(response))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationResponseRow {
+    /// The index of the ballot submission in the database
+    pub id:               u64,
+    /// The transaction hash of the ballot submission
+    pub transaction_hash: TransactionHash,
+    /// The timestamp of the block the ballot submission was included in
+    pub block_time:       DateTime<Utc>,
+    /// The delegator account
+    pub from_account:     AccountAddress,
+    /// The delegatee account
+    pub to_account:       AccountAddress,
+    /// The weight delegated
+    pub weight:           u64,
+}
+
+impl DelegationResponseRow {
+    fn create(db_delegation: StoredDelegation, weight: u64) -> Self {
+        Self {
+            id: db_delegation.id,
+            transaction_hash: db_delegation.transaction_hash,
+            block_time: db_delegation.block_time,
+            from_account: db_delegation.from_account,
+            to_account: db_delegation.to_account,
+            weight,
+        }
+    }
+}
+
 /// Get voting power delegations registered for `account_address`. Returns
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
@@ -248,7 +291,7 @@ async fn get_delegations_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
     Query(query_params): Query<SubmissionsQueryParams>,
-) -> Result<Json<PaginationResponse<StoredDelegation>>, StatusCode> {
+) -> Result<Json<PaginationResponse<DelegationResponseRow>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -269,6 +312,14 @@ async fn get_delegations_by_account(
         // Pop the last item of results, which will be the first item on the next page.
         results.pop();
     }
+
+    let results = results
+        .into_iter()
+        .map(|del| {
+            let weight = state.get_account_weight(&del.from_account);
+            DelegationResponseRow::create(del, weight)
+        })
+        .collect();
 
     let response = PaginationResponse { results, has_more };
     Ok(Json(response))
@@ -302,13 +353,7 @@ async fn get_account_weight(
     State(state): State<AppState>,
     Path(account): Path<AccountAddress>,
 ) -> Json<u64> {
-    let amount = state
-        .initial_weights
-        .get(&account)
-        .copied()
-        .unwrap_or(Amount::from_micro_ccd(0));
-    let weight = get_scaling_factor(&amount);
-    Json(weight)
+    Json(state.get_account_weight(&account))
 }
 
 type PrometheusLayer = GenericMetricLayer<'static, PrometheusHandle, axum_prometheus::Handle>;
