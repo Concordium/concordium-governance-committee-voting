@@ -12,11 +12,11 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import { BrowserWalletConnector, WalletConnection } from '@concordium/wallet-connectors';
 import { atomEffect } from 'jotai-effect';
 import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
-import { ResourceVerificationError, getChecksumResource } from 'shared/util';
+import { ResourceVerificationError, expectValue, getChecksumResource, isDefined } from 'shared/util';
 import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 
 import { getElectionConfig } from './election-contract';
-import { expectValue, isDefined, pollUntil } from './util';
+import { pollUntil } from './util';
 import { NETWORK } from './constants';
 import { DatabaseBallotSubmission, getAccountSubmissions, getAccountWeight, getSubmission } from './election-server';
 
