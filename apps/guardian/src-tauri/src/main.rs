@@ -1189,17 +1189,16 @@ async fn generate_decryption_proofs(
 
     // Find all decryption shares for all guardians. If the shares registered by a
     // specific guardian cannot be decoded, return
-    // `Error::DecryptionShareError`. If the shares are missing, exclude them from
+    // `Error::InvalidDecryptionShare`. If the shares are missing, exclude them from
     // the shares used.
     let decryption_shares: Vec<_> = contract_data
         .guardians
         .iter()
         .filter_map(|(_, guardian_state)| guardian_state.decryption_share.as_ref())
         .map(|bytes| {
-            let shares = decode::<GuardianDecryption>(bytes).map_err(|_| {
+            decode::<GuardianDecryption>(bytes).map_err(|_| {
                 Error::InvalidDecryptionShare("Invalid decryption shares were detected".into())
-            })?;
-            Ok::<_, Error>(shares)
+            })
         })
         .try_collect()?;
 
