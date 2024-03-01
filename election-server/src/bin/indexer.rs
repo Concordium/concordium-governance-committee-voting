@@ -5,8 +5,9 @@ use concordium_governance_committee_election::{ElectionConfig, RegisterVotesPara
 use concordium_rust_sdk::{
     smart_contracts::common as contracts_common,
     types::{
-        execution_tree, hashes::BlockHash, AbsoluteBlockHeight, AccountTransactionEffects,
-        BlockItemSummary, BlockItemSummaryDetails, ContractAddress, ExecutionTree, ExecutionTreeV1,
+        execution_tree, hashes::BlockHash, queries::BlockInfo, AbsoluteBlockHeight,
+        AccountTransactionEffects, BlockItemSummary, BlockItemSummaryDetails, ContractAddress,
+        ExecutionTree, ExecutionTreeV1,
     },
     v2::{self, Client},
 };
@@ -398,17 +399,12 @@ fn get_transaction_data(
 /// Returns error if any occur while querying the node
 async fn process_block(
     node: &mut Client,
-    block_hash: BlockHash,
+    block_info: BlockInfo,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
     delegation_string: &str,
 ) -> anyhow::Result<BlockData> {
-    let block_info = node
-        .get_block_info(block_hash)
-        .await
-        .with_context(|| format!("Could not get block info for block: {}", block_hash))?
-        .response;
-
+    let block_hash = block_info.block_hash;
     let transactions: Vec<_> = node
         .get_block_transaction_events(block_info.block_hash)
         .await
@@ -504,6 +500,7 @@ async fn node_process(
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
+    run_until: DateTime<Utc>,
 ) -> anyhow::Result<()> {
     let node_uri = node_endpoint.uri().clone();
     let mut node = create_client(node_endpoint, request_timeout).await?;
@@ -523,9 +520,20 @@ async fn node_process(
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
+        let block_info = node
+            .get_block_info(block.block_hash)
+            .await
+            .with_context(|| format!("Could not get block info for block: {}", block.block_hash))?
+            .response;
+
+        if block_info.block_slot_time > run_until {
+            tracing::info!("Election window has closed; stopping service.");
+            return Ok(());
+        };
+
         let block_data = process_block(
             &mut node,
-            block.block_hash,
+            block_info,
             contract_address,
             verification_context,
             delegation_string,
@@ -691,6 +699,7 @@ async fn main() -> anyhow::Result<()> {
             &block_sender,
             config.max_behind_s,
             stop_flag.as_ref(),
+            contract_config.election_end.try_into()?,
         )
         .await;
 
@@ -703,6 +712,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             // `node_process` terminated with `Ok`, meaning we should stop the service
             // entirely.
+            drop(block_sender);
             break;
         }
 
