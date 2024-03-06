@@ -87,7 +87,7 @@ pub struct GuardianState {
     /// state of other guardians is as expected.
     pub status:                 Option<GuardianStatus>,
     /// Whether the guardian has been excluded due to incorrect behaviour.
-    pub excluded:               bool
+    pub excluded:               bool,
 }
 
 impl GuardianState {
@@ -99,7 +99,7 @@ impl GuardianState {
             status: None,
             decryption_share: None,
             decryption_share_proof: None,
-            excluded: false
+            excluded: false,
         }
     }
 }
@@ -613,7 +613,7 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
     let parameter: ResetFinalizationParameter = ctx.parameter_cursor().get()?;
 
     for guardian in parameter {
-        if let Some(mut g) = host.state.guardians.get_mut(&guardian){
+        if let Some(mut g) = host.state.guardians.get_mut(&guardian) {
             g.excluded = true;
         }
     }
