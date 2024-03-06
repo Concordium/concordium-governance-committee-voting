@@ -50,6 +50,8 @@ pub enum Error {
     IncorrectElectionPhase,
     /// An attempt to override a non-overridable state entry was made
     DuplicateEntry,
+    /// An attempt to participate in finalization phase after being excluded.
+    GuardianExcluded,
 }
 
 /// The different status options available for guardians.
@@ -84,6 +86,8 @@ pub struct GuardianState {
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
     pub status:                 Option<GuardianStatus>,
+    /// Whether the guardian has been excluded due to incorrect behaviour.
+    pub excluded:               bool
 }
 
 impl GuardianState {
@@ -95,6 +99,7 @@ impl GuardianState {
             status: None,
             decryption_share: None,
             decryption_share_proof: None,
+            excluded: false
         }
     }
 }
@@ -394,6 +399,7 @@ fn register_guardian_encrypted_share(
 )]
 fn post_decryption_share(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(
         guardian_state.decryption_share.is_none(),
         Error::DuplicateEntry
@@ -419,6 +425,7 @@ fn post_decryption_proof_response_share(
     host: &mut Host<State>,
 ) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(
         guardian_state.decryption_share_proof.is_none(),
         Error::DuplicateEntry
@@ -440,6 +447,7 @@ fn post_decryption_proof_response_share(
 )]
 fn register_guardian_status(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
     let mut guardian_state = validate_guardian_context(ctx, host, true)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(guardian_state.status.is_none(), Error::DuplicateEntry);
 
     let status: GuardianStatus = ctx.parameter_cursor().get()?;
@@ -546,8 +554,42 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     let candidates: Vec<_> = host.state.candidates.iter().collect();
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
     ensure!(parameter.len() == candidates.len(), Error::Malformed);
-
     *host.state.election_result.get_mut() = Some(parameter);
+    Ok(())
+}
+
+/// The parameter supplied to the [`reset_finalization_phase`] entrypoint.
+pub type ResetFinalizationParameter = Vec<AccountAddress>;
+
+#[receive(
+    contract = "election",
+    name = "resetFinalizationPhase",
+    parameter = "ResetFinalizationParameter",
+    error = "Error",
+    mutable
+)]
+fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let now = ctx.metadata().block_time();
+
+    ensure!(
+        ctx.sender().matches_account(host.state.admin_account.get()),
+        Error::Unauthorized
+    );
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
+
+    let parameter: ResetFinalizationParameter = ctx.parameter_cursor().get()?;
+
+    for guardian in parameter {
+        if let Some(mut g) = host.state.guardians.get_mut(&guardian){
+            g.excluded = true;
+        }
+    }
+
+    for mut guardian in host.state.guardians.iter_mut() {
+        guardian.1.decryption_share = None;
+        guardian.1.decryption_share_proof = None;
+    }
+
     Ok(())
 }
 

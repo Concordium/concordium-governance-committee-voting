@@ -24,13 +24,7 @@ use concordium_rust_sdk::{
 use concordium_std::schema::SchemaType;
 use contract::GuardiansState;
 use eg::{
-    ballot::BallotEncrypted,
-    election_manifest::{ContestIndex, ElectionManifest},
-    election_parameters::ElectionParameters,
-    election_record::PreVotingData,
-    guardian::GuardianIndex,
-    guardian_public_key::GuardianPublicKey,
-    verifiable_decryption::VerifiableDecryption,
+    ballot::BallotEncrypted, election_manifest::{ContestIndex, ElectionManifest}, election_parameters::ElectionParameters, election_record::PreVotingData, guardian::GuardianIndex, guardian_public_key::GuardianPublicKey, index::Index, verifiable_decryption::VerifiableDecryption
 };
 use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
@@ -169,6 +163,21 @@ enum Command {
         )]
         wallet_path: Option<std::path::PathBuf>,
     },
+    /// Reset finalization phase.
+    Reset {
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>"
+        )]
+        contract:    ContractAddress,
+        #[arg(
+            long = "admin-keys",
+            help = "Location of the keys used to register election results in the contract."
+        )]
+        wallet_path: Option<std::path::PathBuf>,
+        #[arg(long = "guardian", help = "The account addresses of guardians to be excluded.")]
+        guardians:         Vec<AccountAddress>,
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -240,6 +249,11 @@ async fn main() -> anyhow::Result<()> {
             wallet_path,
         } => handle_decrypt(endpoint, contract, wallet_path).await,
         Command::NewElection(args) => handle_new_election(endpoint, *args).await,
+        Command::Reset {
+            contract,
+            wallet_path,
+            guardians
+        } => handle_reset(endpoint, contract, wallet_path, guardians).await,
     }
 }
 
@@ -602,6 +616,39 @@ async fn handle_decrypt(
                 Amount::zero(),
                 wallet.address,
                 &weights,
+            )
+            .await
+            .context("Failed to dry run")?;
+
+        let handle = dry_run.send(&wallet).await?;
+
+        if let Err(e) = handle.wait_for_finalization().await {
+            eprintln!("Transaction failed with {e:#?}");
+        } else {
+            eprintln!("Transaction successful and finalized.",);
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_reset(
+    endpoint: sdk::Endpoint,
+    contract: ContractAddress,
+    wallet_path: Option<std::path::PathBuf>,
+    guardians: Vec<AccountAddress>
+) -> anyhow::Result<()> {
+    let client = sdk::Client::new(endpoint.clone()).await?;
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
+    if let Some(wallet_path) = wallet_path {
+        let wallet = WalletAccount::from_json_file(wallet_path)?;
+        let dry_run = contract_client
+            .dry_run_update::<_, ViewError>(
+                "resetFinalizationPhase",
+                Amount::zero(),
+                wallet.address,
+                &guardians,
             )
             .await
             .context("Failed to dry run")?;
