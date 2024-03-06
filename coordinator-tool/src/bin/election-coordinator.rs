@@ -24,7 +24,14 @@ use concordium_rust_sdk::{
 use concordium_std::schema::SchemaType;
 use contract::GuardiansState;
 use eg::{
-    ballot::BallotEncrypted, election_manifest::{ContestIndex, ElectionManifest}, election_parameters::ElectionParameters, election_record::PreVotingData, guardian::GuardianIndex, guardian_public_key::GuardianPublicKey, index::Index, verifiable_decryption::VerifiableDecryption
+    ballot::BallotEncrypted,
+    election_manifest::{ContestIndex, ElectionManifest},
+    election_parameters::ElectionParameters,
+    election_record::PreVotingData,
+    guardian::GuardianIndex,
+    guardian_public_key::GuardianPublicKey,
+    index::Index,
+    verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
@@ -181,9 +188,12 @@ enum Command {
             help = "Location of the keys used to register election results in the contract."
         )]
         wallet_path: Option<std::path::PathBuf>,
-        #[arg(long = "guardian", help = "The account addresses of guardians to be excluded.")]
-        guardians:         Vec<AccountAddress>,
-    }
+        #[arg(
+            long = "guardian",
+            help = "The account addresses of guardians to be excluded."
+        )]
+        guardians:   Vec<AccountAddress>,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -258,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Reset {
             contract,
             wallet_path,
-            guardians
+            guardians,
         } => handle_reset(endpoint, contract, wallet_path, guardians).await,
     }
 }
@@ -642,7 +652,7 @@ async fn handle_reset(
     endpoint: sdk::Endpoint,
     contract: ContractAddress,
     wallet_path: Option<std::path::PathBuf>,
-    guardians: Vec<AccountAddress>
+    guardians: Vec<AccountAddress>,
 ) -> anyhow::Result<()> {
     let client = sdk::Client::new(endpoint.clone()).await?;
     let mut contract_client =
