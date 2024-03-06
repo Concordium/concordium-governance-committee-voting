@@ -606,7 +606,7 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
         Error::Unauthorized
     );
     ensure!(
-        now > host.state.election_end && now > host.state.decryption_deadline,
+        now > host.state.decryption_deadline,
         Error::IncorrectElectionPhase
     );
 
