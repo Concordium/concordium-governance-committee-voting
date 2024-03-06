@@ -59,59 +59,65 @@ struct NewElectionArgs {
         help = "Path to the file containing the Concordium account keys exported from the wallet. \
                 This will be the admin account of the election."
     )]
-    admin:             std::path::PathBuf,
+    admin:               std::path::PathBuf,
     #[clap(
         long = "module",
         help = "Path of the Concordium smart contract module."
     )]
-    module:            std::path::PathBuf,
+    module:              std::path::PathBuf,
     #[arg(
         long = "base-url",
         help = "Base url where the election data is accessible. This is recorded in the contract."
     )]
-    base_url:          url::Url,
+    base_url:            url::Url,
     #[arg(
         long = "election-start",
         help = "The start time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_start:    chrono::DateTime<chrono::Utc>,
+    election_start:      chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "election-end",
         help = "The end time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_end:      chrono::DateTime<chrono::Utc>,
+    election_end:        chrono::DateTime<chrono::Utc>,
+    #[arg(
+        long = "decryption-deadline",
+        help = "The deadline for guardians to register decryption shares. The format is ISO-8601, \
+                e.g. 2024-01-23T12:13:14Z."
+    )]
+    decryption_deadline: chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "delegation-string",
         help = "The string to identify vote delegations."
     )]
-    delegation_string: String,
+    delegation_string:   String,
     #[arg(long = "guardian", help = "The account addresses of guardians..")]
-    guardians:         Vec<AccountAddress>,
+    guardians:           Vec<AccountAddress>,
     #[arg(
         long = "threshold",
         help = "Threshold for the number of guardians needed."
     )]
-    threshold:         u32,
+    threshold:           u32,
     #[arg(
         long = "candidate",
         help = "The URL to candidates metadata. The order matters."
     )]
-    candidates:        Vec<url::Url>,
+    candidates:          Vec<url::Url>,
     #[clap(
         long = "manifest-out",
         help = "Path where the election manifest file will be written."
     )]
-    manifest_file:     std::path::PathBuf,
+    manifest_file:       std::path::PathBuf,
     #[clap(
         long = "parameters-out",
         help = "Path where election parameters will be output."
     )]
-    parameters_file:   std::path::PathBuf,
+    parameters_file:     std::path::PathBuf,
     #[clap(
         long = "voters-file",
         help = "Path to the file with a list of eligible accounts with their weights."
     )]
-    voters_file:       std::path::PathBuf,
+    voters_file:         std::path::PathBuf,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -498,10 +504,10 @@ async fn handle_decrypt(
         .parameters
         .varying_parameters
         .k
-        .get_zero_based_usize();
+        .get_one_based_usize();
     anyhow::ensure!(
         decryption_shares.len() >= quorum,
-        "Not enough shares. Require {} but only have {quorum}.",
+        "Not enough shares. Require {quorum} but only have {}.",
         decryption_shares.len()
     );
 
@@ -1207,6 +1213,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         election_description: "Test election".into(),
         election_start: app.election_start.try_into()?,
         election_end: app.election_end.try_into()?,
+        decryption_deadline: app.decryption_deadline.try_into()?,
         delegation_string: app.delegation_string,
     };
 

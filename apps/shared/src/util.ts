@@ -1,8 +1,7 @@
 import { Buffer } from 'buffer/index.js';
 import { ChecksumUrl } from './types';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AccountAddress } from '@concordium/web-sdk/types';
-import { formatDuration, intervalToDuration } from 'date-fns';
 
 /**
  * Used to indicate failure to verify a remotely located resource
@@ -84,14 +83,6 @@ export function useNow(updateIntervalSeconds: number): Date {
     return now;
 }
 
-export function useCountdown(to: Date) {
-    const now = useNow(1);
-    return useMemo(() => {
-        const duration = intervalToDuration({ start: now, end: to });
-        return formatDuration(duration);
-    }, [now, to]);
-}
-
 /**
  * Helper for displaying account addresses in a concise manner (i.e. first/last `numChars/2` characters)
  *
@@ -109,3 +100,30 @@ export function accountShowShort(account: AccountAddress.Type, numChars = 8): st
 }
 
 export const CCD_SYMBOL = '\u03FE';
+
+/**
+ * Type predicate for checking if a value is defined.
+ *
+ * @param value - The value to check
+ */
+export function isDefined<T>(value: T | undefined): value is T {
+    return value !== undefined;
+}
+
+/**
+ * Helper for unwrapping values.
+ *
+ * @param value - The value to unwrap
+ * @param error - The error message to construct the {@linkcode Error} with
+ *
+ * @throws {@linkcode Error} if value is not undefined
+ *
+ * @returns The unwrapped value.
+ */
+export function expectValue<T>(value: T | undefined, error: string): T {
+    if (!isDefined(value)) {
+        throw new Error(error);
+    }
+
+    return value;
+}

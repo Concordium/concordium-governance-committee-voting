@@ -1,12 +1,22 @@
 import { useAtomValue } from 'jotai';
 import { FC, PropsWithChildren } from 'react';
-import { ElectionPhase, TallyStep, electionStepAtom, guardiansStateAtom } from '~/shared/store';
-import { ActionStep, AwaitPeers, Step, makeActionableStep } from './util';
-import { registerDecryptionProofs, registerDecryptionShares } from '~/shared/ffi';
 import { CcdAmount } from '@concordium/web-sdk';
 import { Modal } from 'react-bootstrap';
-import { CCD_SYMBOL } from 'shared/util';
+
+import { CCD_SYMBOL, expectValue } from 'shared/util';
+import { Countdown } from 'shared/components';
+
 import Button from '~/shared/Button';
+import {
+    ElectionPhase,
+    TallyStep,
+    electionConfigAtom,
+    electionStepAtom,
+    guardiansStateAtom,
+    selectedGuardianAtom,
+} from '~/shared/store';
+import { ActionStep, AwaitPeers, Step, makeActionableStep } from './util';
+import { registerDecryptionProofs, registerDecryptionShares } from '~/shared/ffi';
 
 const DecryptionError: FC<PropsWithChildren> = ({ children }) => (
     <>
@@ -18,106 +28,136 @@ const DecryptionError: FC<PropsWithChildren> = ({ children }) => (
 
 const GenerateDecryptionShare = makeActionableStep(
     registerDecryptionShares,
-    ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => (
-        <>
-            <Button onClick={initFlow} disabled={isOpen} size="lg">
-                Generate decryption share
-            </Button>
-            <p className="text-muted mt-3">
-                Reads the encrypted tally from the election smart contract and generates your share of the tally
-                decryption.
-            </p>
-            <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                <Modal.Header closeButton={error !== undefined}>Generate & register decryption share</Modal.Header>
-                <Modal.Body>
-                    <ul className="generate__steps">
-                        <Step step={ActionStep.Compute} activeStep={step} error={error}>
-                            Generating decryption share
-                        </Step>
-                        <Step
-                            step={ActionStep.HandleProposal}
-                            activeStep={step}
-                            error={error}
-                            note={
-                                proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``
-                            }
-                        >
-                            Awaiting transaction approval
-                            <div className="generate__step-note text-muted"></div>
-                        </Step>
-                        <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
-                            Registering decryption share in contract
-                        </Step>
-                    </ul>
-                </Modal.Body>
-                {step === ActionStep.HandleProposal && error === undefined && (
-                    <Modal.Footer className="justify-content-start">
-                        <Button onClick={acceptProposal} variant="secondary">
-                            Send share registration
-                        </Button>
-                        <Button variant="outline-danger" onClick={rejectProposal}>
-                            Cancel
-                        </Button>
-                    </Modal.Footer>
-                )}
-            </Modal>
-        </>
-    ),
+    ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
+        const electionConfig = expectValue(
+            useAtomValue(electionConfigAtom),
+            'Expected election config to be available',
+        );
+
+        return (
+            <>
+                <Button onClick={initFlow} disabled={isOpen} size="lg">
+                    Generate decryption share
+                </Button>
+                <p className="text-muted mt-3">
+                    Reads the encrypted tally from the election smart contract and generates your share of the tally
+                    decryption.
+                </p>
+                <p>
+                    The deadline for registering your decryption is:
+                    <br />
+                    <b>
+                        <Countdown to={electionConfig.decryptionDeadline} />
+                    </b>
+                </p>
+                <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
+                    <Modal.Header closeButton={error !== undefined}>Generate & register decryption share</Modal.Header>
+                    <Modal.Body>
+                        <ul className="generate__steps">
+                            <Step step={ActionStep.Compute} activeStep={step} error={error}>
+                                Generating decryption share
+                            </Step>
+                            <Step
+                                step={ActionStep.HandleProposal}
+                                activeStep={step}
+                                error={error}
+                                note={
+                                    proposal
+                                        ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}`
+                                        : ``
+                                }
+                            >
+                                Awaiting transaction approval
+                                <div className="generate__step-note text-muted"></div>
+                            </Step>
+                            <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
+                                Registering decryption share in contract
+                            </Step>
+                        </ul>
+                    </Modal.Body>
+                    {step === ActionStep.HandleProposal && error === undefined && (
+                        <Modal.Footer className="justify-content-start">
+                            <Button onClick={acceptProposal} variant="secondary">
+                                Send share registration
+                            </Button>
+                            <Button variant="outline-danger" onClick={rejectProposal}>
+                                Cancel
+                            </Button>
+                        </Modal.Footer>
+                    )}
+                </Modal>
+            </>
+        );
+    },
 );
 
 const GenerateDecryptionProof = makeActionableStep(
     registerDecryptionProofs,
-    ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => (
-        <>
-            <Button onClick={initFlow} disabled={isOpen} size="lg">
-                Generate decryption proof
-            </Button>
-            <p className="text-muted mt-3">Generates a proof of correct decryption for each decryption share.</p>
-            <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
-                <Modal.Header closeButton={error !== undefined}>
-                    Generate & register proof of correct decryption
-                </Modal.Header>
-                <Modal.Body>
-                    <ul className="generate__steps">
-                        <Step step={ActionStep.Compute} activeStep={step} error={error}>
-                            Generating proof of correct decryption
-                        </Step>
-                        <Step
-                            step={ActionStep.HandleProposal}
-                            activeStep={step}
-                            error={error}
-                            note={
-                                proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``
-                            }
-                        >
-                            Awaiting transaction approval
-                            <div className="generate__step-note text-muted"></div>
-                        </Step>
-                        <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
-                            Registering decryption proof in contract
-                        </Step>
-                    </ul>
-                </Modal.Body>
-                {step === ActionStep.HandleProposal && error === undefined && (
-                    <Modal.Footer className="justify-content-start">
-                        <Button onClick={acceptProposal} variant="secondary">
-                            Send proof registration
-                        </Button>
-                        <Button variant="outline-danger" onClick={rejectProposal}>
-                            Cancel
-                        </Button>
-                    </Modal.Footer>
-                )}
-            </Modal>
-        </>
-    ),
+    ({ initFlow, proposal, error, step, acceptProposal, rejectProposal, isOpen, hide }) => {
+        const { hasDecryptionShare } = expectValue(
+            useAtomValue(selectedGuardianAtom),
+            'Expected selected guardian state to be available',
+        );
+
+        if (!hasDecryptionShare) {
+            return <h1>Deadline for registering your share of the tally decryption has passed.</h1>;
+        }
+
+        return (
+            <>
+                <Button onClick={initFlow} disabled={isOpen} size="lg">
+                    Generate decryption proof
+                </Button>
+                <p className="text-muted mt-3">Generates a proof of correct decryption for each decryption share.</p>
+                <Modal show={isOpen} centered animation onHide={hide} backdrop="static" keyboard={false}>
+                    <Modal.Header closeButton={error !== undefined}>
+                        Generate & register proof of correct decryption
+                    </Modal.Header>
+                    <Modal.Body>
+                        <ul className="generate__steps">
+                            <Step step={ActionStep.Compute} activeStep={step} error={error}>
+                                Generating proof of correct decryption
+                            </Step>
+                            <Step
+                                step={ActionStep.HandleProposal}
+                                activeStep={step}
+                                error={error}
+                                note={
+                                    proposal
+                                        ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}`
+                                        : ``
+                                }
+                            >
+                                Awaiting transaction approval
+                                <div className="generate__step-note text-muted"></div>
+                            </Step>
+                            <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
+                                Registering decryption proof in contract
+                            </Step>
+                        </ul>
+                    </Modal.Body>
+                    {step === ActionStep.HandleProposal && error === undefined && (
+                        <Modal.Footer className="justify-content-start">
+                            <Button onClick={acceptProposal} variant="secondary">
+                                Send proof registration
+                            </Button>
+                            <Button variant="outline-danger" onClick={rejectProposal}>
+                                Cancel
+                            </Button>
+                        </Modal.Footer>
+                    )}
+                </Modal>
+            </>
+        );
+    },
 );
 
 export function DecryptionActions() {
     const electionStep = useAtomValue(electionStepAtom);
     const { guardians } = useAtomValue(guardiansStateAtom);
+    const electionConfig = useAtomValue(electionConfigAtom);
 
-    if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined) {
+    if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined || electionConfig === undefined) {
         return null;
     }
 
@@ -129,13 +169,26 @@ export function DecryptionActions() {
             {step === TallyStep.TallyError && <DecryptionError>Could not read the election tally</DecryptionError>}
             {step === TallyStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
             {step === TallyStep.AwaitPeerShares && (
-                <AwaitPeers predicate={(g) => g.hasDecryptionShare}>
-                    Waiting for peers to register their shares of the decryption
+                <AwaitPeers
+                    predicate={(g) => g.hasDecryptionShare}
+                    note={
+                        <>
+                            The window for registering decryption shares closes in: <br />
+                            <b>
+                                <Countdown to={electionConfig.decryptionDeadline} />
+                            </b>
+                        </>
+                    }
+                >
+                    Waiting for peers to register their shares of the decryption.
                 </AwaitPeers>
             )}
             {step === TallyStep.GenerateDecryptionProof && <GenerateDecryptionProof />}
             {step === TallyStep.Done && (
-                <AwaitPeers predicate={(g) => g.hasDecryptionProof}>
+                <AwaitPeers
+                    predicate={(g) => g.hasDecryptionProof}
+                    guardians={guardians.filter(([, gs]) => gs.hasDecryptionShare)}
+                >
                     Your decryption is complete. Combined decryption progress:
                 </AwaitPeers>
             )}

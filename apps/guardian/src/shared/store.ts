@@ -13,11 +13,12 @@ import {
     refreshEncryptedTally,
     refreshGuardians,
 } from './ffi';
+import { expectValue } from 'shared/util';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
 /** The interval at which the the election phase is recalculated based on the contract configuration */
-const REFRESH_ELECTION_PHASE_INTERVAL = 5000;
+const REFRESH_ELECTION_PHASE_INTERVAL = 1000;
 
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
@@ -108,12 +109,9 @@ export const setupCompleted = (guardian: GuardianState) =>
 export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
     (get) => {
         const phase = get(electionPhaseBaseAtom);
-        const selectedAccount = get(selectedAccountAtom);
         const guardians = get(guardiansStateBaseAtom);
-        if (selectedAccount === undefined || guardians === undefined || phase === undefined) return undefined;
-
-        const guardian = guardians.find(([account]) => AccountAddress.equals(account, selectedAccount))?.[1];
-        if (guardian === undefined) return undefined;
+        const guardian = get(selectedGuardianAtom);
+        if (guardian === undefined || guardians === undefined || phase === undefined) return undefined;
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
@@ -138,10 +136,16 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
         if (phase === ElectionPhase.Tally) {
             const hasTally = get(hasTallyAtom);
+            const electionConfig = expectValue(
+                get(electionConfigAtom),
+                'Election config should be available at this point',
+            );
+            const now = new Date();
 
             const step = (() => {
                 if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
-                if (guardians.every(([, g]) => g.hasDecryptionShare)) return TallyStep.GenerateDecryptionProof;
+                if (guardians.every(([, g]) => g.hasDecryptionShare) || electionConfig.decryptionDeadline < now)
+                    return TallyStep.GenerateDecryptionProof;
                 if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
                 if (hasTally instanceof BackendError) return TallyStep.TallyError;
                 if (hasTally) return TallyStep.GenerateDecryptionShare;
@@ -208,6 +212,17 @@ export const guardiansStateAtom = atom(
  * Holds the account the application is currently using.
  */
 export const selectedAccountAtom = atom<AccountAddress.Type | undefined>(undefined);
+
+/**
+ * Exposes the {@linkcode GuardianState} of the currently selected guardian account
+ */
+export const selectedGuardianAtom = atom<GuardianState | undefined>((get) => {
+    const account = get(selectedAccountAtom);
+    const guardians = get(guardiansStateBaseAtom);
+
+    if (account === undefined || guardians === undefined) return undefined;
+    return guardians.find(([gAccount]) => AccountAddress.equals(gAccount, account))?.[1];
+});
 
 /**
  * Base atom holding the list of accounts imported into the application

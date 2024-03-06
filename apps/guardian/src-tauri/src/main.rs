@@ -440,7 +440,7 @@ fn write_encrypted_file<D: serde::Serialize>(
     let mut rng = thread_rng();
     // Serialization will not fail at this point.
     let encrypted_data = serde_json::to_vec(&encrypt(password, &plaintext, &mut rng)).unwrap();
-    std::fs::write(file_path, encrypted_data)?;
+    std::fs::write(file_path, encrypted_data).context("Failed to write the file to disk")?;
 
     Ok(())
 }
@@ -450,7 +450,7 @@ fn read_encrypted_file<D: serde::de::DeserializeOwned>(
     password: &Password,
     file_path: &PathBuf,
 ) -> Result<D, Error> {
-    let encrypted_bytes = std::fs::read(file_path)?;
+    let encrypted_bytes = std::fs::read(file_path).context("Failed to read file from disk")?;
     let encrypted: EncryptedData = serde_json::from_slice(&encrypted_bytes)
         .map_err(|_| Error::Corrupted(file_path.clone()))?;
 
@@ -1188,24 +1188,19 @@ async fn generate_decryption_proofs(
         .context("Could not find encrypted tally in app state")?;
 
     // Find all decryption shares for all guardians. If the shares registered by a
-    // specific guardian are either missing or cannot be decoded, return
-    // `Error::DecryptionShareError`.
-    let decryption_shares: Vec<_> =
-        contract_data
-            .guardians
-            .iter()
-            .map(|(_, guardian_state)| {
-                let bytes = guardian_state.decryption_share.as_ref().ok_or(
-                    Error::InvalidDecryptionShare(
-                        "Not all selected guardians posted their decryption shares".into(),
-                    ),
-                )?;
-                let shares = decode::<GuardianDecryption>(bytes).map_err(|_| {
-                    Error::InvalidDecryptionShare("Invalid decryption shares were detected".into())
-                })?;
-                Ok::<_, Error>(shares)
+    // specific guardian cannot be decoded, return
+    // `Error::InvalidDecryptionShare`. If the shares are missing, exclude them from
+    // the shares used.
+    let decryption_shares: Vec<_> = contract_data
+        .guardians
+        .iter()
+        .filter_map(|(_, guardian_state)| guardian_state.decryption_share.as_ref())
+        .map(|bytes| {
+            decode::<GuardianDecryption>(bytes).map_err(|_| {
+                Error::InvalidDecryptionShare("Invalid decryption shares were detected".into())
             })
-            .try_collect()?;
+        })
+        .try_collect()?;
 
     // Generate the decryption proof for a single contest entry. An error is
     // returned if either:
