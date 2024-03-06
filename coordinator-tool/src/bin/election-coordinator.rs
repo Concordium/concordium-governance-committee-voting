@@ -30,7 +30,6 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
-    index::Index,
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
