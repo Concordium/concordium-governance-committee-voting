@@ -6,7 +6,7 @@ use clap::Parser;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
     base::transactions,
-    common::types::TransactionTime,
+    common::types::{Timestamp, TransactionTime},
     contract_client::{self, ViewError},
     indexer,
     smart_contracts::common::{
@@ -30,6 +30,7 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
+    guardian_secret_key::CoefficientCommitment,
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
@@ -181,17 +182,23 @@ enum Command {
             long = "contract",
             help = "Address of the election contract in the format <index, subindex>"
         )]
-        contract:    ContractAddress,
+        contract:            ContractAddress,
         #[arg(
             long = "admin-keys",
             help = "Location of the keys used to register election results in the contract."
         )]
-        wallet_path: Option<std::path::PathBuf>,
+        wallet_path:         std::path::PathBuf,
         #[arg(
             long = "guardian",
             help = "The account addresses of guardians to be excluded."
         )]
-        guardians:   Vec<AccountAddress>,
+        guardians:           Vec<AccountAddress>,
+        #[arg(
+            long = "decryption-deadline",
+            help = "The new deadline for guardians to register decryption shares. The format is \
+                    ISO-8601, e.g. 2024-01-23T12:13:14Z."
+        )]
+        decryption_deadline: chrono::DateTime<chrono::Utc>,
     },
 }
 
@@ -268,7 +275,17 @@ async fn main() -> anyhow::Result<()> {
             contract,
             wallet_path,
             guardians,
-        } => handle_reset(endpoint, contract, wallet_path, guardians).await,
+            decryption_deadline,
+        } => {
+            handle_reset(
+                endpoint,
+                contract,
+                wallet_path,
+                guardians,
+                decryption_deadline.try_into()?,
+            )
+            .await
+        }
     }
 }
 
@@ -650,31 +667,60 @@ async fn handle_decrypt(
 async fn handle_reset(
     endpoint: sdk::Endpoint,
     contract: ContractAddress,
-    wallet_path: Option<std::path::PathBuf>,
+    wallet_path: std::path::PathBuf,
     guardians: Vec<AccountAddress>,
+    decryption_deadline: Timestamp,
 ) -> anyhow::Result<()> {
     let client = sdk::Client::new(endpoint.clone()).await?;
     let mut contract_client =
         contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
-    if let Some(wallet_path) = wallet_path {
-        let wallet = WalletAccount::from_json_file(wallet_path)?;
-        let dry_run = contract_client
-            .dry_run_update::<_, ViewError>(
-                "resetFinalizationPhase",
-                Amount::zero(),
-                wallet.address,
-                &guardians,
-            )
-            .await
-            .context("Failed to dry run")?;
+    let wallet = WalletAccount::from_json_file(wallet_path)?;
+    let parameter = (guardians, decryption_deadline);
+    let dry_run = contract_client
+        .dry_run_update::<_, ViewError>(
+            "resetFinalizationPhase",
+            Amount::zero(),
+            wallet.address,
+            &parameter,
+        )
+        .await
+        .context("Failed to dry run")?;
 
-        let handle = dry_run.send(&wallet).await?;
+    let guardians_state = contract_client
+        .view::<_, GuardiansState, ViewError>("viewGuardiansState", &(), BlockIdentifier::LastFinal)
+        .await?;
 
-        if let Err(e) = handle.wait_for_finalization().await {
-            eprintln!("Transaction failed with {e:#?}");
-        } else {
-            eprintln!("Transaction successful and finalized.",);
-        }
+    let guardians_state_filtered = guardians_state
+        .iter()
+        .filter(|(addr, _)| parameter.0.contains(addr));
+
+    println!("Guardians to be removed:");
+    for (addr, st) in guardians_state_filtered {
+        let Some(pk_bytes) = st.public_key.clone() else {
+            anyhow::bail!(format!("Public key not found for guardian with address {}", addr));
+        };
+        let pk = decode::<GuardianPublicKey>(&pk_bytes)
+            .context("Failed to decode guardian public key.")?;
+        let pk_json = serde_json::to_string_pretty(&pk.coefficient_commitments.0[0])?;
+        println!(
+            "Guardian {} with address {} and public key {}",
+            pk.i, addr, pk_json
+        );
+    }
+
+    let confirm = dialoguer::Confirm::new()
+        .report(true)
+        .wait_for_newline(true)
+        .with_prompt("Confirm excluding guardians.")
+        .interact()?;
+    anyhow::ensure!(confirm, "Aborting.");
+
+    let handle = dry_run.send(&wallet).await?;
+
+    if let Err(e) = handle.wait_for_finalization().await {
+        eprintln!("Transaction failed with {e:#?}");
+    } else {
+        eprintln!("Transaction successful and finalized.",);
     }
 
     Ok(())

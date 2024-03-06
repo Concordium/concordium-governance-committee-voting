@@ -589,7 +589,7 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
 }
 
 /// The parameter supplied to the [`reset_finalization_phase`] entrypoint.
-pub type ResetFinalizationParameter = Vec<AccountAddress>;
+pub type ResetFinalizationParameter = (Vec<AccountAddress>, Timestamp);
 
 #[receive(
     contract = "election",
@@ -610,9 +610,12 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
         Error::IncorrectElectionPhase
     );
 
-    let parameter: ResetFinalizationParameter = ctx.parameter_cursor().get()?;
+    let (guardians, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
 
-    for guardian in parameter {
+    ensure!(now < deadline, Error::Malformed);
+    host.state.decryption_deadline = deadline;
+
+    for guardian in guardians {
         if let Some(mut g) = host.state.guardians.get_mut(&guardian) {
             g.excluded = true;
         }
