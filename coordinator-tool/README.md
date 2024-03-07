@@ -121,8 +121,18 @@ The same command without the `--admin-keys` will tally the votes and check that 
 ### Decrypt the final result
 
 ```console
-election-coordinator  --node http://localhost:20001 final-result --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export```
+election-coordinator  --node http://localhost:20001 final-result --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
+```
 
 This will look up all the decryption shares provided by the guardians, check that they are valid, and if there are enough of the valid ones it will decrypt the final result and publish it in the contract.
 
 If the `admin-keys` are not provided the command will do everything else as with the keys, except it will check if the result in the contract matches or not, and report the result.
+
+### Reset the finalization
+
+```console
+election-coordinator --node http://localhost:20001 reset --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --decryption-deadline 2024-03-23T12:13:14Z
+```
+
+This will reset the finalization phase, meaning that all posted guardian decryptions and proofs will be removed in the contract state. Furthermore, the provided guardians will be excluded from posting
+decryptions and proofs again. The remaining guardians (those not excluded) should post their new decryptions and proofs before the new decryption deadline set by `--decryption-deadline`.
