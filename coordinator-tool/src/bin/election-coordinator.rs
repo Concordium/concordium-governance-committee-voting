@@ -701,7 +701,7 @@ async fn handle_reset(
         let pk = decode::<GuardianPublicKey>(&pk_bytes)
             .context("Failed to decode guardian public key.")?;
         let pk_json = serde_json::to_string_pretty(&pk.coefficient_commitments.0[0])?;
-        println!(
+        eprintln!(
             "Guardian {} with address {} and public key {}",
             pk.i, addr, pk_json
         );
