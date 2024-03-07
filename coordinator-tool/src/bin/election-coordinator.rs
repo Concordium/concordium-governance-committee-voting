@@ -696,7 +696,7 @@ async fn handle_reset(
     eprintln!("Guardians to be removed:");
     for (addr, st) in guardians_state_filtered {
         let Some(pk_bytes) = st.public_key.clone() else {
-            anyhow::bail!(format!("Public key not found for guardian with address {}", addr));
+            anyhow::bail!("Public key not found for guardian with address {}", addr);
         };
         let pk = decode::<GuardianPublicKey>(&pk_bytes)
             .context("Failed to decode guardian public key.")?;
