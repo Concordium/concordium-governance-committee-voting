@@ -693,7 +693,7 @@ async fn handle_reset(
         .iter()
         .filter(|(addr, _)| parameter.0.contains(addr));
 
-    println!("Guardians to be removed:");
+    eprintln!("Guardians to be removed:");
     for (addr, st) in guardians_state_filtered {
         let Some(pk_bytes) = st.public_key.clone() else {
             anyhow::bail!(format!("Public key not found for guardian with address {}", addr));
