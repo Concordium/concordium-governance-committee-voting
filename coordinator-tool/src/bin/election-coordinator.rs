@@ -536,11 +536,26 @@ async fn handle_decrypt(
         decryption_shares.len()
     );
 
+    eprintln!(
+        "{} decryption shares available. Starting decryption.",
+        decryption_shares.len()
+    );
+
+    // Progress bar for decryption.
+    let bar = ProgressBar::new(tally.values().map(|x| x.len()).sum::<usize>() as u64).with_style(
+        ProgressStyle::with_template("{spinner} {msg} {wide_bar} {pos}/{len}")?,
+    );
+    // spin the spinner automatically since we can't tick it during decryption of an
+    // individual ciphertext
+    bar.enable_steady_tick(std::time::Duration::from_millis(100));
+
     let mut decryption = {
         let mut decrypted_tallies = BTreeMap::new();
         for (contest, ciphertexts) in tally.into_iter() {
             let mut ciphers = Vec::new();
             for (i, ciphertext) in ciphertexts.into_iter().enumerate() {
+                bar.set_message(format!("ciphertext {i} (contest {contest})"));
+                bar.inc(1);
                 // each guardian provides a decryption share of each of the options
                 // for each of the contests.
                 let mut decryption_shares_for_option = Vec::new();
@@ -578,6 +593,7 @@ async fn handle_decrypt(
         }
         decrypted_tallies
     };
+    bar.finish_and_clear();
 
     let contest = {
         let mut contests = election_data.manifest.contests.indices();
