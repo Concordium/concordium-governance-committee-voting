@@ -108,7 +108,8 @@ impl AppConfig {
         verify_checksum(
             &self.eg_manifest_file,
             contract_config.election_manifest.hash.0,
-        )?;
+        )
+        .context("Manifest file hash not as recorded in the contract.")?;
         let election_manifest: ElectionManifest = serde_json::from_reader(
             fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
         )?;
@@ -116,7 +117,8 @@ impl AppConfig {
         verify_checksum(
             &self.eg_parameters_file,
             contract_config.election_parameters.hash.0,
-        )?;
+        )
+        .context("Election parameters file hash not as recorded in the contract.")?;
         let election_parameters: ElectionParameters = serde_json::from_reader(
             fs::File::open(&self.eg_parameters_file)
                 .context("Could not read election parameters")?,
