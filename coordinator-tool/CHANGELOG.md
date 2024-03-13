@@ -1,6 +1,7 @@
 ## 0.2.1
 
 - Allow overwriting encrypted tally if it is different from computed.
+- Print progress bar during decryption.
 
 ## 0.2.0
 
