@@ -40,8 +40,10 @@ fn test_init_errors() {
         .checked_add_signed(chrono::Duration::seconds(5))
         .unwrap();
     let future_1d = now.checked_add_days(chrono::Days::new(1)).unwrap();
+    let future_2d = now.checked_add_days(chrono::Days::new(2)).unwrap();
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
+    let decryption_deadline = future_2d.try_into().expect("Valid datetime");
     let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
@@ -61,6 +63,7 @@ fn test_init_errors() {
         election_description: election_description.clone(),
         election_start,
         election_end,
+        decryption_deadline,
         candidates: candidates.clone(),
         guardians: guardians.clone(),
         eligible_voters: eligible_voters.clone(),
@@ -78,6 +81,13 @@ fn test_init_errors() {
     init_param.election_end = election_start;
     initialize(&module_ref, &init_param, &mut chain)
         .expect_err("Election start time must be before election end time");
+
+    // `election_start` is before `election_end`.
+    let mut init_param = get_init_param();
+    init_param.election_end = decryption_deadline;
+    init_param.decryption_deadline = election_end;
+    initialize(&module_ref, &init_param, &mut chain)
+        .expect_err("Election end time must be before decryption deadline");
 
     // `election_start` is in the past
     let mut init_param = get_init_param();
@@ -146,6 +156,7 @@ fn test_init_config() {
     let election_end = election_start
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
+    let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
     let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
@@ -164,6 +175,7 @@ fn test_init_config() {
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
         election_end: election_end.try_into().expect("Valid datetime"),
+        decryption_deadline: decryption_deadline.try_into().expect("Valid datetime"),
         candidates,
         guardians,
         eligible_voters,
@@ -475,6 +487,219 @@ fn test_receive_ballot() {
 }
 
 #[test]
+fn test_receive_guardian_decryption_share() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+    let config: InitParameter = view_config(&mut chain, &contract_address)
+        .expect("Can invoke config entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+
+    let param = vec![0, 1, 2, 5, 1, 6, 7];
+    let param_other = vec![1, 2, 3, 4, 5, 1, 2, 3];
+
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+            .expect_err("Registering decryption share should fail in before election_end")
+            .parse_return_value()
+            .expect("Can deserialize error");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
+
+    transition_to_open(&mut chain, &config);
+
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+            .expect_err("Registering decryption share should fail in before election_end")
+            .parse_return_value()
+            .expect("Can deserialize error");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
+
+    transition_to_closed(&mut chain, &config);
+
+    post_decryption_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+        .expect("Decryption share registration should succeed");
+    post_decryption_share_update(&mut chain, &contract_address, &DAVE_ADDR, &param_other)
+        .expect("Decryption share registration should succeed");
+
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
+            .expect_err("Registration should fail due to not being in the list of guardians")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
+
+    let contract_sender = Address::Contract(ContractAddress {
+        index:    0,
+        subindex: 0,
+    });
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &contract_sender, &param)
+            .expect_err("Cannot register from contract sender")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
+
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+            .expect_err("Registration should fail due to duplicate entry")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(error, Error::DuplicateEntry, "Unexpected error type");
+
+    transition_to_decryption_deadline_passed(&mut chain, &config);
+
+    let error: Error =
+        post_decryption_share_update(&mut chain, &contract_address, &CAROLINE_ADDR, &param)
+            .expect_err("Registration should fail when deadline has passed")
+            .parse_return_value()
+            .expect("Deserializes to error type");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
+
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+        .expect("Can invoke entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+    guardians_state.sort_by_key(|x| x.1.index);
+    let expected_result: GuardiansState = vec![
+        (BOB, GuardianState {
+            decryption_share: Some(param),
+            ..GuardianState::new(1)
+        }),
+        (CAROLINE, GuardianState::new(2)),
+        (DAVE, GuardianState {
+            decryption_share: Some(param_other),
+            ..GuardianState::new(3)
+        }),
+    ];
+    assert_eq!(guardians_state, expected_result);
+}
+
+#[test]
+fn test_receive_guardian_decryption_proof_response_share() {
+    let (mut chain, contract_address) = new_chain_and_contract();
+    let config: InitParameter = view_config(&mut chain, &contract_address)
+        .expect("Can invoke config entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+
+    let param = vec![0, 1, 2, 5, 1, 6, 7];
+    let param_other = vec![1, 2, 3, 4, 5, 1, 2, 3];
+
+    let error: Error = post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &BOB_ADDR,
+        &param,
+    )
+    .expect_err("Registering decryption share should fail in before election_end")
+    .parse_return_value()
+    .expect("Can deserialize error");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
+
+    transition_to_open(&mut chain, &config);
+
+    let error: Error = post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &BOB_ADDR,
+        &param,
+    )
+    .expect_err("Registering decryption share should fail in before election_end")
+    .parse_return_value()
+    .expect("Can deserialize error");
+    assert_eq!(
+        error,
+        Error::IncorrectElectionPhase,
+        "Unexpected error type"
+    );
+
+    transition_to_closed(&mut chain, &config);
+
+    post_decryption_proof_response_share_update(&mut chain, &contract_address, &BOB_ADDR, &param)
+        .expect("Decryption share registration should succeed");
+
+    transition_to_decryption_deadline_passed(&mut chain, &config);
+
+    post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &DAVE_ADDR,
+        &param_other,
+    )
+    .expect("Decryption share registration should succeed");
+
+    let error: Error = post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &ALICE_ADDR,
+        &param,
+    )
+    .expect_err("Registration should fail due to not being in the list of guardians")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
+
+    let contract_sender = Address::Contract(ContractAddress {
+        index:    0,
+        subindex: 0,
+    });
+    let error: Error = post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &contract_sender,
+        &param,
+    )
+    .expect_err("Cannot register from contract sender")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::Unauthorized, "Unexpected error type");
+
+    let error: Error = post_decryption_proof_response_share_update(
+        &mut chain,
+        &contract_address,
+        &BOB_ADDR,
+        &param,
+    )
+    .expect_err("Registration should fail due to duplicate entry")
+    .parse_return_value()
+    .expect("Deserializes to error type");
+    assert_eq!(error, Error::DuplicateEntry, "Unexpected error type");
+
+    let mut guardians_state: GuardiansState = view_guardians_state(&mut chain, &contract_address)
+        .expect("Can invoke entrypoint")
+        .parse_return_value()
+        .expect("Can parse value");
+    guardians_state.sort_by_key(|x| x.1.index);
+    let expected_result: GuardiansState = vec![
+        (BOB, GuardianState {
+            decryption_share_proof: Some(param),
+            ..GuardianState::new(1)
+        }),
+        (CAROLINE, GuardianState::new(2)),
+        (DAVE, GuardianState {
+            decryption_share_proof: Some(param_other),
+            ..GuardianState::new(3)
+        }),
+    ];
+    assert_eq!(guardians_state, expected_result);
+}
+
+#[test]
 fn test_receive_election_result() {
     let (mut chain, contract_address) = new_chain_and_contract();
     let config: InitParameter = view_config(&mut chain, &contract_address)
@@ -576,6 +801,18 @@ fn transition_to_closed(chain: &mut Chain, config: &InitParameter) {
         .expect("Does not overflow");
     chain
         .tick_block_time(dur_until_closed)
+        .expect("Block time does not overflow");
+}
+
+/// Shifts the block time to after the decryption deadline.
+fn transition_to_decryption_deadline_passed(chain: &mut Chain, config: &InitParameter) {
+    let dur_until_deadline_passed = chain
+        .block_time()
+        .duration_between(config.decryption_deadline)
+        .checked_add(Duration::from_millis(1))
+        .expect("Does not overflow");
+    chain
+        .tick_block_time(dur_until_deadline_passed)
         .expect("Block time does not overflow");
 }
 
@@ -699,6 +936,43 @@ fn register_votes_update(
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
 }
 
+/// Performs contract update at `post_decryption_share` entrypoint.
+fn post_decryption_share_update(
+    chain: &mut Chain,
+    address: &ContractAddress,
+    sender: &Address,
+    param: &Vec<u8>,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount:       Amount::zero(),
+        address:      *address,
+        receive_name: OwnedReceiveName::new_unchecked("election.postDecryptionShare".to_string()),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+    };
+
+    chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
+/// Performs contract update at `post_decryption_proof_response_share`
+/// entrypoint.
+fn post_decryption_proof_response_share_update(
+    chain: &mut Chain,
+    address: &ContractAddress,
+    sender: &Address,
+    param: &Vec<u8>,
+) -> Result<ContractInvokeSuccess, ContractInvokeError> {
+    let payload = UpdateContractPayload {
+        amount:       Amount::zero(),
+        address:      *address,
+        receive_name: OwnedReceiveName::new_unchecked(
+            "election.postDecryptionProofResponseShare".to_string(),
+        ),
+        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+    };
+
+    chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
+}
+
 /// Invokes `config` entrypoint
 fn view_config(
     chain: &mut Chain,
@@ -734,6 +1008,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
     let election_end = election_start
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
+    let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
     let eligible_voters = ChecksumUrl {
         url:  "http://some.election/voters".to_string(),
         hash: HashSha2256([0u8; 32]),
@@ -753,6 +1028,7 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         election_description: "Test election".to_string(),
         election_start: election_start.try_into().expect("Valid datetime"),
         election_end: election_end.try_into().expect("Valid datetime"),
+        decryption_deadline: decryption_deadline.try_into().expect("Valid datetime"),
         candidates,
         guardians,
         eligible_voters,

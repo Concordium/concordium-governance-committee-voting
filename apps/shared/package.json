@@ -13,6 +13,7 @@
     },
     "exports": {
         "./election-contract/schema": "./__generated__/election-contract/election_schema.json",
+        "./components": "./src/components.tsx",
         "./*": "./src/*.ts"
     },
     "dependencies": {

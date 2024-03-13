@@ -5,7 +5,8 @@ import { CcdAmount } from '@concordium/web-sdk';
 
 import Button from '~/shared/Button';
 import { ValidatedProposalType, generateSecretShare, registerGuardianKey, registerGuardianShares } from '~/shared/ffi';
-import { CCD_SYMBOL, useCountdown } from 'shared/util';
+import { CCD_SYMBOL, expectValue } from 'shared/util';
+import { Countdown } from 'shared/components';
 import { ElectionPhase, SetupStep, electionConfigAtom, electionStepAtom, setupCompleted } from '~/shared/store';
 import { makeActionableStep, Step, ActionStep, AwaitPeers } from './util';
 
@@ -218,15 +219,16 @@ const GenerateSecretShare = makeActionableStep(
  * Component shown when the setup phase is completed for all guardians.
  */
 function Ready() {
-    const electionConfig = useAtomValue(electionConfigAtom);
-    const countdown = useCountdown(electionConfig!.electionStart); // Reasonable unwrap, as this is checked in the parent component.
+    const electionConfig = expectValue(useAtomValue(electionConfigAtom), 'Expected election config to be available');
 
     return (
         <>
             <h1>Election setup complete</h1>
             <p>
                 Election begins in <br />
-                <b className="text-primary">{countdown}</b>
+                <b className="text-primary">
+                    <Countdown to={electionConfig.electionStart} />
+                </b>
             </p>
         </>
     );

@@ -120,6 +120,8 @@ export type ElectionConfig = {
     electionStart: Date;
     /** The election end time */
     electionEnd: Date;
+    /** The deadline for registering decryption shares */
+    decryptionDeadline: Date;
     /** The election description */
     electionDescription: string;
     /** Whether the encrypted tally has been registered in the contract */
@@ -141,6 +143,7 @@ export async function connect(): Promise<ElectionConfig> {
         ...response,
         electionStart: new Date(response.electionStart),
         electionEnd: new Date(response.electionEnd),
+        decryptionDeadline: new Date(response.decryptionDeadline),
     };
     return mapped;
 }

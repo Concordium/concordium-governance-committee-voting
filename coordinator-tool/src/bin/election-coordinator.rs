@@ -6,7 +6,7 @@ use clap::Parser;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
     base::transactions,
-    common::types::TransactionTime,
+    common::types::{Timestamp, TransactionTime},
     contract_client::{self, ViewError},
     indexer,
     smart_contracts::common::{
@@ -22,7 +22,7 @@ use concordium_rust_sdk::{
     v2::{self as sdk, BlockIdentifier},
 };
 use concordium_std::schema::SchemaType;
-use contract::GuardiansState;
+use contract::{ChecksumUrl, GuardiansState};
 use eg::{
     ballot::BallotEncrypted,
     election_manifest::{ContestIndex, ElectionManifest},
@@ -65,59 +65,65 @@ struct NewElectionArgs {
         help = "Path to the file containing the Concordium account keys exported from the wallet. \
                 This will be the admin account of the election."
     )]
-    admin:             std::path::PathBuf,
+    admin:               std::path::PathBuf,
     #[clap(
         long = "module",
         help = "Path of the Concordium smart contract module."
     )]
-    module:            std::path::PathBuf,
+    module:              std::path::PathBuf,
     #[arg(
         long = "base-url",
         help = "Base url where the election data is accessible. This is recorded in the contract."
     )]
-    base_url:          url::Url,
+    base_url:            url::Url,
     #[arg(
         long = "election-start",
         help = "The start time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_start:    chrono::DateTime<chrono::Utc>,
+    election_start:      chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "election-end",
         help = "The end time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_end:      chrono::DateTime<chrono::Utc>,
+    election_end:        chrono::DateTime<chrono::Utc>,
+    #[arg(
+        long = "decryption-deadline",
+        help = "The deadline for guardians to register decryption shares. The format is ISO-8601, \
+                e.g. 2024-01-23T12:13:14Z."
+    )]
+    decryption_deadline: chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "delegation-string",
         help = "The string to identify vote delegations."
     )]
-    delegation_string: String,
+    delegation_string:   String,
     #[arg(long = "guardian", help = "The account addresses of guardians..")]
-    guardians:         Vec<AccountAddress>,
+    guardians:           Vec<AccountAddress>,
     #[arg(
         long = "threshold",
         help = "Threshold for the number of guardians needed."
     )]
-    threshold:         u32,
+    threshold:           u32,
     #[arg(
         long = "candidate",
         help = "The URL to candidates metadata. The order matters."
     )]
-    candidates:        Vec<url::Url>,
+    candidates:          Vec<url::Url>,
     #[clap(
         long = "manifest-out",
         help = "Path where the election manifest file will be written."
     )]
-    manifest_file:     std::path::PathBuf,
+    manifest_file:       std::path::PathBuf,
     #[clap(
         long = "parameters-out",
         help = "Path where election parameters will be output."
     )]
-    parameters_file:   std::path::PathBuf,
+    parameters_file:     std::path::PathBuf,
     #[clap(
         long = "voters-file",
         help = "Path to the file with a list of eligible accounts with their weights."
     )]
-    voters_file:       std::path::PathBuf,
+    voters_file:         std::path::PathBuf,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -168,6 +174,30 @@ enum Command {
             help = "Location of the keys used to register election results in the contract."
         )]
         wallet_path: Option<std::path::PathBuf>,
+    },
+    /// Reset finalization phase.
+    Reset {
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>"
+        )]
+        contract:            ContractAddress,
+        #[arg(
+            long = "admin-keys",
+            help = "Location of the keys used to register election results in the contract."
+        )]
+        wallet_path:         std::path::PathBuf,
+        #[arg(
+            long = "guardian",
+            help = "The account addresses of guardians to be excluded."
+        )]
+        guardians:           Vec<AccountAddress>,
+        #[arg(
+            long = "decryption-deadline",
+            help = "The new deadline for guardians to register decryption shares. The format is \
+                    ISO-8601, e.g. 2024-01-23T12:13:14Z."
+        )]
+        decryption_deadline: chrono::DateTime<chrono::Utc>,
     },
 }
 
@@ -240,6 +270,21 @@ async fn main() -> anyhow::Result<()> {
             wallet_path,
         } => handle_decrypt(endpoint, contract, wallet_path).await,
         Command::NewElection(args) => handle_new_election(endpoint, *args).await,
+        Command::Reset {
+            contract,
+            wallet_path,
+            guardians,
+            decryption_deadline,
+        } => {
+            handle_reset(
+                endpoint,
+                contract,
+                wallet_path,
+                guardians,
+                decryption_deadline.try_into()?,
+            )
+            .await
+        }
     }
 }
 
@@ -484,10 +529,10 @@ async fn handle_decrypt(
         .parameters
         .varying_parameters
         .k
-        .get_zero_based_usize();
+        .get_one_based_usize();
     anyhow::ensure!(
         decryption_shares.len() >= quorum,
-        "Not enough shares. Require {} but only have {quorum}.",
+        "Not enough shares. Require {quorum} but only have {}.",
         decryption_shares.len()
     );
 
@@ -552,9 +597,29 @@ async fn handle_decrypt(
     let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
     for value in results {
         let weight = value.plain_text.to_u64_digits();
-        eprintln!("{weight:?}");
         anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
         weights.push(weight.first().copied().unwrap_or(0));
+    }
+
+    {
+        // Format results for display.
+        let computed_results: Vec<contract::CandidateResult> = election_data
+            .candidates
+            .into_iter()
+            .zip(&weights)
+            .map(
+                |(candidate, &cummulative_votes)| contract::CandidateResult {
+                    candidate,
+                    cummulative_votes,
+                },
+            )
+            .collect();
+
+        let json_repr: String = Vec::<contract::CandidateResult>::get_type()
+            .to_json_string_pretty(&concordium_std::to_bytes(&computed_results))
+            .context("Unable to convert to String")?;
+        eprintln!("The computed election results are.");
+        println!("{json_repr}");
     }
 
     let current_result = contract_client
@@ -571,11 +636,13 @@ async fn handle_decrypt(
             .map(|x| x.cummulative_votes)
             .collect::<Vec<_>>();
         if current_weights != weights {
+            let json_repr: String = Vec::<contract::CandidateResult>::get_type()
+                .to_json_string_pretty(&concordium_std::to_bytes(&result))
+                .context("Unable to convert to String")?;
             eprintln!(
-                "The election results are already registered in the contract are \
-                 {current_weights:?}."
+                "The election results are already published in the contract and are\n
+                 {json_repr}."
             );
-            eprintln!("But the newly computed results are {weights:?}");
             let confirm = dialoguer::Confirm::new()
                 .report(true)
                 .wait_for_newline(true)
@@ -584,12 +651,9 @@ async fn handle_decrypt(
             anyhow::ensure!(confirm, "Aborting.");
         } else {
             eprintln!(
-                "The election results are already registered in the contract, and they match."
+                "The election results are already registered in the contract, and they match. \
+                 Terminating."
             );
-            for option in result {
-                println!("Option: {}", option.candidate.url);
-                println!("Number of votes: {}", option.cummulative_votes);
-            }
             return Ok(());
         }
     }
@@ -613,6 +677,73 @@ async fn handle_decrypt(
         } else {
             eprintln!("Transaction successful and finalized.",);
         }
+    } else {
+        eprintln!(
+            "The admin keys were not provided, the results are not going to be posted to the \
+             contract.\nRun again with the `--admin-keys` option to do so. "
+        )
+    }
+
+    Ok(())
+}
+
+async fn handle_reset(
+    endpoint: sdk::Endpoint,
+    contract: ContractAddress,
+    wallet_path: std::path::PathBuf,
+    guardians: Vec<AccountAddress>,
+    decryption_deadline: Timestamp,
+) -> anyhow::Result<()> {
+    let client = sdk::Client::new(endpoint.clone()).await?;
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
+    let wallet = WalletAccount::from_json_file(wallet_path)?;
+    let parameter = (guardians, decryption_deadline);
+    let dry_run = contract_client
+        .dry_run_update::<_, ViewError>(
+            "resetFinalizationPhase",
+            Amount::zero(),
+            wallet.address,
+            &parameter,
+        )
+        .await
+        .context("Failed to dry run")?;
+
+    let guardians_state = contract_client
+        .view::<_, GuardiansState, ViewError>("viewGuardiansState", &(), BlockIdentifier::LastFinal)
+        .await?;
+
+    let guardians_state_filtered = guardians_state
+        .iter()
+        .filter(|(addr, _)| parameter.0.contains(addr));
+
+    eprintln!("Guardians to be removed:");
+    for (addr, st) in guardians_state_filtered {
+        let Some(pk_bytes) = st.public_key.clone() else {
+            anyhow::bail!("Public key not found for guardian with address {}", addr);
+        };
+        let pk = decode::<GuardianPublicKey>(&pk_bytes)
+            .context("Failed to decode guardian public key.")?;
+        let pk_json = serde_json::to_string_pretty(&pk.coefficient_commitments.0[0])?;
+        eprintln!(
+            "Guardian {} with address {} and public key {}",
+            pk.i, addr, pk_json
+        );
+    }
+
+    let confirm = dialoguer::Confirm::new()
+        .report(true)
+        .wait_for_newline(true)
+        .with_prompt("Confirm excluding guardians.")
+        .interact()?;
+    anyhow::ensure!(confirm, "Aborting.");
+
+    let handle = dry_run.send(&wallet).await?;
+
+    if let Err(e) = handle.wait_for_finalization().await {
+        eprintln!("Transaction failed with {e:#?}");
+    } else {
+        eprintln!("Transaction successful and finalized.",);
     }
 
     Ok(())
@@ -623,6 +754,7 @@ struct ElectionData {
     manifest:             ElectionManifest,
     parameters:           ElectionParameters,
     guardian_public_keys: Vec<GuardianPublicKey>,
+    candidates:           Vec<ChecksumUrl>,
     start:                chrono::DateTime<chrono::Utc>,
     end:                  chrono::DateTime<chrono::Utc>,
     /// String that is used to detect delegations.
@@ -698,6 +830,7 @@ async fn get_election_data(
     Ok(ElectionData {
         manifest: election_manifest,
         parameters: election_parameters,
+        candidates: config.candidates,
         guardian_public_keys,
         start,
         end,
@@ -1160,6 +1293,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         election_description: "Test election".into(),
         election_start: app.election_start.try_into()?,
         election_end: app.election_end.try_into()?,
+        decryption_deadline: app.decryption_deadline.try_into()?,
         delegation_string: app.delegation_string,
     };
 

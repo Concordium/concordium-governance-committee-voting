@@ -50,6 +50,8 @@ pub enum Error {
     IncorrectElectionPhase,
     /// An attempt to override a non-overridable state entry was made
     DuplicateEntry,
+    /// An attempt to participate in finalization phase after being excluded.
+    GuardianExcluded,
 }
 
 /// The different status options available for guardians.
@@ -84,6 +86,8 @@ pub struct GuardianState {
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
     pub status:                 Option<GuardianStatus>,
+    /// Whether the guardian has been excluded due to incorrect behaviour.
+    pub excluded:               bool,
 }
 
 impl GuardianState {
@@ -95,6 +99,7 @@ impl GuardianState {
             status: None,
             decryption_share: None,
             decryption_share_proof: None,
+            excluded: false,
         }
     }
 }
@@ -118,28 +123,31 @@ pub struct RegisteredData {
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:     StateBox<AccountAddress, S>,
+    pub admin_account:       StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:        StateSet<ChecksumUrl, S>,
+    pub candidates:          StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:         StateMap<AccountAddress, GuardianState, S>,
+    pub guardians:           StateMap<AccountAddress, GuardianState, S>,
     /// Data registered upon contract instantiation which is used by off-chain
     /// applications
-    pub registered_data:   StateBox<RegisteredData, S>,
+    pub registered_data:     StateBox<RegisteredData, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:    Timestamp,
+    pub election_start:      Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:      Timestamp,
+    pub election_end:        Timestamp,
+    /// Guardians must add their [`GuardianState::decryption_share`] before this
+    /// timestamp for their shares to be included in the decrypted result.
+    pub decryption_deadline: Timestamp,
     /// The string that should be used when delegating a vote.
-    pub delegation_string: StateBox<String, S>,
+    pub delegation_string:   StateBox<String, S>,
     /// The encrypted tally posted by the operator for convenience of guardians.
-    pub encrypted_tally:   StateBox<Option<Vec<u8>>, S>,
+    pub encrypted_tally:     StateBox<Option<Vec<u8>>, S>,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result:   StateBox<Option<ElectionResult>, S>,
+    pub election_result:     StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -159,6 +167,7 @@ impl State {
             election_description,
             election_start,
             election_end,
+            decryption_deadline,
             delegation_string,
         }: InitParameter,
     ) -> Result<Self, Error> {
@@ -166,10 +175,12 @@ impl State {
 
         ensure!(election_start >= now, Error::Malformed);
         ensure!(election_start < election_end, Error::Malformed);
+        ensure!(election_end < decryption_deadline, Error::Malformed);
         ensure!(!election_description.is_empty(), Error::Malformed);
         ensure!(!candidates.is_empty(), Error::Malformed);
         ensure!(!guardians.is_empty(), Error::Malformed);
         ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
+        ensure!(!delegation_string.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
         for (&guardian_address, index) in guardians.iter().zip(1u32..) {
@@ -201,6 +212,7 @@ impl State {
             registered_data: state_builder.new_box(registered_data),
             election_start,
             election_end,
+            decryption_deadline,
             encrypted_tally: state_builder.new_box(None),
             election_result: state_builder.new_box(None),
             delegation_string: state_builder.new_box(delegation_string),
@@ -234,6 +246,9 @@ pub struct InitParameter {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// Guardians must add their [`GuardianState::decryption_share`] before this
+    /// timestamp for their shares to be included in the decrypted result.
+    pub decryption_deadline:  Timestamp,
     /// A string that should be used when delegating a vote to another account.
     pub delegation_string:    String,
 }
@@ -267,6 +282,9 @@ pub struct ElectionConfig {
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
     pub election_end:         Timestamp,
+    /// Guardians must add their [`GuardianState::decryption_share`] before this
+    /// timestamp for their shares to be included in the decrypted result.
+    pub decryption_deadline:  Timestamp,
     /// A string that should be used when delegating a vote to another account.
     pub delegation_string:    String,
 }
@@ -286,6 +304,7 @@ impl From<&State> for ElectionConfig {
             election_description: registered_data.election_description.clone(),
             election_start: value.election_start,
             election_end: value.election_end,
+            decryption_deadline: value.decryption_deadline,
             eligible_voters: registered_data.eligible_voters.clone(),
             election_manifest: registered_data.election_manifest.clone(),
             election_parameters: registered_data.election_parameters.clone(),
@@ -311,21 +330,10 @@ fn init(ctx: &InitContext, state_builder: &mut StateBuilder) -> InitResult<State
 fn validate_guardian_context<'a>(
     ctx: &ReceiveContext,
     host: &'a mut Host<State>,
-    before: bool, // if true check we are before election start, otherwise check we are after.
 ) -> Result<StateRefMut<'a, GuardianState, ExternStateApi>, Error> {
     let Address::Account(sender) = ctx.sender() else {
         bail!(Error::Unauthorized);
     };
-
-    let now = ctx.metadata().block_time();
-    if before {
-        ensure!(
-            now < host.state.election_start,
-            Error::IncorrectElectionPhase
-        );
-    } else {
-        ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
-    }
 
     host.state
         .guardians
@@ -346,7 +354,13 @@ pub type RegisterGuardianPublicKeyParameter = Vec<u8>;
     mutable
 )]
 fn register_guardian_public_key(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
+    let now = ctx.metadata().block_time();
+    ensure!(
+        now < host.state.election_start,
+        Error::IncorrectElectionPhase
+    );
+
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
     ensure!(guardian_state.public_key.is_none(), Error::DuplicateEntry);
 
     let parameter: RegisterGuardianPublicKeyParameter = ctx.parameter_cursor().get()?;
@@ -371,7 +385,13 @@ fn register_guardian_encrypted_share(
     ctx: &ReceiveContext,
     host: &mut Host<State>,
 ) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
+    let now = ctx.metadata().block_time();
+    ensure!(
+        now < host.state.election_start,
+        Error::IncorrectElectionPhase
+    );
+
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
     ensure!(
         guardian_state.encrypted_share.is_none(),
         Error::DuplicateEntry
@@ -393,7 +413,14 @@ fn register_guardian_encrypted_share(
     mutable
 )]
 fn post_decryption_share(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    let now = ctx.metadata().block_time();
+    ensure!(
+        host.state.election_end < now && now < host.state.decryption_deadline,
+        Error::IncorrectElectionPhase
+    );
+
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(
         guardian_state.decryption_share.is_none(),
         Error::DuplicateEntry
@@ -418,7 +445,11 @@ fn post_decryption_proof_response_share(
     ctx: &ReceiveContext,
     host: &mut Host<State>,
 ) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host, false)?;
+    let now = ctx.metadata().block_time();
+    ensure!(host.state.election_end < now, Error::IncorrectElectionPhase);
+
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(
         guardian_state.decryption_share_proof.is_none(),
         Error::DuplicateEntry
@@ -439,7 +470,14 @@ fn post_decryption_proof_response_share(
     mutable
 )]
 fn register_guardian_status(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
-    let mut guardian_state = validate_guardian_context(ctx, host, true)?;
+    let now = ctx.metadata().block_time();
+    ensure!(
+        now < host.state.election_start,
+        Error::IncorrectElectionPhase
+    );
+
+    let mut guardian_state = validate_guardian_context(ctx, host)?;
+    ensure!(!guardian_state.excluded, Error::GuardianExcluded);
     ensure!(guardian_state.status.is_none(), Error::DuplicateEntry);
 
     let status: GuardianStatus = ctx.parameter_cursor().get()?;
@@ -546,8 +584,48 @@ fn post_election_result(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<
     let candidates: Vec<_> = host.state.candidates.iter().collect();
     let parameter: PostResultParameter = ctx.parameter_cursor().get()?;
     ensure!(parameter.len() == candidates.len(), Error::Malformed);
-
     *host.state.election_result.get_mut() = Some(parameter);
+    Ok(())
+}
+
+/// The parameter supplied to the [`reset_finalization_phase`] entrypoint.
+pub type ResetFinalizationParameter = (Vec<AccountAddress>, Timestamp);
+
+#[receive(
+    contract = "election",
+    name = "resetFinalizationPhase",
+    parameter = "ResetFinalizationParameter",
+    error = "Error",
+    mutable
+)]
+fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Result<(), Error> {
+    let now = ctx.metadata().block_time();
+
+    ensure!(
+        ctx.sender().matches_account(host.state.admin_account.get()),
+        Error::Unauthorized
+    );
+    ensure!(
+        now > host.state.decryption_deadline,
+        Error::IncorrectElectionPhase
+    );
+
+    let (guardians, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
+
+    ensure!(now < deadline, Error::Malformed);
+    host.state.decryption_deadline = deadline;
+
+    for guardian in guardians {
+        if let Some(mut g) = host.state.guardians.get_mut(&guardian) {
+            g.excluded = true;
+        }
+    }
+
+    for mut guardian in host.state.guardians.iter_mut() {
+        guardian.1.decryption_share = None;
+        guardian.1.decryption_share_proof = None;
+    }
+
     Ok(())
 }
 

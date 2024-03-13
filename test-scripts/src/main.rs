@@ -262,6 +262,9 @@ async fn main() -> anyhow::Result<()> {
         let end_timestamp = chrono::Utc::now()
             .checked_add_signed(chrono::Duration::minutes(args.election_duration + 2))
             .context("Time overflow")?;
+        let decryption_deadline = chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::minutes(args.election_duration + 10))
+            .context("Time overflow")?;
 
         let election_end = end_timestamp.try_into()?;
         let eligible_voters_hash = if let Some(voters_file) = args.eligible_voters {
@@ -312,6 +315,7 @@ async fn main() -> anyhow::Result<()> {
             election_description: "Test election".into(),
             election_start,
             election_end,
+            decryption_deadline: decryption_deadline.try_into()?,
             delegation_string: delegation_string.into(),
         };
         let nonce = client
