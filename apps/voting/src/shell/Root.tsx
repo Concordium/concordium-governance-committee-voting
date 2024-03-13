@@ -1,7 +1,8 @@
-import { WalletConnectionManager } from '~/shared/wallet-connection';
-import App from './App';
 import { Provider, createStore, useAtomValue } from 'jotai';
+import { RouterProvider } from 'react-router-dom';
+import { WalletConnectionManager } from '~/shared/wallet-connection';
 import { electionConfigAtom } from '~/shared/store';
+import { router } from './router';
 
 const store = createStore();
 
@@ -22,7 +23,7 @@ function Root() {
         <Provider store={store}>
             <WalletConnectionManager>
                 <EnsureGlobalState />
-                <App />
+                <RouterProvider router={router} />
             </WalletConnectionManager>
         </Provider>
     );

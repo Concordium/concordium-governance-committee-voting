@@ -1,13 +1,14 @@
 import { Container, Nav, Navbar } from 'react-bootstrap';
+import { Outlet, NavLink } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import { clsx } from 'clsx';
 
 import { electionConfigAtom } from '~/shared/store';
-import Home from '~/pages/Home';
 import { WalletConnection } from './WalletConnection';
 import { commonDateTimeFormat } from '~/shared/util';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import pkg from '../../../package.json';
+import { routes } from '../router';
 
 const showDate = (date: Date) => date.toLocaleString(undefined, commonDateTimeFormat);
 
@@ -25,7 +26,7 @@ function App() {
                     <Container>
                         {electionConfig !== undefined && (
                             <>
-                                <Navbar.Brand href="#home">
+                                <Navbar.Brand as={NavLink} to={routes.home.path}>
                                     {electionConfig.description}
                                     <div
                                         className={clsx(
@@ -44,7 +45,9 @@ function App() {
                                 <Navbar.Toggle aria-controls="basic-navbar-nav" />
                                 <Navbar.Collapse id="basic-navbar-nav">
                                     <Nav>
-                                        <Nav.Link href="#delegation">Delegation</Nav.Link>
+                                        <Nav.Link as={NavLink} to={routes.delegation.path}>
+                                            Delegation
+                                        </Nav.Link>
                                     </Nav>
                                 </Navbar.Collapse>
                             </>
@@ -53,7 +56,7 @@ function App() {
                     </Container>
                 </Navbar>
                 <Container as="main">
-                    <Home />
+                    <Outlet />
                 </Container>
             </div>
             <Container as="footer" className="app__footer mb-3">
