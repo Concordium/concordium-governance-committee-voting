@@ -36,6 +36,7 @@ use std::{
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
+#[clap(version, author)]
 struct AppConfig {
     /// The node(s) used for querying
     #[arg(
@@ -540,6 +541,8 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    tracing::info!("Starting indexer version {}", env!("CARGO_PKG_VERSION"));
 
     let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
 
