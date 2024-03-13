@@ -918,7 +918,7 @@ async fn handle_tally(
                 continue;
             };
 
-            let Ok(ballot) = decode::<BallotEncrypted>(&param) else {
+            let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };

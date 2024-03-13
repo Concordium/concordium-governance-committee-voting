@@ -323,7 +323,7 @@ fn get_ballot_submission(
     let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
         .context("Failed to parse ballot from transaction message")
         .and_then(|bytes| {
-            decode::<BallotEncrypted>(&bytes).context("Failed parse encrypted ballot")
+            decode::<BallotEncrypted>(&bytes.inner).context("Failed parse encrypted ballot")
         }) {
         Ok(ballot) => ballot,
         Err(err) => {

@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-rust-sdk"
-version = "4.1.1"
+version = "4.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "concordium-std"
-version = "9.0.2"
+version = "10.0.0"
 dependencies = [
  "concordium-contracts-common",
 ]
