@@ -958,15 +958,33 @@ async fn handle_tally(
             BlockIdentifier::LastFinal,
         )
         .await?;
-    if let Some(registered_tally) = current_tally {
+
+    let wrong_tally = if let Some(registered_tally) = current_tally {
         if registered_tally == serialized_tally {
-            eprintln!("The computed encrypted tally is already registered in the contract.");
+            eprintln!(
+                "The computed encrypted tally is already registered in the contract. There is \
+                 nothing to do."
+            );
+            return Ok(());
         } else {
             eprintln!(
                 "The encrypted tally is already registered in the contract, but it is different."
             );
+            if keys.is_some() {
+                let confirm = dialoguer::Confirm::new()
+                    .report(true)
+                    .wait_for_newline(true)
+                    .with_prompt("Do you want to overwrite the published tally?")
+                    .interact()?;
+                anyhow::ensure!(confirm, "Aborting.");
+            }
+            true
         }
-    } else if let Some(keys) = keys {
+    } else {
+        false
+    };
+
+    if let Some(keys) = keys {
         let wallet = WalletAccount::from_json_file(keys)?;
         eprintln!("Registering tally in the smart contract.");
         let dry_run = contract_client
@@ -989,7 +1007,7 @@ async fn handle_tally(
         } else {
             eprintln!("Transaction successful and finalized.");
         }
-    } else {
+    } else if !wrong_tally {
         eprintln!(
             "The tally is currently not registered in the contract, and no keys were provided."
         );
