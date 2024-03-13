@@ -22,7 +22,7 @@ use concordium_rust_sdk::{
     v2::{self as sdk, BlockIdentifier},
 };
 use concordium_std::schema::SchemaType;
-use contract::GuardiansState;
+use contract::{ChecksumUrl, GuardiansState};
 use eg::{
     ballot::BallotEncrypted,
     election_manifest::{ContestIndex, ElectionManifest},
@@ -597,9 +597,29 @@ async fn handle_decrypt(
     let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
     for value in results {
         let weight = value.plain_text.to_u64_digits();
-        eprintln!("{weight:?}");
         anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
         weights.push(weight.first().copied().unwrap_or(0));
+    }
+
+    {
+        // Format results for display.
+        let computed_results: Vec<contract::CandidateResult> = election_data
+            .candidates
+            .into_iter()
+            .zip(&weights)
+            .map(
+                |(candidate, &cummulative_votes)| contract::CandidateResult {
+                    candidate,
+                    cummulative_votes,
+                },
+            )
+            .collect();
+
+        let json_repr: String = Vec::<contract::CandidateResult>::get_type()
+            .to_json_string_pretty(&concordium_std::to_bytes(&computed_results))
+            .context("Unable to convert to String")?;
+        eprintln!("The computed election results are.");
+        println!("{json_repr}");
     }
 
     let current_result = contract_client
@@ -616,11 +636,13 @@ async fn handle_decrypt(
             .map(|x| x.cummulative_votes)
             .collect::<Vec<_>>();
         if current_weights != weights {
+            let json_repr: String = Vec::<contract::CandidateResult>::get_type()
+                .to_json_string_pretty(&concordium_std::to_bytes(&result))
+                .context("Unable to convert to String")?;
             eprintln!(
-                "The election results are already registered in the contract are \
-                 {current_weights:?}."
+                "The election results are already published in the contract and are\n
+                 {json_repr}."
             );
-            eprintln!("But the newly computed results are {weights:?}");
             let confirm = dialoguer::Confirm::new()
                 .report(true)
                 .wait_for_newline(true)
@@ -629,12 +651,9 @@ async fn handle_decrypt(
             anyhow::ensure!(confirm, "Aborting.");
         } else {
             eprintln!(
-                "The election results are already registered in the contract, and they match."
+                "The election results are already registered in the contract, and they match. \
+                 Terminating."
             );
-            for option in result {
-                println!("Option: {}", option.candidate.url);
-                println!("Number of votes: {}", option.cummulative_votes);
-            }
             return Ok(());
         }
     }
@@ -658,6 +677,11 @@ async fn handle_decrypt(
         } else {
             eprintln!("Transaction successful and finalized.",);
         }
+    } else {
+        eprintln!(
+            "The admin keys were not provided, the results are not going to be posted to the \
+             contract.\nRun again with the `--admin-keys` option to do so. "
+        )
     }
 
     Ok(())
@@ -730,6 +754,7 @@ struct ElectionData {
     manifest:             ElectionManifest,
     parameters:           ElectionParameters,
     guardian_public_keys: Vec<GuardianPublicKey>,
+    candidates:           Vec<ChecksumUrl>,
     start:                chrono::DateTime<chrono::Utc>,
     end:                  chrono::DateTime<chrono::Utc>,
     /// String that is used to detect delegations.
@@ -805,6 +830,7 @@ async fn get_election_data(
     Ok(ElectionData {
         manifest: election_manifest,
         parameters: election_parameters,
+        candidates: config.candidates,
         guardian_public_keys,
         start,
         end,
