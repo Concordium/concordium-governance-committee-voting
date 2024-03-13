@@ -56,4 +56,10 @@
         font-size: 14px;
         color: $gray-500;
     }
+
+    &__nav-phase {
+        @include media-breakpoint-up(md) {
+            position: absolute;
+        }
+    }
 }

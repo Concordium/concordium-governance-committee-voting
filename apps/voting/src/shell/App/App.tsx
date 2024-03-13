@@ -1,12 +1,12 @@
-import { Container } from 'react-bootstrap';
+import { Container, Nav, Navbar } from 'react-bootstrap';
 import { useAtomValue } from 'jotai';
+import { clsx } from 'clsx';
 
 import { electionConfigAtom } from '~/shared/store';
 import Home from '~/pages/Home';
 import { WalletConnection } from './WalletConnection';
 import { commonDateTimeFormat } from '~/shared/util';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
-
 import pkg from '../../../package.json';
 
 const showDate = (date: Date) => date.toLocaleString(undefined, commonDateTimeFormat);
@@ -19,33 +19,47 @@ function App() {
     const openState = useIsElectionOpen();
 
     return (
-        <Container className="flex-fill d-flex flex-column justify-content-between">
+        <div className="flex-fill d-flex flex-column justify-content-between">
             <div>
-                <header className="d-flex flex-wrap justify-content-between mb-4 mt-5">
-                    {electionConfig !== undefined && (
-                        <div className="mb-2">
-                            <h2 className="mb-0">{electionConfig.description}</h2>
-                            <div className={openState === ElectionOpenState.Open ? 'text-success' : 'text-danger'}>
-                                {openState === ElectionOpenState.Open && `Open until ${showDate(electionConfig.end)}`}
-                                {openState === ElectionOpenState.NotStarted &&
-                                    `Opening at ${showDate(electionConfig.start)}`}
-                                {openState === ElectionOpenState.Concluded &&
-                                    `Closed at ${showDate(electionConfig.end)}`}
-                            </div>
-                        </div>
-                    )}
-                    <div className="mb-2">
+                <Navbar className="justify-content-between my-2 mb-md-4" expand="md">
+                    <Container>
+                        {electionConfig !== undefined && (
+                            <>
+                                <Navbar.Brand href="#home">
+                                    {electionConfig.description}
+                                    <div
+                                        className={clsx(
+                                            'fs-6 app__nav-phase',
+                                            openState === ElectionOpenState.Open ? 'text-success' : 'text-danger',
+                                        )}
+                                    >
+                                        {openState === ElectionOpenState.Open &&
+                                            `Open until ${showDate(electionConfig.end)}`}
+                                        {openState === ElectionOpenState.NotStarted &&
+                                            `Opening at ${showDate(electionConfig.start)}`}
+                                        {openState === ElectionOpenState.Concluded &&
+                                            `Closed at ${showDate(electionConfig.end)}`}
+                                    </div>
+                                </Navbar.Brand>
+                                <Navbar.Toggle aria-controls="basic-navbar-nav" />
+                                <Navbar.Collapse id="basic-navbar-nav">
+                                    <Nav>
+                                        <Nav.Link href="#delegation">Delegation</Nav.Link>
+                                    </Nav>
+                                </Navbar.Collapse>
+                            </>
+                        )}
                         <WalletConnection />
-                    </div>
-                </header>
-                <main>
+                    </Container>
+                </Navbar>
+                <Container as="main">
                     <Home />
-                </main>
+                </Container>
             </div>
-            <footer className="app__footer mb-3">
+            <Container as="footer" className="app__footer mb-3">
                 <div>Version: {pkg.version}</div>
-            </footer>
-        </Container>
+            </Container>
+        </div>
     );
 }
 
