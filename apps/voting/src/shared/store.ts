@@ -284,7 +284,7 @@ type SubmittedBallotsState<T> = {
     /** Whether more pages exist in the database */
     hasMore: boolean;
     /** The index of the of the last ballot from the dtatbase. Undefined means nothing has been loaded yet. */
-    lastIndex: number | undefined;
+    lastIndex: bigint | undefined;
 };
 
 const initialSubmittedBallotsState: SubmittedBallotsState<SerializableBallotSubmission> = {

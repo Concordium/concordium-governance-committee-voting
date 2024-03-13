@@ -196,7 +196,7 @@ fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
 /// query params passed to [`get_ballot_submissions_by_account`].
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct SubmissionsQueryParams {
+struct PaginatedQueryParams {
     /// The page of ballot submissions to get.
     #[serde(default)]
     from:      Option<usize>,
@@ -205,7 +205,7 @@ struct SubmissionsQueryParams {
     page_size: usize,
 }
 
-impl SubmissionsQueryParams {
+impl PaginatedQueryParams {
     /// Get the page size, where the max page size is capped by
     /// [`MAX_SUBMISSIONS_PAGE_SIZE`]
     fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
@@ -227,7 +227,7 @@ struct PaginationResponse<T> {
 async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
-    Query(query_params): Query<SubmissionsQueryParams>,
+    Query(query_params): Query<PaginatedQueryParams>,
 ) -> Result<Json<PaginationResponse<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);
@@ -290,7 +290,7 @@ impl DelegationResponseRow {
 async fn get_delegations_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
-    Query(query_params): Query<SubmissionsQueryParams>,
+    Query(query_params): Query<PaginatedQueryParams>,
 ) -> Result<Json<PaginationResponse<DelegationResponseRow>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);

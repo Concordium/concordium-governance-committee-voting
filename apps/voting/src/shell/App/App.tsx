@@ -46,7 +46,7 @@ function App() {
                                 <Navbar.Collapse id="basic-navbar-nav">
                                     <Nav>
                                         <Nav.Link as={NavLink} to={routes.delegation.path}>
-                                            Delegation
+                                            Delegations
                                         </Nav.Link>
                                     </Nav>
                                 </Navbar.Collapse>
