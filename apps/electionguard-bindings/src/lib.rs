@@ -1,5 +1,6 @@
 use eg::{
     ballot::BallotEncrypted,
+    ballot_style::BallotStyleIndex,
     contest_selection::{ContestSelection, ContestSelectionPlaintext},
     device::Device,
     election_manifest::{ContestIndex, ElectionManifest},
@@ -108,7 +109,6 @@ impl TryFrom<EncryptedBallotContext> for PreVotingData {
             &value.election_parameters,
             &hashes,
             &joint_election_public_key,
-            &guardian_public_keys,
         );
 
         let pre_voting_data = PreVotingData {
@@ -134,13 +134,14 @@ impl From<SingleContestSelection> for BTreeMap<ContestIndex, ContestSelection> {
         let mut map = Self::new();
         // We only ever have one contest, so we unwrap the value created from 1u8.
         let index = ContestIndex::from_one_based_index_const(1).unwrap();
-        let value = ContestSelection {
-            vote: value
+        let value = ContestSelection::new(
+            value
                 .0
                 .into_iter()
                 .map(ContestSelectionPlaintext::from)
                 .collect(),
-        };
+        )
+        .expect("The input list is short enough for this to always be Some.");
 
         map.insert(index, value);
         map
@@ -166,11 +167,12 @@ pub fn get_encrypted_ballot(
     let primary_nonce: [u8; 32] = thread_rng().gen();
 
     let ballot = BallotEncrypted::new_from_selections(
+        BallotStyleIndex::from_one_based_index_unchecked(1),
         &device,
         &mut csprng,
         primary_nonce.as_ref(),
         &selections.into(),
-    );
+    )?;
 
     let js_value = js_sys::Uint8Array::from(encode(&ballot)?.as_slice());
     Ok(js_value)
