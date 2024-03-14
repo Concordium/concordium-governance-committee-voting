@@ -30,7 +30,7 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
-    verifiable_decryption::VerifiableDecryption
+    verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,

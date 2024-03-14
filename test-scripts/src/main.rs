@@ -588,7 +588,9 @@ async fn main() -> anyhow::Result<()> {
             let selections = ContestSelection::new(
                 (0..num_options)
                     .map(|_| if rand::thread_rng().gen() { 1u8 } else { 0u8 })
-                    .collect()).context("Unable to vote.")?;
+                    .collect(),
+            )
+            .context("Unable to vote.")?;
             eprintln!("Voter {} voting {:?}", voter.address, selections.get_vote());
             let ballot = BallotEncrypted::new_from_selections(
                 BallotStyleIndex::from_one_based_index_unchecked(1),
@@ -596,7 +598,8 @@ async fn main() -> anyhow::Result<()> {
                 &mut rng,
                 &primary_nonce,
                 &[(contest, selections)].into(),
-            ).context("Unable to construct ballot.")?;
+            )
+            .context("Unable to construct ballot.")?;
             let ballot_data = encode(&ballot)?;
             eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client
