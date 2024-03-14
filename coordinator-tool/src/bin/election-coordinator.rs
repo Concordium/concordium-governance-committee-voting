@@ -536,11 +536,26 @@ async fn handle_decrypt(
         decryption_shares.len()
     );
 
+    eprintln!(
+        "{} decryption shares available. Starting decryption.",
+        decryption_shares.len()
+    );
+
+    // Progress bar for decryption.
+    let bar = ProgressBar::new(tally.values().map(|x| x.len()).sum::<usize>() as u64).with_style(
+        ProgressStyle::with_template("{spinner} {msg} {wide_bar} {pos}/{len}")?,
+    );
+    // spin the spinner automatically since we can't tick it during decryption of an
+    // individual ciphertext
+    bar.enable_steady_tick(std::time::Duration::from_millis(100));
+
     let mut decryption = {
         let mut decrypted_tallies = BTreeMap::new();
         for (contest, ciphertexts) in tally.into_iter() {
             let mut ciphers = Vec::new();
             for (i, ciphertext) in ciphertexts.into_iter().enumerate() {
+                bar.set_message(format!("ciphertext {i} (contest {contest})"));
+                bar.inc(1);
                 // each guardian provides a decryption share of each of the options
                 // for each of the contests.
                 let mut decryption_shares_for_option = Vec::new();
@@ -578,6 +593,7 @@ async fn handle_decrypt(
         }
         decrypted_tallies
     };
+    bar.finish_and_clear();
 
     let contest = {
         let mut contests = election_data.manifest.contests.indices();
@@ -902,7 +918,7 @@ async fn handle_tally(
                 continue;
             };
 
-            let Ok(ballot) = decode::<BallotEncrypted>(&param) else {
+            let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };
@@ -958,15 +974,33 @@ async fn handle_tally(
             BlockIdentifier::LastFinal,
         )
         .await?;
-    if let Some(registered_tally) = current_tally {
+
+    let wrong_tally = if let Some(registered_tally) = current_tally {
         if registered_tally == serialized_tally {
-            eprintln!("The computed encrypted tally is already registered in the contract.");
+            eprintln!(
+                "The computed encrypted tally is already registered in the contract. There is \
+                 nothing to do."
+            );
+            return Ok(());
         } else {
             eprintln!(
                 "The encrypted tally is already registered in the contract, but it is different."
             );
+            if keys.is_some() {
+                let confirm = dialoguer::Confirm::new()
+                    .report(true)
+                    .wait_for_newline(true)
+                    .with_prompt("Do you want to overwrite the published tally?")
+                    .interact()?;
+                anyhow::ensure!(confirm, "Aborting.");
+            }
+            true
         }
-    } else if let Some(keys) = keys {
+    } else {
+        false
+    };
+
+    if let Some(keys) = keys {
         let wallet = WalletAccount::from_json_file(keys)?;
         eprintln!("Registering tally in the smart contract.");
         let dry_run = contract_client
@@ -989,7 +1023,7 @@ async fn handle_tally(
         } else {
             eprintln!("Transaction successful and finalized.");
         }
-    } else {
+    } else if !wrong_tally {
         eprintln!(
             "The tally is currently not registered in the contract, and no keys were provided."
         );

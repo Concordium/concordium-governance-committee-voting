@@ -37,6 +37,7 @@ use std::{
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
+#[clap(version, author)]
 struct AppConfig {
     /// The node(s) used for querying
     #[arg(
@@ -108,7 +109,8 @@ impl AppConfig {
         verify_checksum(
             &self.eg_manifest_file,
             contract_config.election_manifest.hash.0,
-        )?;
+        )
+        .context("Manifest file hash not as recorded in the contract.")?;
         let election_manifest: ElectionManifest = serde_json::from_reader(
             fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
         )?;
@@ -116,7 +118,8 @@ impl AppConfig {
         verify_checksum(
             &self.eg_parameters_file,
             contract_config.election_parameters.hash.0,
-        )?;
+        )
+        .context("Election parameters file hash not as recorded in the contract.")?;
         let election_parameters: ElectionParameters = serde_json::from_reader(
             fs::File::open(&self.eg_parameters_file)
                 .context("Could not read election parameters")?,
@@ -368,7 +371,8 @@ fn get_transaction_data(
                 match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
                     .context("Failed to parse ballot from transaction message")
                     .and_then(|bytes| {
-                        decode::<BallotEncrypted>(&bytes).context("Failed parse encrypted ballot")
+                        decode::<BallotEncrypted>(&bytes.inner)
+                            .context("Failed parse encrypted ballot")
                     }) {
                     Ok(ballot) => ballot,
                     Err(err) => {
@@ -598,6 +602,8 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    tracing::info!("Starting indexer version {}", env!("CARGO_PKG_VERSION"));
 
     let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
 

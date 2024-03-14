@@ -33,6 +33,7 @@ use tower_http::{
 
 /// Command line configuration of the application.
 #[derive(Debug, Parser, Clone)]
+#[clap(version, author)]
 struct AppConfig {
     /// The node used for querying
     #[arg(
@@ -574,6 +575,11 @@ async fn main() -> anyhow::Result<()> {
             .with(log_filter)
             .init();
     }
+
+    tracing::info!(
+        "Starting election server version {}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Verify that we serve the files matching what is registered in the contract
     {

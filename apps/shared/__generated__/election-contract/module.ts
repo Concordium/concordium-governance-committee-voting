@@ -2,9 +2,9 @@
 import * as SDK from "@concordium/web-sdk";
 
 /** The reference of the smart contract module supported by the provided client. */
-export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb');
+export const moduleReference: SDK.ModuleReference.Type = /*#__PURE__*/ SDK.ModuleReference.fromHexString('0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249');
 
-/** Client for an on-chain smart contract module with module reference '5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb', can be used for instantiating new smart contract instances. */
+/** Client for an on-chain smart contract module with module reference '0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249', can be used for instantiating new smart contract instances. */
 class ModuleModule {
     /** Having a private field prevents similar structured objects to be considered the same type (similar to nominal typing). */
     private __nominal = true;
@@ -17,7 +17,7 @@ class ModuleModule {
     }
 }
 
-/** Client for an on-chain smart contract module with module reference '5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb', can be used for instantiating new smart contract instances. */
+/** Client for an on-chain smart contract module with module reference '0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249', can be used for instantiating new smart contract instances. */
 export type Type = ModuleModule;
 
 /**
@@ -46,7 +46,7 @@ export function createUnchecked(grpcClient: SDK.ConcordiumGRPCClient): ModuleMod
 /**
  * Construct a ModuleModule client for interacting with a smart contract module on chain.
  * This function ensures the smart contract module is deployed on chain.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249'.
  * @throws If failing to communicate with the concordium node or if the module reference is not present on chain.
  * @returns {ModuleModule} A module client ensured to be deployed on chain.
  */
@@ -56,7 +56,7 @@ export function checkOnChain(moduleClient: ModuleModule): Promise<void> {
 
 /**
  * Get the module source of the deployed smart contract module.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249'.
  * @throws {SDK.RpcError} If failing to communicate with the concordium node or module not found.
  * @returns {SDK.VersionedModuleSource} Module source of the deployed smart contract module.
  */
@@ -162,7 +162,7 @@ export function createElectionParameter(parameter: ElectionParameter): SDK.Param
 
 /**
  * Send transaction for instantiating a new 'election' smart contract instance.
- * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '5aff02d76a742436b1831de7f0c801502ee514bc7aa6f3befb289f0b527c38cb'.
+ * @param {ModuleModule} moduleClient - The client of the on-chain smart contract module with referecence '0b1570a962775afbe1d68bda058df66e6b42e5b795b2198a2725f8d994aeb249'.
  * @param {SDK.ContractTransactionMetadata} transactionMetadata - Metadata related to constructing a transaction for a smart contract module.
  * @param {ElectionParameter} parameter - Parameter to provide as part of the transaction for the instantiation of a new smart contract contract.
  * @param {SDK.AccountSigner} signer - The signer of the update contract transaction.

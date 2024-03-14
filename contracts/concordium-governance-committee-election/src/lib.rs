@@ -1,9 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # A Concordium V1 smart contract
-use concordium_std::*;
-
 pub use concordium_std::HashSha2256;
+use concordium_std::*;
 
 /// Represents the list of eligible voters and their corresponding voting
 /// weights by a url, and a corresonding hash of the list.
@@ -509,7 +508,19 @@ fn view_guardians_state(
 }
 
 /// The parameter supplied to the [`register_votes`] entrypoint.
-pub type RegisterVotesParameter = Vec<u8>;
+#[derive(Serialize)]
+#[repr(transparent)]
+pub struct RegisterVotesParameter {
+    pub inner: Vec<u8>,
+}
+
+impl From<Vec<u8>> for RegisterVotesParameter {
+    fn from(value: Vec<u8>) -> Self { Self { inner: value } }
+}
+
+impl schema::SchemaType for RegisterVotesParameter {
+    fn get_type() -> schema::Type { schema::Type::ByteList(schema::SizeLength::U32) }
+}
 
 /// Receive votes registration from voter. If a contract submits the vote, an
 /// error is returned. This function does not actually store anything. Instead
