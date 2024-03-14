@@ -12,13 +12,15 @@ import {
     BallotSubmissionStatus,
     Wallet,
     activeWalletAtom,
-    activeWalletVotingPowerAtom,
+    activeWalletVotingWeightAtom,
     connectionViewAtom,
     loadMoreSubmittedBallotsAtom,
     submittedBallotsAtom,
 } from '~/shared/store';
 import { commonDateTimeFormat } from '~/shared/util';
 import { accountShowShort } from 'shared/util';
+import { Link } from 'react-router-dom';
+import { getDelegationRoute } from '../router';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.
@@ -183,11 +185,11 @@ const showStatus: { [p in BallotSubmissionStatus]: string } = {
  *
  * @throws if used without a connected account in the global store.
  */
-const ActiveConnectionBody = withActiveAccount(({ connection }) => {
+const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
     const submissions = useAtomValue(submittedBallotsAtom);
     const loadMore = useSetAtom(loadMoreSubmittedBallotsAtom);
     const [loading, setLoading] = useState(false);
-    const votingPower = useAtomValue(activeWalletVotingPowerAtom);
+    const weight = useAtomValue(activeWalletVotingWeightAtom);
 
     const handleLoadMore = useCallback(async () => {
         setLoading(true);
@@ -198,6 +200,8 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
             setLoading(false);
         }
     }, [loadMore]);
+
+    const isDelegatee = (weight?.delegationsFrom.results.length ?? 0) > 0;
 
     return (
         <>
@@ -210,10 +214,38 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
             <hr />
             <section className="mb-4">
                 <h5>Account details</h5>
-                <div className="active-connection__text-small">Voting weight: {votingPower?.toString()}*</div>
+                <div className="active-connection__text-small">
+                    Voting weight: {weight?.votingWeight.toString()}*
+                    {AccountAddress.instanceOf(weight?.delegatedTo) && (
+                        <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
+                    )}
+                </div>
+                {isDelegatee && (
+                    <div className="active-connection__text-small mt-3">
+                        <b>Delegatee for**:</b>
+                        {weight?.delegationsFrom.results.map(([account, weight]) => (
+                            <div key={AccountAddress.toBase58(account)}>
+                                {accountShowShort(account)} (weight: {weight.toString()})
+                            </div>
+                        ))}
+                        {weight?.delegationsFrom.hasMore && (
+                            <>
+                                ...
+                                <br />
+                                <Link to={getDelegationRoute(account)}>View all</Link>
+                            </>
+                        )}
+                    </div>
+                )}
                 <div className="active-connection__text-small mt-3 text-muted">
                     *The voting weight listed does not include any voting power delegated from other accounts.
                 </div>
+                {isDelegatee && (
+                    <div className="active-connection__text-small mt-1 text-muted">
+                        **The delegations listed are a snapshot and can change until voting closes. Delegated weight is
+                        not counted until after voting has concluded.
+                    </div>
+                )}
             </section>
             <hr />
             <section>

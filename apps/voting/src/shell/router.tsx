@@ -3,6 +3,7 @@ import { RouteChildren, buildAbsoluteRoutes } from 'shared/routing';
 import App from './App';
 import Home from '~/pages/Home';
 import Delegation from '~/pages/Delegation';
+import { AccountAddress } from '@concordium/web-sdk';
 
 /**
  * Application relative routes, used by the {@linkcode router}.
@@ -42,3 +43,10 @@ export const router = createBrowserRouter([
         ],
     },
 ]);
+
+export function getDelegationRoute(account?: AccountAddress.Type) {
+    return routes.delegation.path.replace(
+        '/:account?',
+        account !== undefined ? `/${AccountAddress.toBase58(account)}` : '',
+    );
+}

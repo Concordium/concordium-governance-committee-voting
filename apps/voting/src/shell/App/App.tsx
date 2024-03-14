@@ -8,7 +8,7 @@ import { WalletConnection } from './WalletConnection';
 import { commonDateTimeFormat } from '~/shared/util';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import pkg from '../../../package.json';
-import { routes } from '../router';
+import { getDelegationRoute, routes } from '../router';
 
 const showDate = (date: Date) => date.toLocaleString(undefined, commonDateTimeFormat);
 
@@ -45,7 +45,7 @@ function App() {
                                 <Navbar.Toggle aria-controls="basic-navbar-nav" />
                                 <Navbar.Collapse id="basic-navbar-nav">
                                     <Nav>
-                                        <Nav.Link as={NavLink} to={routes.delegation.path}>
+                                        <Nav.Link as={NavLink} to={getDelegationRoute()}>
                                             Delegations
                                         </Nav.Link>
                                     </Nav>

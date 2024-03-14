@@ -18,7 +18,13 @@ import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 import { getElectionConfig } from './election-contract';
 import { pollUntil } from './util';
 import { NETWORK } from './constants';
-import { DatabaseBallotSubmission, getAccountSubmissions, getAccountWeight, getSubmission } from './election-server';
+import {
+    AccountWeightResponse,
+    DatabaseBallotSubmission,
+    getAccountSubmissions,
+    getAccountWeight,
+    getSubmission,
+} from './election-server';
 
 /**
  * Representation of an election candidate.
@@ -177,14 +183,14 @@ export const activeWalletAtom = atom<Wallet | undefined>(undefined);
  */
 const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_: AccountAddress.Type) => atom<bigint | undefined>(undefined),
+    (_: AccountAddress.Type) => atom<AccountWeightResponse | undefined>(undefined),
     (a, b) => a.address === b.address,
 );
 
 /**
- * Fetches the voting power for the selected account when changed
+ * Fetches the voting weight for the selected account when changed
  */
-const accountVotingPowerSubscribeAtom = atomEffect((get, set) => {
+const accountVotingWeightSubscribeAtom = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return;
 
@@ -193,10 +199,10 @@ const accountVotingPowerSubscribeAtom = atomEffect((get, set) => {
 });
 
 /**
- * Gets the voting power for the selected account
+ * Gets the voting weight for the selected account
  */
-export const activeWalletVotingPowerAtom = atom((get) => {
-    get(accountVotingPowerSubscribeAtom);
+export const activeWalletVotingWeightAtom = atom((get) => {
+    get(accountVotingWeightSubscribeAtom);
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return undefined;
 

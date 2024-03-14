@@ -171,6 +171,33 @@ export async function getAccountSubmissions(
     return { ...json, results: json.results.map(reviveBallotSubmission) };
 }
 
+type AccountWeightResponseSerialized = {
+    /** The voting weight of the account queried */
+    votingWeight: bigint;
+    /** The account to whom the account queried has delegated its voting weight (if any) */
+    delegatedTo: Base58String | null;
+    /**
+     * A paginated response of account address and corresponding voting weight pairs which delegated to the account
+     * queried
+     */
+    delegationsFrom: Paginated<[Base58String, bigint]>;
+};
+
+/**
+ * The response returned from querying the account weight of an account
+ */
+export type AccountWeightResponse = {
+    /** The voting weight of the account queried */
+    votingWeight: bigint;
+    /** The account to whom the account queried has delegated its voting weight (if any) */
+    delegatedTo: AccountAddress.Type | null;
+    /**
+     * A paginated response of account address and corresponding voting weight pairs which delegated to the account
+     * queried
+     */
+    delegationsFrom: Paginated<[AccountAddress.Type, bigint]>;
+};
+
 /**
  * Gets the voting weight for the account
  *
@@ -179,7 +206,7 @@ export async function getAccountSubmissions(
  * @returns The voting weight for the account
  * @throws On http errors.
  */
-export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<bigint> {
+export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<AccountWeightResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
     const url = `${BACKEND_API}/api/weight/${acccoutBase58}`;
     const res = await fetch(url);
@@ -188,8 +215,19 @@ export async function getAccountWeight(accountAddress: AccountAddress.Type): Pro
         throw new Error(`Error happened while trying to get account weight - ${res.status} (${res.statusText})`);
     }
 
-    const json = JSONBig.parse(await res.text()) as bigint;
-    return json;
+    const json = JSONBig.parse(await res.text()) as AccountWeightResponseSerialized;
+    const delegatedTo = json.delegatedTo !== null ? AccountAddress.fromBase58(json.delegatedTo) : null;
+    return {
+        ...json,
+        delegatedTo,
+        delegationsFrom: {
+            ...json.delegationsFrom,
+            results: json.delegationsFrom.results.map(([account, weight]) => [
+                AccountAddress.fromBase58(account),
+                weight,
+            ]),
+        },
+    };
 }
 
 export type DelegationsResponse = Paginated<Delegation>;

@@ -75,6 +75,9 @@ export default function Delegation() {
                 <div className="d-flex flex-column align-items-center">
                     {(delegations !== undefined || loading) && (
                         <>
+                            {delegations?.results.length === 0 && (
+                                <span className="text-muted"> No delegations found for account</span>
+                            )}
                             {(delegations?.results.length ?? 0) > 0 && (
                                 <Table striped bordered hover>
                                     <thead>

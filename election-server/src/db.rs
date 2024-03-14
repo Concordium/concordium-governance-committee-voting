@@ -248,9 +248,50 @@ impl Database {
             .collect()
     }
 
+    /// Get the delegation (if any) made from the `account_address`. This will
+    /// only return a single result due to the constraint on the database
+    /// table.
+    pub async fn get_delegation_out(
+        &self,
+        account_address: &AccountAddress,
+    ) -> DatabaseResult<Option<StoredDelegation>> {
+        let statement = self
+            .client
+            .prepare_cached(
+                "SELECT id, transaction_hash, block_time, from_account, to_account FROM \
+                 delegations WHERE from_account = $1",
+            )
+            .await?;
+        self.client
+            .query_opt(&statement, &[&account_address.0.as_ref()])
+            .await?
+            .map(StoredDelegation::try_from)
+            .transpose()
+    }
+
+    /// Get `n` earliest delegations submitted to `account_address`.
+    pub async fn get_n_delegations_in(
+        &self,
+        account_address: &AccountAddress,
+        n: usize,
+    ) -> DatabaseResult<Vec<StoredDelegation>> {
+        let statement = self
+            .client
+            .prepare_cached(
+                "SELECT id, transaction_hash, block_time, from_account, to_account FROM \
+                 delegations WHERE to_account = $1 ORDER BY id ASC LIMIT $2",
+            )
+            .await?;
+
+        let params: [&(dyn ToSql + Sync); 2] = [&account_address.0.as_ref(), &(n as i64)];
+        let rows = self.client.query(&statement, &params).await?;
+
+        rows.into_iter().map(StoredDelegation::try_from).collect()
+    }
+
     /// Get voting power delegations by account address within the give range.
-    /// The results returned are ordered by descending value of id, meaning
-    /// the most recently submitted ballots are returned first.
+    /// The results returned are ordered by ascending value of id, meaning
+    /// the most earliest submitted delegations are returned first.
     pub async fn get_delegations(
         &self,
         account_address: &AccountAddress,
@@ -260,14 +301,14 @@ impl Database {
         let from = if let Some(from) = from {
             from as i64
         } else {
-            i64::MAX
+            -1
         };
         let get_delegations = self
             .client
             .prepare_cached(
                 "SELECT id, transaction_hash, block_time, from_account, to_account FROM \
-                 delegations WHERE from_account = $1 OR to_account = $1 AND id < $2 ORDER BY id \
-                 DESC LIMIT $3",
+                 delegations WHERE from_account = $1 OR to_account = $1 AND id > $2 ORDER BY id \
+                 ASC LIMIT $3",
             )
             .await?;
 

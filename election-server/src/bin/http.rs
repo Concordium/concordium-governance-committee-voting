@@ -347,13 +347,67 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountWeightResponse {
+    /// The voting weight calculated for the account queried
+    voting_weight:    u64,
+    /// Delegation made to another account from the queried account
+    delegated_to:     Option<AccountAddress>,
+    /// Delegations from other accounts made to the account queried
+    delegations_from: PaginationResponse<(AccountAddress, u64)>,
+}
+
+const NUM_DELEGATIONS_FROM: usize = 3;
+
 /// Get the voting weight of an account address.
 #[tracing::instrument(skip(state))]
 async fn get_account_weight(
     State(state): State<AppState>,
     Path(account): Path<AccountAddress>,
-) -> Json<u64> {
-    Json(state.get_account_weight(&account))
+) -> Result<Json<AccountWeightResponse>, StatusCode> {
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let delegated_to = db
+        .get_delegation_out(&account)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(|d| d.to_account);
+    let mut results = db
+        .get_n_delegations_in(&account, NUM_DELEGATIONS_FROM + 1)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let has_more = results.len() > NUM_DELEGATIONS_FROM;
+    if has_more {
+        // Pop the last item of results, which will be the first item on the next page.
+        results.pop();
+    }
+
+    let results = results
+        .into_iter()
+        .map(|del| {
+            let weight = state.get_account_weight(&del.from_account);
+            (del.from_account, weight)
+        })
+        .collect();
+
+    let delegations_from = PaginationResponse { results, has_more };
+    let response = AccountWeightResponse {
+        voting_weight: state.get_account_weight(&account),
+        delegated_to,
+        delegations_from,
+    };
+
+    Ok(Json(response))
 }
 
 type PrometheusLayer = GenericMetricLayer<'static, PrometheusHandle, axum_prometheus::Handle>;
