@@ -22,7 +22,7 @@ use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
         create_client, get_election_config, verify_checksum, verify_contract, BallotSubmission,
-        ElectionContract, VotingPowerDelegation, REGISTER_VOTES_RECEIVE,
+        ElectionContract, VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
     },
 };
 use futures::{future, TryStreamExt};
@@ -133,16 +133,16 @@ impl AppConfig {
 enum TransactionData {
     /// Represents a ballot submission
     BallotSubmission(BallotSubmission),
-    /// Represents a voting power delegation
-    Delegation(VotingPowerDelegation),
+    /// Represents a voting weight delegation
+    Delegation(VotingWeightDelegation),
 }
 
 impl From<BallotSubmission> for TransactionData {
     fn from(value: BallotSubmission) -> Self { Self::BallotSubmission(value) }
 }
 
-impl From<VotingPowerDelegation> for TransactionData {
-    fn from(value: VotingPowerDelegation) -> Self { Self::Delegation(value) }
+impl From<VotingWeightDelegation> for TransactionData {
+    fn from(value: VotingWeightDelegation) -> Self { Self::Delegation(value) }
 }
 
 /// The data collected for each block.
@@ -348,7 +348,7 @@ fn get_transaction_data(
             if memo != delegation_string {
                 return None;
             };
-            TransactionData::Delegation(VotingPowerDelegation {
+            TransactionData::Delegation(VotingWeightDelegation {
                 from_account,
                 to_account: to,
                 transaction_hash,

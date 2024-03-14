@@ -28,9 +28,9 @@ pub struct BallotSubmission {
     pub verified:         bool,
 }
 
-/// Describes an election voting power delegation
+/// Describes an election voting weight delegation
 #[derive(Serialize, Debug)]
-pub struct VotingPowerDelegation {
+pub struct VotingWeightDelegation {
     /// The delegator account
     pub from_account:     contracts_common::AccountAddress,
     /// The delegatee account

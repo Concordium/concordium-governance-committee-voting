@@ -12,7 +12,7 @@ use tokio_postgres::{
     NoTls,
 };
 
-use crate::util::{BallotSubmission, VotingPowerDelegation};
+use crate::util::{BallotSubmission, VotingWeightDelegation};
 
 /// Represents possible errors returned from [`Database`] or [`DatabasePool`]
 /// functions
@@ -289,7 +289,7 @@ impl Database {
         rows.into_iter().map(StoredDelegation::try_from).collect()
     }
 
-    /// Get voting power delegations by account address within the give range.
+    /// Get voting weight delegations by account address within the give range.
     /// The results returned are ordered by ascending value of id, meaning
     /// the most earliest submitted delegations are returned first.
     pub async fn get_delegations(
@@ -370,7 +370,7 @@ impl<'a> Transaction<'a> {
     /// Insert a ballot submission into the DB.
     pub async fn insert_delegation(
         &self,
-        delegation: &VotingPowerDelegation,
+        delegation: &VotingWeightDelegation,
         block_time: DateTime<Utc>,
     ) -> DatabaseResult<()> {
         let insert_ballot = self

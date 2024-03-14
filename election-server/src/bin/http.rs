@@ -255,6 +255,7 @@ async fn get_ballot_submissions_by_account(
     Ok(Json(response))
 }
 
+/// Describes each row returned in [`get_delegations_by_account`]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DelegationResponseRow {
@@ -273,6 +274,8 @@ pub struct DelegationResponseRow {
 }
 
 impl DelegationResponseRow {
+    /// Creates a [`DelegationResponseRow`] from a [`StoredDelegation`] and an
+    /// associated account weight
     fn create(db_delegation: StoredDelegation, weight: u64) -> Self {
         Self {
             id: db_delegation.id,
@@ -348,6 +351,7 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
+/// The response format of [`get_account_weight`]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AccountWeightResponse {
@@ -359,6 +363,8 @@ struct AccountWeightResponse {
     delegations_from: PaginationResponse<(AccountAddress, u64)>,
 }
 
+/// The number of delegations returned in
+/// [`AccountWeightResponse::delegations_from`]
 const NUM_DELEGATIONS_FROM: usize = 3;
 
 /// Get the voting weight of an account address.

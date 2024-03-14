@@ -109,8 +109,7 @@ async fn main() -> anyhow::Result<()> {
         let admin = accounts
             .next()
             .context("Expect at least one account")?
-            .context("Unable to read account keys")?
-            .context("WHAT IS LOVE")?;
+            .context("Unable to read account keys")??;
         eprintln!("Using account {} as the admin account.", admin.address);
         let guardian_keys: Vec<WalletAccount> = accounts
             .map(|a| {

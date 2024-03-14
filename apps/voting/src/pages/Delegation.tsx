@@ -24,6 +24,7 @@ export default function Delegation() {
         }
     }, [value]);
 
+    const [httpError, setHttpError] = useState(false);
     const [delegations, setDelegations] = useState<DelegationsResponse>();
 
     const loadDelegations = useCallback(
@@ -44,6 +45,8 @@ export default function Delegation() {
                     if (existing === undefined || reset) return response;
                     return { ...response, results: [...existing.results, ...response.results] };
                 });
+            } catch {
+                setHttpError(true);
             } finally {
                 setLoading(false);
             }
@@ -55,7 +58,7 @@ export default function Delegation() {
         void loadDelegations(true);
 
         if (value && !error) {
-            nav(getDelegationRoute(AccountAddress.fromBase58(value)))
+            nav(getDelegationRoute(AccountAddress.fromBase58(value)));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, error]);
@@ -63,7 +66,7 @@ export default function Delegation() {
     return (
         <Row className="d-flex flex-fill justify-content-center mt-5">
             <Col md={18} lg={12}>
-                <Form className="text-center">
+                <div className="text-center">
                     <Form.Group className="mb-3" controlId="ccd-account">
                         <Form.Label>Concordium account</Form.Label>
                         <Form.Control
@@ -76,42 +79,41 @@ export default function Delegation() {
                         />
                         <Form.Control.Feedback type="invalid">Invalid account address.</Form.Control.Feedback>
                     </Form.Group>
-                </Form>
-                <div className="d-flex flex-column align-items-center">
-                    {(delegations !== undefined || loading) && (
-                        <>
-                            {delegations?.results.length === 0 && (
-                                <span className="text-muted"> No delegations found for account</span>
-                            )}
-                            {(delegations?.results.length ?? 0) > 0 && (
-                                <Table striped bordered hover>
-                                    <thead>
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Weight</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {delegations?.results.map((d) => (
-                                            <tr key={d.id.toString()}>
-                                                <td>{accountShowShort(d.fromAccount)}</td>
-                                                <td>{accountShowShort(d.toAccount)}</td>
-                                                <td>{d.weight.toString()}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </Table>
-                            )}
-                            {loading && <Spinner animation="border" variant="secondary" />}
-                            {delegations?.hasMore && !loading && (
-                                <Button variant="secondary" onClick={() => loadDelegations()}>
-                                    Load more
-                                </Button>
-                            )}
-                        </>
-                    )}
                 </div>
+                {(delegations !== undefined || loading) && (
+                    <div className="d-flex flex-column align-items-center">
+                        {delegations?.results.length === 0 && (
+                            <span className="text-muted"> No delegations found for account</span>
+                        )}
+                        {(delegations?.results.length ?? 0) > 0 && (
+                            <Table striped bordered hover>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Weight</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {delegations?.results.map((d) => (
+                                        <tr key={d.id.toString()}>
+                                            <td>{accountShowShort(d.fromAccount)}</td>
+                                            <td>{accountShowShort(d.toAccount)}</td>
+                                            <td>{d.weight.toString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        )}
+                        {loading && <Spinner animation="border" variant="secondary" />}
+                        {delegations?.hasMore && !loading && (
+                            <Button variant="secondary" onClick={() => loadDelegations()}>
+                                Load more
+                            </Button>
+                        )}
+                    </div>
+                )}
+                {httpError && <div className="text-danger text-center mb-4">Failed to get delegations for account</div>}
             </Col>
         </Row>
     );
