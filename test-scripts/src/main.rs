@@ -29,11 +29,41 @@ use eg::{
         CombinedDecryptionShare, DecryptionProof, DecryptionShare, DecryptionShareResult,
     },
 };
-use election_common::{decode, encode, EncryptedTally, GuardianDecryption};
+use election_common::{decode, encode, EncryptedTally, GuardianDecryption, WeightRow};
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
 use std::{collections::BTreeMap, path::PathBuf};
+
+/// A writer adapter that computes the hash of the written value on the fly.
+struct HashedWriter<W> {
+    inner:  W,
+    hasher: sha2::Sha256,
+}
+
+impl<W: std::io::Write> HashedWriter<W> {
+    pub fn new(inner: W) -> Self {
+        Self {
+            inner,
+            hasher: sha2::Sha256::new(),
+        }
+    }
+
+    /// Flush the writer and return the hash.
+    pub fn finish(mut self) -> std::io::Result<[u8; 32]> {
+        self.inner.flush()?;
+        Ok(self.hasher.finalize().into())
+    }
+}
+
+impl<W: std::io::Write> std::io::Write for HashedWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.hasher.update(buf);
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> { self.inner.flush() }
+}
 
 /// Command line configuration of the application.
 #[derive(Debug, clap::Parser)]
@@ -299,18 +329,24 @@ async fn main() -> anyhow::Result<()> {
             std::io::copy(&mut file, &mut hasher)?;
             contract::HashSha2256(hasher.finalize().into())
         } else {
-            // give each account weight 3
-            let accs = client
+            // give each account weight 3 CCD
+            let mut accs = client
                 .get_account_list(BlockIdentifier::LastFinal)
                 .await?
-                .response
-                .map_ok(|addr| (addr, 3u64))
-                .try_collect::<BTreeMap<_, _>>()
-                .await?;
-            let json = serde_json::to_vec_pretty(&accs)?;
-            let hash = sha2::Sha256::digest(&json);
-            std::fs::write(guardian_out.join("eligible-voters.json"), json)?;
-            contract::HashSha2256(hash.into())
+                .response;
+            let voters_path = guardian_out.join("eligible-voters.csv");
+            let mut writer =
+                csv::Writer::from_writer(HashedWriter::new(std::fs::File::create(&voters_path)?));
+
+            while let Some(account) = accs.try_next().await? {
+                writer.serialize(WeightRow {
+                    account,
+                    amount: Amount::from_ccd(3),
+                })?;
+            }
+
+            let hash = writer.into_inner()?.finish()?;
+            contract::HashSha2256(hash)
         };
         let eligible_voters = contract::ChecksumUrl {
             url:  make_url("static/concordium/eligible-voters.json"),
