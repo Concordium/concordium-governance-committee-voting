@@ -207,13 +207,15 @@ const ActiveConnectionBody = withActiveAccount(({ connection }) => {
                     Disconnect
                 </Button>
             </section>
+            <hr />
             <section className="mb-4">
                 <h5>Account details</h5>
-                <div className="active-connection__text-small">Voting power: {votingPower?.toString()}*</div>
+                <div className="active-connection__text-small">Voting weight: {votingPower?.toString()}*</div>
                 <div className="active-connection__text-small mt-3 text-muted">
-                    *The voting power listed does not include any voting power delegated from other accounts.
+                    *The voting weight listed does not include any voting power delegated from other accounts.
                 </div>
             </section>
+            <hr />
             <section>
                 <h5>Ballot submissions</h5>
                 {submissions?.ballots.length === 0 && (

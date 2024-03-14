@@ -1,13 +1,16 @@
 import { AccountAddress } from '@concordium/web-sdk';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Col, Form, Row, Spinner } from 'react-bootstrap';
+import { Button, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
+import { useParams } from 'react-router-dom';
+import { accountShowShort } from 'shared/util';
 import { DelegationsResponse, getDelegations } from '~/shared/election-server';
 
 /**
  * Page for viewing the delegations related to an account
  */
 export default function Delegation() {
-    const [value, setValue] = useState<string>('');
+    const { account = '' } = useParams();
+    const [value, setValue] = useState<string>(account);
     const [loading, setLoading] = useState<boolean>(false);
     const error = useMemo(() => {
         if (!value) return false;
@@ -35,7 +38,8 @@ export default function Delegation() {
             try {
                 const response = await getDelegations(AccountAddress.fromBase58(value), last);
                 setDelegations((existing) => {
-                    if (existing === undefined) return response;
+                    // Check for reset here as well, as react strictmode renders components twice initially (in dev mode)
+                    if (existing === undefined || reset) return response;
                     return { ...response, results: [...existing.results, ...response.results] };
                 });
             } finally {
@@ -46,6 +50,7 @@ export default function Delegation() {
     );
 
     useEffect(() => {
+        console.log(value);
         void loadDelegations(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
@@ -70,8 +75,26 @@ export default function Delegation() {
                 <div className="d-flex flex-column align-items-center">
                     {(delegations !== undefined || loading) && (
                         <>
-                            {(delegations?.results.length ?? 0) > 0 &&
-                                delegations?.results.map((d) => <div key={d.id.toString()}>{d.id.toString()}</div>)}
+                            {(delegations?.results.length ?? 0) > 0 && (
+                                <Table striped bordered hover>
+                                    <thead>
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Weight</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {delegations?.results.map((d) => (
+                                            <tr key={d.id.toString()}>
+                                                <td>{accountShowShort(d.fromAccount)}</td>
+                                                <td>{accountShowShort(d.toAccount)}</td>
+                                                <td>{d.weight.toString()}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </Table>
+                            )}
                             {loading && <Spinner animation="border" variant="secondary" />}
                             {delegations?.hasMore && !loading && (
                                 <Button variant="secondary" onClick={() => loadDelegations()}>
