@@ -516,10 +516,11 @@ async fn setup_http(
             "/static/electionguard/election-parameters.json",
             ServeFile::new(&config.eg_parameters_file),
         )
+        .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
+        .route("/index.html", index_handler.clone())
         .route("/", index_handler.clone())
-        .route("/index.html", index_handler)
-         // Fall back to serving anything from the frontend dir
-        .route_service("/*path", ServeDir::new(&config.frontend_dir))
+         // Fall back to handle route in the frontend of the application served
+        .route("/*path", index_handler)
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(config.request_timeout_ms),

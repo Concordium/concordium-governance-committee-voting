@@ -1,9 +1,10 @@
 import { AccountAddress } from '@concordium/web-sdk';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { accountShowShort } from 'shared/util';
 import { DelegationsResponse, getDelegations } from '~/shared/election-server';
+import { getDelegationRoute } from '~/shell/router';
 
 /**
  * Page for viewing the delegations related to an account
@@ -12,6 +13,7 @@ export default function Delegation() {
     const { account = '' } = useParams();
     const [value, setValue] = useState<string>(account);
     const [loading, setLoading] = useState<boolean>(false);
+    const nav = useNavigate();
     const error = useMemo(() => {
         if (!value) return false;
         try {
@@ -50,10 +52,13 @@ export default function Delegation() {
     );
 
     useEffect(() => {
-        console.log(value);
         void loadDelegations(true);
+
+        if (value && !error) {
+            nav(getDelegationRoute(AccountAddress.fromBase58(value)))
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value]);
+    }, [value, error]);
 
     return (
         <Row className="d-flex flex-fill justify-content-center mt-5">
