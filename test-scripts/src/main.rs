@@ -16,7 +16,7 @@ use concordium_rust_sdk::{
 use contract::{ChecksumUrl, GuardiansState, RegisterGuardianPublicKeyParameter};
 use eg::{
     ballot::BallotEncrypted,
-    ballot_style::BallotStyle,
+    ballot_style::{BallotStyle, BallotStyleIndex},
     contest_selection::ContestSelection,
     device::Device,
     election_manifest::ContestIndex,
@@ -234,7 +234,7 @@ async fn main() -> anyhow::Result<()> {
             varying_parameters: VaryingParameters {
                 n,
                 k,
-                date: chrono::Utc::now().to_string(),
+                date: chrono::Utc::now(),
                 info: format!("Test election with {} guardians.", guardians.len()),
                 ballot_chaining: eg::varying_parameters::BallotChaining::Prohibited,
             },
@@ -432,13 +432,13 @@ async fn main() -> anyhow::Result<()> {
         for ((g, g_acc), dealer_private_key) in (1..).zip(&guardians).zip(&guardian_keys) {
             let mut shares = Vec::new();
             for dealer_public_key in &guardian_public_keys {
-                let share = GuardianEncryptedShare::new(
+                let share = GuardianEncryptedShare::encrypt(
                     &mut rng,
                     &parameters,
                     dealer_private_key,
                     dealer_public_key,
                 );
-                shares.push(share);
+                shares.push(share.ciphertext);
             }
 
             let param = encode(&shares)?;
@@ -585,18 +585,18 @@ async fn main() -> anyhow::Result<()> {
         let mut hashes = Vec::with_capacity(guardians.len() + 1);
         for voter in guardians.iter().chain(std::iter::once(&admin)) {
             let primary_nonce: [u8; 32] = rand::thread_rng().gen();
-            let selections = ContestSelection {
-                vote: (0..num_options)
+            let selections = ContestSelection::new(
+                (0..num_options)
                     .map(|_| if rand::thread_rng().gen() { 1u8 } else { 0u8 })
-                    .collect(),
-            };
-            eprintln!("Voter {} voting {:?}", voter.address, selections.vote);
+                    .collect()).context("Unable to vote.")?;
+            eprintln!("Voter {} voting {:?}", voter.address, selections.get_vote());
             let ballot = BallotEncrypted::new_from_selections(
+                BallotStyleIndex::from_one_based_index_unchecked(1),
                 &device,
                 &mut rng,
                 &primary_nonce,
                 &[(contest, selections)].into(),
-            );
+            ).context("Unable to construct ballot.")?;
             let ballot_data = encode(&ballot)?;
             eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client

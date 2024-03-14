@@ -27,3 +27,4 @@ sha2 = "0.10"
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros", "sync"] }
 tonic = { version = "0.10", features = ["tls", "tls-roots"] }
 url = "2.5"
+util = { version = "0.1.0", path = "../deps/electionguard-rust/src/util" }

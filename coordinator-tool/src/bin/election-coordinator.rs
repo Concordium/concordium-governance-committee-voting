@@ -30,7 +30,7 @@ use eg::{
     election_record::PreVotingData,
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
-    verifiable_decryption::VerifiableDecryption,
+    verifiable_decryption::VerifiableDecryption
 };
 use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
@@ -612,7 +612,7 @@ async fn handle_decrypt(
 
     let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
     for value in results {
-        let weight = value.plain_text.to_u64_digits();
+        let weight = value.plain_text.value().to_u64_digits();
         anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
         weights.push(weight.first().copied().unwrap_or(0));
     }
@@ -922,10 +922,7 @@ async fn handle_tally(
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };
-            let verified = ballot.verify(
-                &verification_context,
-                eg::index::Index::from_one_based_index(1).unwrap(),
-            );
+            let verified = ballot.verify(&verification_context);
             if verified {
                 // Replace any previous ballot from the sender.
                 ballots.insert(AccountAddressEq::from(sender), (ballot, transaction_hash));
@@ -938,7 +935,8 @@ async fn handle_tally(
     let mut final_weights =
         csv::Reader::from_path(final_weights).context("Unable to open final weights file.")?;
 
-    let mut tally = eg::ballot::BallotTallyBuilder::new(&election_data.manifest);
+    let mut tally =
+        eg::ballot::BallotTallyBuilder::new(&election_data.manifest, &election_data.parameters);
     for row in final_weights.deserialize() {
         let FinalWeightRow {
             account,
@@ -953,7 +951,10 @@ async fn handle_tally(
             );
             tally.update(ballot.scale(
                 &verification_context.parameters.fixed_parameters,
-                factor.into(),
+                &util::algebra::FieldElement::from(
+                    factor,
+                    &election_data.parameters.fixed_parameters.field,
+                ),
             ));
         } // else the account did not vote, so nothing to do.
     }
@@ -1289,7 +1290,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
             varying_parameters: eg::varying_parameters::VaryingParameters {
                 n,
                 k,
-                date: chrono::Utc::now().to_string(),
+                date: chrono::Utc::now(),
                 info: format!(
                     "Governance committee election from {} to {} with {k} out of {n} threshold.",
                     app.election_start, app.election_end
