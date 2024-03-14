@@ -2,6 +2,7 @@ import { clsx } from 'clsx';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
+import { Buffer } from 'buffer/index.js';
 
 import { registerVotes } from '~/shared/election-contract';
 import {
@@ -94,8 +95,8 @@ export default function Home() {
         const ballot = electionConfig.candidates.map((_, i) => selected.includes(i));
         const encrypted = await getEncryptedBallot(ballot);
         setLoading(false);
-
-        const transaction = await registerVotes(Array.from(encrypted), wallet.connection, wallet.account);
+        const hexVotes = Buffer.from(encrypted).toString('hex');
+        const transaction = await registerVotes(hexVotes, wallet.connection, wallet.account);
         addSubmission(transaction);
 
         closeConfirm();

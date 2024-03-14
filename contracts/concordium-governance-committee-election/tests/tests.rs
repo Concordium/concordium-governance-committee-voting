@@ -441,7 +441,7 @@ fn test_receive_ballot() {
         .parse_return_value()
         .expect("Can parse value");
 
-    let param = vec![0u8, 32u8, 55u8, 3u8];
+    let param = RegisterVotesParameter::from(vec![0u8, 32u8, 55u8, 3u8]);
     let error: Error = register_votes_update(&mut chain, &contract_address, &ALICE_ADDR, &param)
         .expect_err("Vote registration prior to election window fails")
         .parse_return_value()
