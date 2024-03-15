@@ -15,8 +15,9 @@ The application is used to perform the following steps in the setup phase of the
 Steps 2 and 3 include validation of peer submissions. If these fail, complaints are registered in the contract instead
 of the expected result.
 
-**Finalization phase**
+**Tally phase**
 - Decrypt and publish share of the election tally
+- Generate and publish proof of correct decryption
 
 ## Installation
 
@@ -50,7 +51,7 @@ CCD_ELECTION_REQUEST_TIMEOUT_MS=5000 # Defaults to 5000
 To run the project during development, the following will provide a workflow with hot module replacement:
 
 ```bash
-yarn tauri dev
+yarn tauri-dev
 ```
 
 A development version of the application should now launch on the host machine.
@@ -60,7 +61,13 @@ A development version of the application should now launch on the host machine.
 To build the application for production use, do:
 
 ```bash
-yarn tauri build
+yarn tauri-build
 ```
 
 This produces an application package/binary corresponding to the host operating system.
+
+## Bump application version
+
+- Bump version in `./src-tauri/tauri.conf.json` and correspondingly `./package.json` (the latter is mostly for good
+measure and is not strictly necessary)
+- Update the latest version in `CHANGELOG.md`

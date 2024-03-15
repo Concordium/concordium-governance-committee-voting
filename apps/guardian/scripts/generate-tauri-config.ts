@@ -28,3 +28,5 @@ const config = {
 
 const OUT = path.join(__dirname, '..', 'tauri-temp.conf.json');
 fs.writeFileSync(OUT, JSON.stringify(config));
+
+console.log('Successfully wrote tauri configuration to', OUT);
