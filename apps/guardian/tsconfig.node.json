@@ -4,5 +4,5 @@
         "composite": true,
         "noEmit": false
     },
-    "include": ["vite.config.ts", "types"]
+    "include": ["vite.config.ts", "types", "scripts"]
 }
