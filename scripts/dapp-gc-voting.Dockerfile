@@ -12,10 +12,11 @@ COPY ./contracts/ ./contracts/
 COPY ./election-common/ ./election-common/
 COPY ./election-server/ ./election-server
 
-RUN cargo build --release --locked --manifest-path ./election-server/Cargo.toml
+RUN cargo build --release --locked --bin http --manifest-path ./election-server/Cargo.toml
 
 FROM ${build_image} AS frontend
 
+# Make the argument available in this stage, with default propagating down.
 ARG rust_version
 
 # Install rust dependencies for building electionguard bindings
@@ -25,8 +26,6 @@ RUN apt update && apt install curl build-essential -y
 # But we are requiring TLS, and downloading from a trusted domain.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -t wasm32-unknown-unknown -y --no-modify-path --default-toolchain ${rust_version}
 ENV PATH="${PATH}:/root/.cargo/bin"
-
-RUN cargo --version
 
 # Copy front end files and dependencies
 WORKDIR /build

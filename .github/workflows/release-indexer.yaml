@@ -1,10 +1,14 @@
-name: 'Build the election server (frontend and backend)'
+name: 'Build the indexer that corresponds to the election server'
 on:
+  push:
+    branches:
+      - build-jobs
+
   workflow_dispatch: # allows manual trigger from main
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: dapp-gc-voting
+  IMAGE_NAME: gc-election-indexer
 
 jobs:
   publish-docker-image:
@@ -25,9 +29,7 @@ jobs:
       - name: Extract frontend and backend tags from package.json and Cargo.toml.
         id: meta
         run: |
-          export FRONTEND_VERSION=$(jq -r .version apps/voting/package.json)
-          export BACKEND_VERSION=$(yq .package.version election-server/Cargo.toml)
-          export VERSION=${FRONTEND_VERSION}-${BACKEND_VERSION}
+          export VERSION=$(yq .package.version election-server/Cargo.toml)
           export FULL_IMAGE_TAG="${{ env.REGISTRY }}/concordium/$IMAGE_NAME:$VERSION"
           echo "::notice FULL_IMAGE_TAG=${FULL_IMAGE_TAG}"
           # Make sure the image does not exist. Abort if we can retrieve any metadata.
@@ -42,7 +44,7 @@ jobs:
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
           context: .
-          file: ./scripts/dapp-gc-voting.Dockerfile
+          file: ./scripts/indexer.Dockerfile
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tag }}
