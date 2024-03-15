@@ -1,5 +1,9 @@
 name: 'Build the election server (frontend and backend)'
 on:
+  push:
+    tags:
+      - release/gc-election-server/*.*.*-*.*.*
+
   workflow_dispatch: # allows manual trigger from main
 
 env:

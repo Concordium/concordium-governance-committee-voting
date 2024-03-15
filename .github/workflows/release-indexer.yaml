@@ -1,8 +1,8 @@
 name: 'Build the indexer that corresponds to the election server'
 on:
   push:
-    branches:
-      - build-jobs
+    tags:
+      - release/gc-election-indexer/*.*.*
 
   workflow_dispatch: # allows manual trigger from main
 
