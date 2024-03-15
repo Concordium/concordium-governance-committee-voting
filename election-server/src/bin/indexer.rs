@@ -380,10 +380,7 @@ fn get_transaction_data(
                         return None;
                     }
                 };
-            let verified = ballot.verify(
-                verification_context,
-                eg::index::Index::from_one_based_index(1).unwrap(),
-            );
+            let verified = ballot.verify(verification_context);
             TransactionData::BallotSubmission(BallotSubmission {
                 ballot,
                 verified,
@@ -569,12 +566,7 @@ fn get_verification_context(
     let hashes = Hashes::compute(&election_parameters, &election_manifest)
         .context("Could not compute hashes from election context")?;
 
-    let hashes_ext = HashesExt::compute(
-        &election_parameters,
-        &hashes,
-        &joint_election_public_key,
-        guardian_public_keys.as_slice(),
-    );
+    let hashes_ext = HashesExt::compute(&election_parameters, &hashes, &joint_election_public_key);
 
     let pre_voting_data = PreVotingData {
         manifest: election_manifest,

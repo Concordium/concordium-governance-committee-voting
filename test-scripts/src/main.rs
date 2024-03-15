@@ -16,7 +16,7 @@ use concordium_rust_sdk::{
 use contract::{ChecksumUrl, GuardiansState, RegisterGuardianPublicKeyParameter};
 use eg::{
     ballot::BallotEncrypted,
-    ballot_style::BallotStyle,
+    ballot_style::{BallotStyle, BallotStyleIndex},
     contest_selection::ContestSelection,
     device::Device,
     election_manifest::ContestIndex,
@@ -34,6 +34,36 @@ use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
 use std::collections::BTreeMap;
+
+/// A writer adapter that computes the hash of the written value on the fly.
+struct HashedWriter<W> {
+    inner:  W,
+    hasher: sha2::Sha256,
+}
+
+impl<W: std::io::Write> HashedWriter<W> {
+    pub fn new(inner: W) -> Self {
+        Self {
+            inner,
+            hasher: sha2::Sha256::new(),
+        }
+    }
+
+    /// Flush the writer and return the hash.
+    pub fn finish(mut self) -> std::io::Result<[u8; 32]> {
+        self.inner.flush()?;
+        Ok(self.hasher.finalize().into())
+    }
+}
+
+impl<W: std::io::Write> std::io::Write for HashedWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.hasher.update(buf);
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> { self.inner.flush() }
+}
 
 /// Command line configuration of the application.
 #[derive(Debug, clap::Parser)]
@@ -205,7 +235,7 @@ async fn main() -> anyhow::Result<()> {
             varying_parameters: VaryingParameters {
                 n,
                 k,
-                date: chrono::Utc::now().to_string(),
+                date: chrono::Utc::now(),
                 info: format!("Test election with {} guardians.", guardians.len()),
                 ballot_chaining: eg::varying_parameters::BallotChaining::Prohibited,
             },
@@ -272,27 +302,24 @@ async fn main() -> anyhow::Result<()> {
             std::io::copy(&mut file, &mut hasher)?;
             contract::HashSha2256(hasher.finalize().into())
         } else {
-            let accs = client
+            // give each account weight 3 CCD
+            let mut accs = client
                 .get_account_list(BlockIdentifier::LastFinal)
                 .await?
-                .response
-                .map_ok(|account| WeightRow {
-                    account,
-                    amount: Amount::from_ccd(1000),
-                })
-                .try_collect::<Vec<_>>()
-                .await?;
+                .response;
+            let voters_path = ccd_out.join("eligible-voters.csv");
+            let mut writer =
+                csv::Writer::from_writer(HashedWriter::new(std::fs::File::create(&voters_path)?));
 
-            let mut writer = csv::Writer::from_writer(vec![]);
-            for row in &accs {
-                writer.serialize(row)?;
+            while let Some(account) = accs.try_next().await? {
+                writer.serialize(WeightRow {
+                    account,
+                    amount: Amount::from_ccd(3),
+                })?;
             }
 
-            let data = writer.into_inner()?;
-            let hash = sha2::Sha256::digest(&data);
-            std::fs::write(ccd_out.join("eligible-voters.csv"), data)
-                .context("Unable to write eligible voters")?;
-            contract::HashSha2256(hash.into())
+            let hash = writer.into_inner()?.finish()?;
+            contract::HashSha2256(hash)
         };
         let eligible_voters = contract::ChecksumUrl {
             url:  make_url("static/concordium/eligible-voters.csv"),
@@ -414,13 +441,13 @@ async fn main() -> anyhow::Result<()> {
         for ((g, g_acc), dealer_private_key) in (1..).zip(&guardians).zip(&guardian_keys) {
             let mut shares = Vec::new();
             for dealer_public_key in &guardian_public_keys {
-                let share = GuardianEncryptedShare::new(
+                let share = GuardianEncryptedShare::encrypt(
                     &mut rng,
                     &parameters,
                     dealer_private_key,
                     dealer_public_key,
                 );
-                shares.push(share);
+                shares.push(share.ciphertext);
             }
 
             let param = encode(&shares)?;
@@ -534,12 +561,11 @@ async fn main() -> anyhow::Result<()> {
 
                 if let Err(err) = tx_hash.wait_for_finalization().await {
                     anyhow::bail!("Registering verification status failed: {err:#?}");
-                } else {
-                    eprintln!(
+                }
+                eprintln!(
                         "Registered verification successful for guardian {}",
                         guardian.address
                     );
-                }
                 Ok::<(), anyhow::Error>(())
             };
             futs.push(fut);
@@ -600,18 +626,21 @@ async fn main() -> anyhow::Result<()> {
 
         for voter in guardians.iter().chain(std::iter::once(&admin)) {
             let primary_nonce: [u8; 32] = rand::thread_rng().gen();
-            let selections = ContestSelection {
-                vote: (0..num_options)
+            let selections = ContestSelection::new(
+                (0..num_options)
                     .map(|_| if rand::thread_rng().gen() { 1u8 } else { 0u8 })
                     .collect(),
-            };
-            eprintln!("Voter {} voting {:?}", voter.address, selections.vote);
+            )
+            .context("Unable to vote.")?;
+            eprintln!("Voter {} voting {:?}", voter.address, selections.get_vote());
             let ballot = BallotEncrypted::new_from_selections(
+                BallotStyleIndex::from_one_based_index_unchecked(1),
                 &device,
                 &mut rng,
                 &primary_nonce,
                 &[(contest, selections)].into(),
-            );
+            )
+            .context("Unable to construct ballot.")?;
             let ballot_data = encode(&ballot)?;
             eprintln!("Ballot serialized size {}B", ballot_data.len());
             let nonce = client

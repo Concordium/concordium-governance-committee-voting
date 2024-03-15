@@ -21,7 +21,7 @@ use eg::{
     guardian::GuardianIndex,
     guardian_public_key::GuardianPublicKey,
     guardian_secret_key::GuardianSecretKey,
-    guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare},
+    guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare, ShareEncryptionResult},
     joint_election_public_key::Ciphertext,
     verifiable_decryption::{
         CombinedDecryptionShare, DecryptionProof, DecryptionProofStateShare, DecryptionShare,
@@ -53,6 +53,9 @@ const WALLET_ACCOUNT_FILE: &str = "guardian-data.json.aes";
 const SECRET_KEY_FILE: &str = "secret-key.json.aes";
 /// The file name of the encrypted secret share for a guardian.
 const SECRET_SHARE_FILE: &str = "secret-share.json.aes";
+/// The file name of the encryption secret that a guardian can use
+/// to prove they acted honestly in case of dispute in key sharing.
+const KEY_SHARE_ENCRYPTION_SECRETS_FILE: &str = "key-share-secrets.json.aes";
 /// The file name of the encrypted secret share for a guardian
 const DECRYPTION_SECRET_STATES: &str = "secret-decryption_states.json.aes";
 
@@ -699,9 +702,10 @@ async fn register_guardian_key_flow(
     }
 }
 
-/// Generate the encrypted shares for the active guardian. This is done by
-/// querying the public keys registered by all guardians, and generating
-/// [`GuardianEncryptedShare`] for each of them.
+/// Generate the encrypted shares for the active guardian together with secrets
+/// that can be used to prove that we have not cheated in case of a dispute.
+/// This is done by querying the public keys registered by all guardians, and
+/// generating [`ShareEncryptionResult`] for each of them.
 ///
 /// ## Errors
 /// Expected errors include:
@@ -711,7 +715,7 @@ async fn generate_encrypted_shares(
     election_parameters: &ElectionParameters,
     guardians_state: &contract::GuardiansState,
     secret_key: GuardianSecretKey,
-) -> Result<Vec<GuardianEncryptedShare>, Error> {
+) -> Result<Vec<ShareEncryptionResult>, Error> {
     let mut keys = Vec::with_capacity(guardians_state.len());
     let mut errors = Vec::with_capacity(guardians_state.len());
     for (account, guardian_state) in guardians_state {
@@ -735,7 +739,7 @@ async fn generate_encrypted_shares(
     let encrypted_shares: Vec<_> = keys
         .into_iter()
         .map(|recipient_public_key| {
-            GuardianEncryptedShare::new(
+            GuardianEncryptedShare::encrypt(
                 &mut rng,
                 election_parameters,
                 &secret_key,
@@ -810,8 +814,9 @@ async fn register_guardian_shares_flow(
         let election_parameters = app_config.election_guard().await?.parameters;
         let contract_data = contract_data.0.lock().await;
 
-        let secret_key_path =
-            guardian_data_dir(&app_handle, active_guardian.guardian.account).join(SECRET_KEY_FILE);
+        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
+
+        let secret_key_path = guardian_data_dir.join(SECRET_KEY_FILE);
         let secret_key = read_encrypted_file(&active_guardian.password, &secret_key_path)?;
         let encrypted_shares = match generate_encrypted_shares(
             &election_parameters,
@@ -830,7 +835,16 @@ async fn register_guardian_shares_flow(
         // 1. register the generated shares
         // 2. file a complaint with the guardian accounts with invalid key registrations
         let (proposal, contract_update) = match encrypted_shares {
-            Ok(encrypted_shares) => {
+            Ok(encrypted_shares_with_secrets) => {
+                let (encrypted_shares, secrets) = encrypted_shares_with_secrets
+                    .into_iter()
+                    .map(|esws| (esws.ciphertext, esws.secret))
+                    .unzip::<_, _, Vec<_>, Vec<_>>();
+
+                let secrets_path = guardian_data_dir.join(KEY_SHARE_ENCRYPTION_SECRETS_FILE);
+
+                write_encrypted_file(&active_guardian.password, &secrets, &secrets_path)?;
+
                 let update = contract
                     .dry_run_update::<Vec<u8>, Error>(
                         "registerGuardianEncryptedShare",
