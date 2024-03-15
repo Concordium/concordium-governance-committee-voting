@@ -171,10 +171,11 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let candidates: Vec<ChecksumUrl> = {
-        std::fs::create_dir_all(args.out.join("candidates"))?;
+        let candidates_out = ccd_out.join("candidates");
+        std::fs::create_dir_all(&candidates_out)?;
         (0..args.num_options)
             .map(|c| {
-                let path = args.out.join(format!("candidates/{c}.json"));
+                let path = &candidates_out.join(format!("{c}.json"));
                 let candidate_details = serde_json::json!({
                     "name": format!("Candidate {c}"),
                     "imageUrl": "https://picsum.photos/300/300",
@@ -182,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
                 });
                 let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
                 std::fs::write(path, &candidate_details_bytes)?;
-                let web_path = format!("candidates/{c}.json",);
+                let web_path = format!("static/concordium/candidates/{c}.json",);
                 Ok::<_, anyhow::Error>(ChecksumUrl {
                     url:  make_url(&web_path),
                     hash: contract::HashSha2256(

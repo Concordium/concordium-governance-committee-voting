@@ -108,6 +108,9 @@ struct AppConfig {
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file:   std::path::PathBuf,
+    /// An optional directory with JSON metadata for a set of candidates
+    #[clap(long = "candidates-dir", env = "CCD_ELECTION_CANDIDATES_DIR")]
+    candidates_dir:       Option<std::path::PathBuf>,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
@@ -504,10 +507,7 @@ async fn setup_http(
             "/api/submissions/:account",
             get(get_ballot_submissions_by_account),
         )
-        .route(
-            "/api/delegations/:account",
-            get(get_delegations_by_account),
-        )
+        .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
         .with_state(state)
         .route_service(
@@ -521,12 +521,25 @@ async fn setup_http(
         .route_service(
             "/static/electionguard/election-parameters.json",
             ServeFile::new(&config.eg_parameters_file),
+        );
+
+    if let Some(candidates_dir) = &config.candidates_dir {
+        http_api = http_api.nest_service(
+            "/static/concordium/candidates",
+            ServeDir::new(candidates_dir),
         )
+    }
+
+    // Serve the frontend
+    http_api = http_api
         .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
         .route("/index.html", index_handler.clone())
         .route("/", index_handler.clone())
          // Fall back to handle route in the frontend of the application served
-        .route("/*path", index_handler)
+        .route("/*path", index_handler);
+
+    // Add layers
+    http_api = http_api
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(config.request_timeout_ms),
@@ -538,7 +551,6 @@ async fn setup_http(
         )
         .layer(tower_http::limit::RequestBodyLimitLayer::new(1_000_000)) // at most 1000kB of data.
         .layer(tower_http::compression::CompressionLayer::new());
-
     if config.allow_cors {
         let cors = CorsLayer::new()
             .allow_methods([Method::GET, Method::POST])
