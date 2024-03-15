@@ -1,0 +1,53 @@
+name: 'Publish Coordinator tool'
+on:
+  # The release action always requires a tag to publish a release.
+  # This job will run when a release/coordinator-tool/$VERSION
+  # tag is created.
+  push:
+    tags:
+      - release/coordinator-tool/*.*.*
+
+jobs:
+  build:
+    name: build ${{ matrix.platform }}
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Support longpaths on Windows
+        if: matrix.platform == 'windows-latest'
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@1.74
+      - name: Build election-coordinator binary
+        run: cargo build --release --manifest-path coordinator-tool/Cargo.toml
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: |
+            coordinator-tool/target/release/election-coordinator
+            coordinator-tool/target/release/election-coordinator.exe
+
+  release:
+    permissions:
+      contents: write
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - run: |
+          mv binary-macos-latest/election-coordinator election-coordinator-darwin-amd64
+          mv binary-windows-latest/election-coordinator.exe election-coordinator-windows-amd64.exe
+          mv binary-ubuntu-latest/election-coordinator election-coordinator-linux-amd64
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            election-coordinator-*
