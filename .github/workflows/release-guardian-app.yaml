@@ -17,6 +17,12 @@ on:
         options:
           - testnet
           - mainnet
+env:
+  # The following environment variables need to be set for build to succeed.
+  CCD_ELECTION_NODE: ${{ github.event.inputs.network == 'testnet' && 'https://grpc.testnet.concordium.com:20000' || 'https://grpc.mainnet.concordium.software:20000' }}
+  CCD_ELECTION_CONTRACT_ADDRESS: ${{ github.event.inputs.contract }}
+  CCD_ELECTION_NETWORK: ${{ github.event.inputs.network }} # e.g. "testnet", shown in the frontend of the app
+
 jobs:
   publish-tauri:
     permissions:
@@ -45,17 +51,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: install frontend dependencies
+      - name: install frontend dependencies & generate config
         working-directory: ./apps/guardian
-        run: yarn install
+        run: yarn install && yarn generate-config
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CCD_ELECTION_NODE: ${{ github.event.inputs.network == 'testnet' && 'https://grpc.testnet.concordium.com:20000' || 'https://grpc.mainnet.concordium.software:20000' }}
-          CCD_ELECTION_CONTRACT_ADDRESS: ${{ github.event.inputs.contract }}
-          CCD_ELECTION_NETWORK: ${{ github.event.inputs.network }} # e.g. "testnet", shown in the frontend of the app
         with:
           projectPath: 'apps/guardian'
+          tauriScript: 'yarn tauri'
+          args: '--config ./tauri-temp.conf.json'
           tagName: release/guardian-app/v__VERSION__-${{ github.event.inputs.network }}-${{ github.event.inputs.contract }} # the action automatically replaces \_\_VERSION\_\_ with the app version
           releaseName: ${{ format('Guardian App v__VERSION__ for {0} ({1})', github.event.inputs.contract, github.event.inputs.network) }}
           releaseBody: 'See attached assets.'
