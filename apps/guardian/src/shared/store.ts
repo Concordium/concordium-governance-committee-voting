@@ -78,11 +78,14 @@ export const enum SetupStep {
      * during the setup phase
      */
     Invalid,
+    /** The setup phase was not completed prior to the election beginning */
+    Incomplete,
 }
 
 export const enum TallyStep {
     AwaitEncryptedTally,
     TallyError,
+    Excluded,
     GenerateDecryptionShare,
     AwaitPeerShares,
     GenerateDecryptionProof,
@@ -113,10 +116,16 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
         const guardian = get(selectedGuardianAtom);
         if (guardian === undefined || guardians === undefined || phase === undefined) return undefined;
 
+        if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful)) {
+            return { phase: ElectionPhase.Setup, step: SetupStep.Invalid };
+        }
+
+        if (phase !== ElectionPhase.Setup && guardians.some(([, g]) => !setupCompleted(g))) {
+            return { phase: ElectionPhase.Setup, step: SetupStep.Incomplete };
+        }
+
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful))
-                    return SetupStep.Invalid;
                 if (guardians.every(([, g]) => setupCompleted(g))) return SetupStep.Done;
                 if (setupCompleted(guardian)) return SetupStep.AwaitPeerValidation;
                 if (guardians.every(([, g]) => g.hasPublicKey && g.hasEncryptedShares))
@@ -144,9 +153,13 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
             const step = (() => {
                 if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
-                if (guardians.every(([, g]) => g.hasDecryptionShare) || electionConfig.decryptionDeadline < now)
+                if (
+                    guardians.filter(([, g]) => !g.excluded).every(([, g]) => g.hasDecryptionShare) ||
+                    electionConfig.decryptionDeadline < now
+                )
                     return TallyStep.GenerateDecryptionProof;
                 if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
+                if (guardian.excluded) return TallyStep.Excluded;
                 if (hasTally instanceof BackendError) return TallyStep.TallyError;
                 if (hasTally) return TallyStep.GenerateDecryptionShare;
                 return TallyStep.AwaitEncryptedTally;

@@ -1383,6 +1383,8 @@ struct GuardianStateResponse {
     has_decryption_share: bool,
     /// Whether the guardian has proof of correct decryption
     has_decryption_proof: bool,
+    /// Whether the guardian is excluded from the tally phase
+    excluded:             bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
@@ -1394,6 +1396,7 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
             status:               value.status.clone(),
             has_decryption_share: value.decryption_share.is_some(),
             has_decryption_proof: value.decryption_share_proof.is_some(),
+            excluded:             value.excluded,
         }
     }
 }

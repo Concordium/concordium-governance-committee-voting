@@ -251,6 +251,22 @@ function Invalid() {
 }
 
 /**
+ * Component shown when the election setup has not been completed prior to the election starting
+ */
+function Incomplete() {
+    return (
+        <>
+            <h3>Setup phase incomplete</h3>
+            <p>
+                The setup phase was not completed by one or more guardians.
+                <br />
+                Manual intervention by the election facilitator is required.
+            </p>
+        </>
+    );
+}
+
+/**
  * Component which shows the relevant actions/election state for the guardian during the election setup phase
  */
 export default function SetupActions() {
@@ -282,6 +298,7 @@ export default function SetupActions() {
             )}
             {electionStep.step === SetupStep.Done && <Ready />}
             {electionStep.step === SetupStep.Invalid && <Invalid />}
+            {electionStep.step === SetupStep.Incomplete && <Incomplete />}
         </>
     );
 }
