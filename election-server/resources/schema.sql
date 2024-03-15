@@ -16,5 +16,17 @@ CREATE TABLE IF NOT EXISTS ballots (
   verified BOOL NOT NULL
 );
 
+-- Table containing voting power delegations
+CREATE TABLE IF NOT EXISTS delegations (
+  id INT8 PRIMARY KEY, -- For pagination
+  transaction_hash BYTEA NOT NULL,
+  block_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  from_account BYTEA NOT NULL UNIQUE,
+  to_account BYTEA NOT NULL
+);
+
 -- Improve performance on queries for ballots within id range for an account.
 CREATE INDEX IF NOT EXISTS ballots_account_id_idx ON ballots (account, id);
+
+-- Improve performance on queries for delegations within id range for an account.
+CREATE INDEX IF NOT EXISTS delegations_to_account_id_idx ON delegations (to_account, id);

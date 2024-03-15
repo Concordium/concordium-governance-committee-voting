@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::Parser as _;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
-    base::transactions,
+    base::transactions::{self, send},
     common::types::TransactionTime,
     contract_client::{self, ContractTransactionMetadata, ViewError},
     smart_contracts::common::Amount,
@@ -33,7 +33,7 @@ use election_common::{decode, encode, EncryptedTally, GuardianDecryption, Weight
 use futures::{stream::FuturesUnordered, TryStreamExt};
 use rand::Rng;
 use sha2::Digest;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
 
 /// A writer adapter that computes the hash of the written value on the fly.
 struct HashedWriter<W> {
@@ -77,7 +77,7 @@ struct Args {
     )]
     node_endpoint:     concordium_rust_sdk::v2::Endpoint,
     /// List of eligible voters. If this is not set then the eligible voters are
-    /// all accounts with equal weight, and an `eligible-voters.json` file
+    /// all accounts with equal weight, and an `eligible-voters.csv` file
     /// is emitted to the output directory.
     #[arg(
         long = "eligible-voters",
@@ -98,12 +98,6 @@ struct Args {
         default_value = "5"
     )]
     num_options:       usize,
-    #[arg(
-        long = "candidates-dir",
-        name = "candidates-dir",
-        help = "Directory with candidates JSON files."
-    )]
-    candidates_dir:    Option<PathBuf>,
     #[arg(
         long = "election-duration",
         help = "Duration of the election in minutes. Should be at least 1.",
@@ -140,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
     .timeout(std::time::Duration::from_secs(10));
 
     let (admin, guardians) = {
-        let dir = std::fs::read_dir(args.keys)?;
+        let dir = std::fs::read_dir(&args.keys)?;
         let mut accounts = dir.map(|x| x.map(|f| WalletAccount::from_json_file(f.path())));
         let admin = accounts
             .next()
@@ -161,10 +155,12 @@ async fn main() -> anyhow::Result<()> {
         (admin, guardian_keys)
     };
 
-    let (params_out, guardian_out) = {
+    let (params_out, ccd_out) = {
         let params_out = args.out.join("static").join("electionguard");
+        let ccd_out = args.out.join("static").join("concordium");
         std::fs::create_dir_all(&params_out)?;
-        (params_out, args.out)
+        std::fs::create_dir_all(&ccd_out)?;
+        (params_out, ccd_out)
     };
 
     let url = &args.base_url;
@@ -174,52 +170,28 @@ async fn main() -> anyhow::Result<()> {
         url.to_string()
     };
 
-    let candidates = {
-        if let Some(dir) = args.candidates_dir {
-            let dir = std::fs::read_dir(dir)?;
-            let mut candidates = Vec::new();
-            for entry in dir {
-                let entry = entry?;
-                let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext == "json" {
-                        let mut hasher = sha2::Sha256::new();
-                        let mut file = std::fs::File::open(&path)?;
-                        std::io::copy(&mut file, &mut hasher)?;
-                        let web_path = format!(
-                            "static/concordium/candidates/{}",
-                            path.file_name().context("No file name.")?.to_string_lossy()
-                        );
-                        candidates.push(ChecksumUrl {
-                            url:  make_url(&web_path),
-                            hash: contract::HashSha2256(hasher.finalize().into()),
-                        })
-                    }
-                }
-            }
-            candidates
-        } else {
-            std::fs::create_dir_all(guardian_out.join("candidates"))?;
-            (0..args.num_options)
-                .map(|c| {
-                    let path = guardian_out.join(format!("candidates/{c}.json"));
-                    let candidate_details = serde_json::json!({
-                        "name": format!("Candidate {c}"),
-                        "imageUrl": "https://picsum.photos/300/300",
-                        "descriptionUrl": "https://concordium.com"
-                    });
-                    let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
-                    std::fs::write(path, &candidate_details_bytes)?;
-                    let web_path = format!("static/concordium/candidates/{c}.json",);
-                    Ok::<_, anyhow::Error>(ChecksumUrl {
-                        url:  make_url(&web_path),
-                        hash: contract::HashSha2256(
-                            sha2::Sha256::digest(candidate_details_bytes).into(),
-                        ),
-                    })
+    let candidates: Vec<ChecksumUrl> = {
+        let candidates_out = ccd_out.join("candidates");
+        std::fs::create_dir_all(&candidates_out)?;
+        (0..args.num_options)
+            .map(|c| {
+                let path = &candidates_out.join(format!("{c}.json"));
+                let candidate_details = serde_json::json!({
+                    "name": format!("Candidate {c}"),
+                    "imageUrl": "https://picsum.photos/300/300",
+                    "descriptionUrl": "https://concordium.com"
+                });
+                let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
+                std::fs::write(path, &candidate_details_bytes)?;
+                let web_path = format!("static/concordium/candidates/{c}.json",);
+                Ok::<_, anyhow::Error>(ChecksumUrl {
+                    url:  make_url(&web_path),
+                    hash: contract::HashSha2256(
+                        sha2::Sha256::digest(candidate_details_bytes).into(),
+                    ),
                 })
-                .collect::<Result<_, _>>()?
-        }
+            })
+            .collect::<Result<_, _>>()?
     };
     let num_options = candidates.len();
 
@@ -309,6 +281,8 @@ async fn main() -> anyhow::Result<()> {
         mod_ref
     };
 
+    let delegation_string = "Delegation string";
+
     // initialize new instance
     let (start_timestamp, end_timestamp, mut contract_client) = {
         let start_timestamp = chrono::Utc::now()
@@ -334,7 +308,7 @@ async fn main() -> anyhow::Result<()> {
                 .get_account_list(BlockIdentifier::LastFinal)
                 .await?
                 .response;
-            let voters_path = guardian_out.join("eligible-voters.csv");
+            let voters_path = ccd_out.join("eligible-voters.csv");
             let mut writer =
                 csv::Writer::from_writer(HashedWriter::new(std::fs::File::create(&voters_path)?));
 
@@ -349,7 +323,7 @@ async fn main() -> anyhow::Result<()> {
             contract::HashSha2256(hash)
         };
         let eligible_voters = contract::ChecksumUrl {
-            url:  make_url("static/concordium/eligible-voters.json"),
+            url:  make_url("static/concordium/eligible-voters.csv"),
             hash: eligible_voters_hash,
         };
         let init_param = contract::InitParameter {
@@ -369,7 +343,7 @@ async fn main() -> anyhow::Result<()> {
             election_start,
             election_end,
             decryption_deadline: decryption_deadline.try_into()?,
-            delegation_string: "Delegation string".into(),
+            delegation_string: delegation_string.into(),
         };
         let nonce = client
             .get_next_account_sequence_number(&admin.address)
@@ -426,7 +400,7 @@ async fn main() -> anyhow::Result<()> {
             );
             let public_key = key.make_public_key();
             std::fs::write(
-                guardian_out.join(format!("guardian-{g}.json")),
+                ccd_out.join(format!("guardian-{g}.json")),
                 serde_json::to_string_pretty(&key)?,
             )
             .context("Unable to write guardian keys.")?;
@@ -531,7 +505,10 @@ async fn main() -> anyhow::Result<()> {
                     .context("Guardian share not registered.")?;
                 let mut shares = decode::<Vec<GuardianEncryptedShare>>(share)
                     .context("Unable to parse key shares.")?;
-                let Ok(i) = shares.binary_search_by_key(&GuardianIndex::from_one_based_index(g_i as u32)?, |x: &GuardianEncryptedShare| x.recipient) else {
+                let Ok(i) = shares.binary_search_by_key(
+                    &GuardianIndex::from_one_based_index(g_i as u32)?,
+                    |x: &GuardianEncryptedShare| x.recipient,
+                ) else {
                     anyhow::bail!("Could not find guardian's encrypted share.");
                 };
                 let share = shares.swap_remove(i);
@@ -585,12 +562,11 @@ async fn main() -> anyhow::Result<()> {
 
                 if let Err(err) = tx_hash.wait_for_finalization().await {
                     anyhow::bail!("Registering verification status failed: {err:#?}");
-                } else {
-                    eprintln!(
-                        "Registered verification successful for guardian {}",
-                        guardian.address
-                    );
                 }
+                eprintln!(
+                    "Registered verification successful for guardian {}",
+                    guardian.address
+                );
                 Ok::<(), anyhow::Error>(())
             };
             futs.push(fut);
@@ -618,7 +594,37 @@ async fn main() -> anyhow::Result<()> {
     let contest = ContestIndex::from_one_based_index(1)?;
     {
         let device = Device::new(&uuid::Uuid::new_v4().to_string(), context);
+        let mut delegation_hashes = Vec::with_capacity(guardians.len() + 1);
         let mut hashes = Vec::with_capacity(guardians.len() + 1);
+
+        // Delegate voting power from first account to second account
+        let delegator = guardians.first().context("Failed to get first wallet")?;
+        for delegatee in [guardians.get(1), guardians.get(2)].into_iter().flatten() {
+            let nonce = client
+                .get_next_account_sequence_number(&delegator.address)
+                .await?;
+
+            let memo = serde_cbor::to_vec(&delegation_string)
+                .context("Failed to serialize string")?
+                .try_into()?;
+            let account_transaction = send::transfer_with_memo(
+                &delegator,
+                delegator.address,
+                nonce.nonce,
+                TransactionTime::hours_after(1),
+                delegatee.address,
+                Amount::from_micro_ccd(1),
+                memo,
+            );
+
+            let tx_hash = client.send_account_transaction(account_transaction).await?;
+            eprintln!(
+                "Submitted delegation for {} to {} with transaction hash {tx_hash}",
+                delegator.address, delegatee.address,
+            );
+            delegation_hashes.push((delegator.address, delegatee.address, tx_hash));
+        }
+
         for voter in guardians.iter().chain(std::iter::once(&admin)) {
             let primary_nonce: [u8; 32] = rand::thread_rng().gen();
             let selections = ContestSelection::new(
@@ -657,8 +663,19 @@ async fn main() -> anyhow::Result<()> {
                 "Submitted vote for {} with transaction hash {tx_hash}",
                 voter.address
             );
-
             hashes.push((voter.address, tx_hash));
+        }
+
+        for (delegator, delegatee, tx_hash) in delegation_hashes {
+            if let Some(err) = client
+                .wait_until_finalized(&tx_hash)
+                .await?
+                .1
+                .is_rejected_account_transaction()
+            {
+                anyhow::bail!("Registering delegation failed: {err:#?}");
+            }
+            eprintln!("Delegation for {} to {} registered", delegator, delegatee);
         }
 
         for (voter, tx_hash) in hashes {
@@ -670,7 +687,6 @@ async fn main() -> anyhow::Result<()> {
             {
                 anyhow::bail!("Registering vote failed: {err:#?}");
             }
-
             eprintln!("Vote for {} registered", voter);
         }
     }

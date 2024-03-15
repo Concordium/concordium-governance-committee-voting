@@ -28,6 +28,17 @@ pub struct BallotSubmission {
     pub verified:         bool,
 }
 
+/// Describes an election voting weight delegation
+#[derive(Serialize, Debug)]
+pub struct VotingWeightDelegation {
+    /// The delegator account
+    pub from_account:     contracts_common::AccountAddress,
+    /// The delegatee account
+    pub to_account:       contracts_common::AccountAddress,
+    /// The transaction hash of the ballot submission
+    pub transaction_hash: TransactionHash,
+}
+
 pub enum ElectionContractMarker {}
 pub type ElectionContract = ContractClient<ElectionContractMarker>;
 

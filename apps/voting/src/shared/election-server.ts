@@ -1,5 +1,6 @@
 import { AccountAddress, Base58String, HexString, TransactionHash } from '@concordium/web-sdk';
-import JSONBig from 'json-bigint';
+import _JB from 'json-bigint';
+const JSONBig = _JB({ alwaysParseAsBig: true, useNativeBigInt: true });
 
 const PAGINATION_SIZE = 10;
 
@@ -17,7 +18,7 @@ export interface DatabaseCandidateVote {
  */
 interface DatabaseBallotSubmissionSerializable {
     /** The index of the ballot submission in the database */
-    id: number;
+    id: bigint;
     /** The submitting account address */
     account: Base58String;
     /** The transaction hash corresponding to the submission */
@@ -34,7 +35,7 @@ interface DatabaseBallotSubmissionSerializable {
  */
 export interface DatabaseBallotSubmission {
     /** The index of the ballot submission in the database */
-    id: number;
+    id: bigint;
     /** The submitting account address */
     account: AccountAddress.Type;
     /** The transaction hash corresponding to the submission */
@@ -54,8 +55,6 @@ type Paginated<T> = {
     results: T[];
 };
 
-export type SubmissionsResponse = Paginated<DatabaseBallotSubmission>;
-
 /**
  * Converts {@linkcode DatabaseBallotSubmissionSerializable} to {@linkcode DatabaseBallotSubmission}
  */
@@ -66,6 +65,52 @@ function reviveBallotSubmission(value: DatabaseBallotSubmissionSerializable): Da
     return {
         ...value,
         account,
+        transactionHash,
+        blockTime,
+    };
+}
+
+type DelegationSerializable = {
+    /** The index of the delegation entry in the database */
+    id: bigint;
+    /** The delegatee account address */
+    toAccount: Base58String;
+    /** The delegator account address */
+    fromAccount: Base58String;
+    /** The transaction hash corresponding to the submission */
+    transactionHash: HexString;
+    /** The slot time of the block the submission is included in */
+    blockTime: string;
+    /** The weight that was delegated */
+    weight: bigint;
+};
+
+type Delegation = {
+    /** The index of the delegation entry in the database */
+    id: bigint;
+    /** The delegatee account address */
+    toAccount: AccountAddress.Type;
+    /** The delegator account address */
+    fromAccount: AccountAddress.Type;
+    /** The transaction hash corresponding to the submission */
+    transactionHash: TransactionHash.Type;
+    /** The slot time of the block the submission is included in */
+    blockTime: Date;
+    /** The weight that was delegated */
+    weight: bigint;
+};
+/**
+ * Converts {@linkcode DelegationSerializable} to {@linkcode Delegation}
+ */
+function reviveDelegation(value: DelegationSerializable): Delegation {
+    const toAccount = AccountAddress.fromBase58(value.toAccount);
+    const fromAccount = AccountAddress.fromBase58(value.fromAccount);
+    const transactionHash = TransactionHash.fromHexString(value.transactionHash);
+    const blockTime = new Date(value.blockTime);
+    return {
+        ...value,
+        toAccount,
+        fromAccount,
         transactionHash,
         blockTime,
     };
@@ -94,6 +139,8 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
     return json !== undefined && json !== null ? reviveBallotSubmission(json) : null;
 }
 
+export type SubmissionsResponse = Paginated<DatabaseBallotSubmission>;
+
 /**
  * Gets the ballot submissions submitted by an account wrapped in a paginated response
  *
@@ -106,7 +153,7 @@ export async function getSubmission(transaction: TransactionHash.Type): Promise<
  */
 export async function getAccountSubmissions(
     accountAddress: AccountAddress.Type,
-    from?: number,
+    from?: bigint,
 ): Promise<SubmissionsResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
     const url = `${BACKEND_API}/api/submissions/${acccoutBase58}?pageSize=${PAGINATION_SIZE}${
@@ -120,19 +167,46 @@ export async function getAccountSubmissions(
         );
     }
 
-    const json = (await res.json()) as Paginated<DatabaseBallotSubmissionSerializable>;
+    const json = JSONBig.parse(await res.text()) as Paginated<DatabaseBallotSubmissionSerializable>;
     return { ...json, results: json.results.map(reviveBallotSubmission) };
 }
+
+type AccountWeightResponseSerialized = {
+    /** The voting weight of the account queried */
+    votingWeight: bigint;
+    /** The account to whom the account queried has delegated its voting weight (if any) */
+    delegatedTo: Base58String | null;
+    /**
+     * A paginated response of account address and corresponding voting weight pairs which delegated to the account
+     * queried
+     */
+    delegationsFrom: Paginated<[Base58String, bigint]>;
+};
+
+/**
+ * The response returned from querying the account weight of an account
+ */
+export type AccountWeightResponse = {
+    /** The voting weight of the account queried */
+    votingWeight: bigint;
+    /** The account to whom the account queried has delegated its voting weight (if any) */
+    delegatedTo: AccountAddress.Type | null;
+    /**
+     * A paginated response of account address and corresponding voting weight pairs which delegated to the account
+     * queried
+     */
+    delegationsFrom: Paginated<[AccountAddress.Type, bigint]>;
+};
 
 /**
  * Gets the voting weight for the account
  *
- * @param account - The account address to query ballot submissions for
+ * @param account - The account address to query the voting weight for
  *
  * @returns The voting weight for the account
  * @throws On http errors.
  */
-export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<bigint> {
+export async function getAccountWeight(accountAddress: AccountAddress.Type): Promise<AccountWeightResponse> {
     const acccoutBase58 = AccountAddress.toBase58(accountAddress);
     const url = `${BACKEND_API}/api/weight/${acccoutBase58}`;
     const res = await fetch(url);
@@ -141,9 +215,44 @@ export async function getAccountWeight(accountAddress: AccountAddress.Type): Pro
         throw new Error(`Error happened while trying to get account weight - ${res.status} (${res.statusText})`);
     }
 
-    const json = JSONBig({
-        alwaysParseAsBig: true,
-        useNativeBigInt: true,
-    }).parse(await res.text()) as bigint;
-    return json;
+    const json = JSONBig.parse(await res.text()) as AccountWeightResponseSerialized;
+    const delegatedTo = json.delegatedTo !== null ? AccountAddress.fromBase58(json.delegatedTo) : null;
+    return {
+        ...json,
+        delegatedTo,
+        delegationsFrom: {
+            ...json.delegationsFrom,
+            results: json.delegationsFrom.results.map(([account, weight]) => [
+                AccountAddress.fromBase58(account),
+                weight,
+            ]),
+        },
+    };
+}
+
+export type DelegationsResponse = Paginated<Delegation>;
+
+/**
+ * Gets the delegations for an account
+ *
+ * @param account - The account address to query delegations for
+ *
+ * @returns The delegations for the account
+ * @throws On http errors.
+ */
+export async function getDelegations(accountAddress: AccountAddress.Type, from?: bigint): Promise<DelegationsResponse> {
+    const acccoutBase58 = AccountAddress.toBase58(accountAddress);
+    const url = `${BACKEND_API}/api/delegations/${acccoutBase58}?pageSize=${PAGINATION_SIZE}${
+        from !== undefined ? `&from=${from}` : ''
+    }`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        throw new Error(
+            `Error happened while trying to fetch delegations for account ${acccoutBase58} - ${res.status} (${res.statusText})`,
+        );
+    }
+
+    const json = JSONBig.parse(await res.text()) as Paginated<DelegationSerializable>;
+    return { ...json, results: json.results.map(reviveDelegation) };
 }

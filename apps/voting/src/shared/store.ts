@@ -18,7 +18,13 @@ import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 import { getElectionConfig } from './election-contract';
 import { pollUntil } from './util';
 import { NETWORK } from './constants';
-import { DatabaseBallotSubmission, getAccountSubmissions, getAccountWeight, getSubmission } from './election-server';
+import {
+    AccountWeightResponse,
+    DatabaseBallotSubmission,
+    getAccountSubmissions,
+    getAccountWeight,
+    getSubmission,
+} from './election-server';
 
 /**
  * Representation of an election candidate.
@@ -172,31 +178,35 @@ export interface Wallet {
  */
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
+export type AccountWeightState = AccountWeightResponse & {
+    updatedAt: Date;
+};
+
 /**
  * Holds the voting weight for each account
  */
 const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_: AccountAddress.Type) => atom<bigint | undefined>(undefined),
+    (_: AccountAddress.Type) => atom<AccountWeightState | undefined>(undefined),
     (a, b) => a.address === b.address,
 );
 
 /**
- * Fetches the voting power for the selected account when changed
+ * Fetches the voting weight for the selected account when changed
  */
-const accountVotingPowerSubscribeAtom = atomEffect((get, set) => {
+const accountVotingWeightSubscribeAtom = atomEffect((get, set) => {
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return;
 
     const votingWeightAtom = votingWeightAtomFamily(wallet.account);
-    void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, weight));
+    void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, { ...weight, updatedAt: new Date() }));
 });
 
 /**
- * Gets the voting power for the selected account
+ * Gets the voting weight for the selected account
  */
-export const activeWalletVotingPowerAtom = atom((get) => {
-    get(accountVotingPowerSubscribeAtom);
+export const activeWalletVotingWeightAtom = atom((get) => {
+    get(accountVotingWeightSubscribeAtom);
     const wallet = get(activeWalletAtom);
     if (wallet?.account === undefined) return undefined;
 
@@ -284,7 +294,7 @@ type SubmittedBallotsState<T> = {
     /** Whether more pages exist in the database */
     hasMore: boolean;
     /** The index of the of the last ballot from the dtatbase. Undefined means nothing has been loaded yet. */
-    lastIndex: number | undefined;
+    lastIndex: bigint | undefined;
 };
 
 const initialSubmittedBallotsState: SubmittedBallotsState<SerializableBallotSubmission> = {

@@ -9,6 +9,7 @@ use axum::{
 use axum_prometheus::{
     metrics_exporter_prometheus::PrometheusHandle, GenericMetricLayer, PrometheusMetricLayerBuilder,
 };
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
@@ -18,7 +19,7 @@ use concordium_rust_sdk::{
 use concordium_std::Amount;
 use election_common::{get_scaling_factor, WeightRow};
 use election_server::{
-    db::{DatabasePool, StoredBallotSubmission},
+    db::{DatabasePool, StoredBallotSubmission, StoredDelegation},
     util::{create_client, get_election_config, verify_checksum, verify_contract},
 };
 use futures::FutureExt;
@@ -107,6 +108,9 @@ struct AppConfig {
         env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
     )]
     eg_parameters_file:   std::path::PathBuf,
+    /// An optional directory with JSON metadata for a set of candidates
+    #[clap(long = "candidates-dir", env = "CCD_ELECTION_CANDIDATES_DIR")]
+    candidates_dir:       Option<std::path::PathBuf>,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
@@ -177,6 +181,18 @@ struct AppState {
     initial_weights: HashMap<AccountAddress, Amount>,
 }
 
+impl AppState {
+    /// Gets the initial weight computed for the `account`.
+    fn get_account_initial_weight(&self, account: &AccountAddress) -> u64 {
+        let amount = self
+            .initial_weights
+            .get(account)
+            .copied()
+            .unwrap_or(Amount::from_micro_ccd(0));
+        get_scaling_factor(&amount)
+    }
+}
+
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
 
 fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
@@ -184,7 +200,7 @@ fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
 /// query params passed to [`get_ballot_submissions_by_account`].
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct SubmissionsQueryParams {
+struct PaginatedQueryParams {
     /// The page of ballot submissions to get.
     #[serde(default)]
     from:      Option<usize>,
@@ -193,18 +209,18 @@ struct SubmissionsQueryParams {
     page_size: usize,
 }
 
-impl SubmissionsQueryParams {
+impl PaginatedQueryParams {
     /// Get the page size, where the max page size is capped by
     /// [`MAX_SUBMISSIONS_PAGE_SIZE`]
     fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
 }
 
-/// The response type for [`get_ballot_submissions_by_account`] queries
+/// The response type for paginated queries
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SubmissionsResponse {
-    /// Ballots returned in the response
-    results:  Vec<StoredBallotSubmission>,
+struct PaginationResponse<T> {
+    /// entries returned in the response
+    results:  Vec<T>,
     /// Whether there are more results in the database
     has_more: bool,
 }
@@ -215,8 +231,8 @@ struct SubmissionsResponse {
 async fn get_ballot_submissions_by_account(
     State(state): State<AppState>,
     Path(account_address): Path<AccountAddress>,
-    Query(query_params): Query<SubmissionsQueryParams>,
-) -> Result<Json<SubmissionsResponse>, StatusCode> {
+    Query(query_params): Query<PaginatedQueryParams>,
+) -> Result<Json<PaginationResponse<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
         tracing::error!("Could not get db connection from pool: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -225,7 +241,7 @@ async fn get_ballot_submissions_by_account(
     let page_size = query_params.page_size();
     let mut results = db
         // Add 1 to the page size to identify if there are more results on the next "page"
-        .get_ballot_submissions(account_address, query_params.from, page_size + 1)
+        .get_ballot_submissions(&account_address, query_params.from, page_size + 1)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get ballot submissions for account: {}", e);
@@ -238,7 +254,81 @@ async fn get_ballot_submissions_by_account(
         results.pop();
     }
 
-    let response = SubmissionsResponse { results, has_more };
+    let response = PaginationResponse { results, has_more };
+    Ok(Json(response))
+}
+
+/// Describes each row returned in [`get_delegations_by_account`]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationResponseRow {
+    /// The index of the ballot submission in the database
+    pub id:               u64,
+    /// The transaction hash of the ballot submission
+    pub transaction_hash: TransactionHash,
+    /// The timestamp of the block the ballot submission was included in
+    pub block_time:       DateTime<Utc>,
+    /// The delegator account
+    pub from_account:     AccountAddress,
+    /// The delegatee account
+    pub to_account:       AccountAddress,
+    /// The delegated weight
+    pub weight:           u64,
+}
+
+impl DelegationResponseRow {
+    /// Creates a [`DelegationResponseRow`] from a [`StoredDelegation`] and an
+    /// associated account weight
+    fn create(db_delegation: StoredDelegation, weight: u64) -> Self {
+        Self {
+            id: db_delegation.id,
+            transaction_hash: db_delegation.transaction_hash,
+            block_time: db_delegation.block_time,
+            from_account: db_delegation.from_account,
+            to_account: db_delegation.to_account,
+            weight,
+        }
+    }
+}
+
+/// Get voting power delegations registered for `account_address`. Returns
+/// [`StatusCode`] signaling error if database connection or lookup fails.
+#[tracing::instrument(skip(state))]
+async fn get_delegations_by_account(
+    State(state): State<AppState>,
+    Path(account_address): Path<AccountAddress>,
+    Query(query_params): Query<PaginatedQueryParams>,
+) -> Result<Json<PaginationResponse<DelegationResponseRow>>, StatusCode> {
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let page_size = query_params.page_size();
+    let mut results = db
+        // Add 1 to the page size to identify if there are more results on the next "page"
+        .get_delegations(&account_address, query_params.from, page_size + 1)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations for account: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let has_more = results.len() > page_size;
+    if has_more {
+        // Pop the last item of results, which will be the first item on the next page.
+        results.pop();
+    }
+
+    let results = results
+        .into_iter()
+        .map(|del| {
+            let weight = state.get_account_initial_weight(&del.from_account);
+            DelegationResponseRow::create(del, weight)
+        })
+        .collect();
+
+    let response = PaginationResponse { results, has_more };
     Ok(Json(response))
 }
 
@@ -254,7 +344,7 @@ async fn get_ballot_submission_by_transaction(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let ballot_submission = db
-        .get_ballot_submission(transaction_hash)
+        .get_ballot_submission(&transaction_hash)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get ballot submission: {}", e);
@@ -264,19 +354,70 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
+/// The response format of [`get_account_weight`]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountWeightResponse {
+    /// The initial voting weight calculated for the account queried
+    voting_weight:    u64,
+    /// Delegation made to another account from the queried account
+    delegated_to:     Option<AccountAddress>,
+    /// Delegations from other accounts made to the account queried
+    delegations_from: PaginationResponse<(AccountAddress, u64)>,
+}
+
+/// The number of delegations returned in
+/// [`AccountWeightResponse::delegations_from`]
+const NUM_DELEGATIONS_FROM: usize = 3;
+
 /// Get the voting weight of an account address.
 #[tracing::instrument(skip(state))]
 async fn get_account_weight(
     State(state): State<AppState>,
     Path(account): Path<AccountAddress>,
-) -> Json<u64> {
-    let amount = state
-        .initial_weights
-        .get(&account)
-        .copied()
-        .unwrap_or(Amount::from_micro_ccd(0));
-    let weight = get_scaling_factor(&amount);
-    Json(weight)
+) -> Result<Json<AccountWeightResponse>, StatusCode> {
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let delegated_to = db
+        .get_delegation_out(&account)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(|d| d.to_account);
+    let mut results = db
+        .get_n_delegations_in(&account, NUM_DELEGATIONS_FROM + 1)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get delegations: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let has_more = results.len() > NUM_DELEGATIONS_FROM;
+    if has_more {
+        // Pop the last item of results, which will be the first item on the next page.
+        results.pop();
+    }
+
+    let results = results
+        .into_iter()
+        .map(|del| {
+            let weight = state.get_account_initial_weight(&del.from_account);
+            (del.from_account, weight)
+        })
+        .collect();
+
+    let delegations_from = PaginationResponse { results, has_more };
+    let response = AccountWeightResponse {
+        voting_weight: state.get_account_initial_weight(&account),
+        delegated_to,
+        delegations_from,
+    };
+
+    Ok(Json(response))
 }
 
 type PrometheusLayer = GenericMetricLayer<'static, PrometheusHandle, axum_prometheus::Handle>;
@@ -366,6 +507,7 @@ async fn setup_http(
             "/api/submissions/:account",
             get(get_ballot_submissions_by_account),
         )
+        .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
         .with_state(state)
         .route_service(
@@ -379,11 +521,25 @@ async fn setup_http(
         .route_service(
             "/static/electionguard/election-parameters.json",
             ServeFile::new(&config.eg_parameters_file),
+        );
+
+    if let Some(candidates_dir) = &config.candidates_dir {
+        http_api = http_api.nest_service(
+            "/static/concordium/candidates",
+            ServeDir::new(candidates_dir),
         )
+    }
+
+    // Serve the frontend
+    http_api = http_api
+        .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
+        .route("/index.html", index_handler.clone())
         .route("/", index_handler.clone())
-        .route("/index.html", index_handler)
-         // Fall back to serving anything from the frontend dir
-        .route_service("/*path", ServeDir::new(&config.frontend_dir))
+         // Fall back to handle route in the frontend of the application served
+        .route("/*path", index_handler);
+
+    // Add layers
+    http_api = http_api
         .layer(prometheus_layer)
         .layer(tower_http::timeout::TimeoutLayer::new(
             std::time::Duration::from_millis(config.request_timeout_ms),
@@ -395,7 +551,6 @@ async fn setup_http(
         )
         .layer(tower_http::limit::RequestBodyLimitLayer::new(1_000_000)) // at most 1000kB of data.
         .layer(tower_http::compression::CompressionLayer::new());
-
     if config.allow_cors {
         let cors = CorsLayer::new()
             .allow_methods([Method::GET, Method::POST])

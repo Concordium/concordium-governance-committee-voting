@@ -3,10 +3,11 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::{ElectionConfig, RegisterVotesParameter};
 use concordium_rust_sdk::{
-    smart_contracts::common::{self as contracts_common},
+    smart_contracts::common as contracts_common,
     types::{
-        hashes::BlockHash, AbsoluteBlockHeight, BlockItemSummary, ContractAddress, ExecutionTree,
-        ExecutionTreeV1,
+        execution_tree, hashes::BlockHash, queries::BlockInfo, AbsoluteBlockHeight,
+        AccountTransactionEffects, BlockItemSummary, BlockItemSummaryDetails, ContractAddress,
+        ExecutionTree, ExecutionTreeV1,
     },
     v2::{self, Client},
 };
@@ -21,7 +22,7 @@ use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
         create_client, get_election_config, verify_checksum, verify_contract, BallotSubmission,
-        ElectionContract, REGISTER_VOTES_RECEIVE,
+        ElectionContract, VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
     },
 };
 use futures::{future, TryStreamExt};
@@ -127,17 +128,34 @@ impl AppConfig {
     }
 }
 
+/// The transactions indexed
+#[derive(Debug)]
+enum TransactionData {
+    /// Represents a ballot submission
+    BallotSubmission(BallotSubmission),
+    /// Represents a voting weight delegation
+    Delegation(VotingWeightDelegation),
+}
+
+impl From<BallotSubmission> for TransactionData {
+    fn from(value: BallotSubmission) -> Self { Self::BallotSubmission(value) }
+}
+
+impl From<VotingWeightDelegation> for TransactionData {
+    fn from(value: VotingWeightDelegation) -> Self { Self::Delegation(value) }
+}
+
 /// The data collected for each block.
 #[derive(Debug)]
-pub struct BlockData {
+struct BlockData {
     /// The hash of the block
-    pub block_hash: BlockHash,
+    block_hash:   BlockHash,
     /// The height of the block
-    pub height:     AbsoluteBlockHeight,
+    height:       AbsoluteBlockHeight,
     /// The block time of the block
-    pub block_time: DateTime<Utc>,
-    /// The ballots submitted in the block
-    pub ballots:    Vec<BallotSubmission>,
+    block_time:   DateTime<Utc>,
+    /// The transactions to index
+    transactions: Vec<TransactionData>,
 }
 
 /// Runs a process of inserting data coming in on `block_receiver` in a database
@@ -255,10 +273,19 @@ async fn db_insert_block<'a>(
     let transaction = Transaction::from(transaction);
     transaction.set_latest_height(block_data.height).await?;
 
-    for ballot in block_data.ballots.iter() {
-        transaction
-            .insert_ballot(ballot, block_data.block_time)
-            .await?;
+    for transaction_data in block_data.transactions.iter() {
+        match transaction_data {
+            TransactionData::BallotSubmission(ballot) => {
+                transaction
+                    .insert_ballot(ballot, block_data.block_time)
+                    .await?;
+            }
+            TransactionData::Delegation(delegation) => {
+                transaction
+                    .insert_delegation(delegation, block_data.block_time)
+                    .await?;
+            }
+        }
     }
 
     let now = tokio::time::Instant::now();
@@ -300,49 +327,70 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Extracts the ballot submission (if any) from `transaction`.
+/// Extracts the relevant [`TransactionData`] (if any) from `transaction`.
 #[tracing::instrument(skip(transaction), fields(tx_hash = %transaction.hash))]
-fn get_ballot_submission(
+fn get_transaction_data(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
-) -> Option<BallotSubmission> {
-    let account = transaction.sender_account()?;
+    delegation_string: &str,
+) -> Option<TransactionData> {
+    let from_account = transaction.sender_account()?;
     let transaction_hash = transaction.hash;
-    let ExecutionTree::V1(ExecutionTreeV1 {
-        address,
-        receive_name,
-        message,
-        ..
-    }) = transaction.contract_update()?
-    else {
+    let BlockItemSummaryDetails::AccountTransaction(transaction) = transaction.details else {
         return None;
     };
-
-    if address != *contract_address || receive_name != REGISTER_VOTES_RECEIVE {
-        return None;
-    };
-
-    let ballot = match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
-        .context("Failed to parse ballot from transaction message")
-        .and_then(|bytes| {
-            decode::<BallotEncrypted>(&bytes.inner).context("Failed parse encrypted ballot")
-        }) {
-        Ok(ballot) => ballot,
-        Err(err) => {
-            tracing::warn!("Could not parse ballot: {}", err);
-            return None;
+    let transaction_data = match transaction.effects {
+        AccountTransactionEffects::AccountTransferWithMemo { to, memo, .. } => {
+            let Ok(memo) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
+                return None;
+            };
+            if memo != delegation_string {
+                return None;
+            };
+            TransactionData::Delegation(VotingWeightDelegation {
+                from_account,
+                to_account: to,
+                transaction_hash,
+            })
         }
+        AccountTransactionEffects::ContractUpdateIssued { effects } => {
+            let ExecutionTree::V1(ExecutionTreeV1 {
+                address,
+                receive_name,
+                message,
+                ..
+            }) = execution_tree(effects)?
+            else {
+                return None;
+            };
+            if address != *contract_address || receive_name != REGISTER_VOTES_RECEIVE {
+                return None;
+            };
+            let ballot =
+                match contracts_common::from_bytes::<RegisterVotesParameter>(message.as_ref())
+                    .context("Failed to parse ballot from transaction message")
+                    .and_then(|bytes| {
+                        decode::<BallotEncrypted>(&bytes.inner)
+                            .context("Failed parse encrypted ballot")
+                    }) {
+                    Ok(ballot) => ballot,
+                    Err(err) => {
+                        tracing::warn!("Could not parse ballot: {}", err);
+                        return None;
+                    }
+                };
+            let verified = ballot.verify(verification_context);
+            TransactionData::BallotSubmission(BallotSubmission {
+                ballot,
+                verified,
+                account: from_account,
+                transaction_hash,
+            })
+        }
+        _ => return None,
     };
-
-    let verified = ballot.verify(verification_context);
-    let ballot_submission = BallotSubmission {
-        ballot,
-        verified,
-        account,
-        transaction_hash,
-    };
-    Some(ballot_submission)
+    Some(transaction_data)
 }
 
 /// Process a block, represented by `block_hash`, checking it for election
@@ -352,26 +400,23 @@ fn get_ballot_submission(
 /// Returns error if any occur while querying the node
 async fn process_block(
     node: &mut Client,
-    block_hash: BlockHash,
+    block_info: BlockInfo,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
+    delegation_string: &str,
 ) -> anyhow::Result<BlockData> {
-    let block_info = node
-        .get_block_info(block_hash)
-        .await
-        .with_context(|| format!("Could not get block info for block: {}", block_hash))?
-        .response;
-
-    let ballots: Vec<_> = node
+    let block_hash = block_info.block_hash;
+    let transactions: Vec<_> = node
         .get_block_transaction_events(block_info.block_hash)
         .await
         .with_context(|| format!("Could not get transactions for block: {}", block_hash))?
         .response
         .try_filter_map(|transaction| {
-            future::ok(get_ballot_submission(
+            future::ok(get_transaction_data(
                 transaction,
                 contract_address,
                 verification_context,
+                delegation_string,
             ))
         })
         .try_collect()
@@ -387,7 +432,7 @@ async fn process_block(
         block_hash,
         height: block_info.block_height,
         block_time: block_info.block_slot_time,
-        ballots,
+        transactions,
     };
 
     Ok(block_data)
@@ -451,10 +496,12 @@ async fn node_process(
     request_timeout: std::time::Duration,
     contract_address: &ContractAddress,
     verification_context: &PreVotingData,
+    delegation_string: &str,
     from_height: &mut AbsoluteBlockHeight,
     block_sender: &tokio::sync::mpsc::Sender<BlockData>,
     max_behind_s: u32,
     stop_flag: &AtomicBool,
+    run_until: DateTime<Utc>,
 ) -> anyhow::Result<()> {
     let node_uri = node_endpoint.uri().clone();
     let mut node = create_client(node_endpoint, request_timeout).await?;
@@ -474,11 +521,23 @@ async fn node_process(
         let Some(block) = block else {
             return Err(anyhow!("Finalized block stream dropped"));
         };
+        let block_info = node
+            .get_block_info(block.height)
+            .await
+            .with_context(|| format!("Could not get block info for block: {}", block.block_hash))?
+            .response;
+
+        if block_info.block_slot_time > run_until {
+            tracing::info!("Election window has closed; stopping service.");
+            return Ok(());
+        };
+
         let block_data = process_block(
             &mut node,
-            block.block_hash,
+            block_info,
             contract_address,
             verification_context,
+            delegation_string,
         )
         .await?;
         if block_sender.send(block_data).await.is_err() {
@@ -603,6 +662,7 @@ async fn main() -> anyhow::Result<()> {
         .context("Could not deserialize guardian public key")?;
     let verification_context =
         get_verification_context(election_parameters, election_manifest, guardian_public_keys)?;
+    let delegation_string = contract_config.delegation_string;
 
     let mut latest_successful_node: u64 = 0;
     let num_nodes = config.node_endpoints.len() as u64;
@@ -632,10 +692,12 @@ async fn main() -> anyhow::Result<()> {
             request_timeout,
             &config.contract_address,
             &verification_context,
+            &delegation_string,
             &mut from_height,
             &block_sender,
             config.max_behind_s,
             stop_flag.as_ref(),
+            contract_config.election_end.try_into()?,
         )
         .await;
 
@@ -648,6 +710,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             // `node_process` terminated with `Ok`, meaning we should stop the service
             // entirely.
+            drop(block_sender);
             break;
         }
 
