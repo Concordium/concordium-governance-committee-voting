@@ -563,9 +563,9 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::bail!("Registering verification status failed: {err:#?}");
                 }
                 eprintln!(
-                        "Registered verification successful for guardian {}",
-                        guardian.address
-                    );
+                    "Registered verification successful for guardian {}",
+                    guardian.address
+                );
                 Ok::<(), anyhow::Error>(())
             };
             futs.push(fut);

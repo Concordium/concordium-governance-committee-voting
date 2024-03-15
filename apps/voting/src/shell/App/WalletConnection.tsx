@@ -242,8 +242,8 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
                 </div>
                 {isDelegatee && (
                     <div className="active-connection__text-small mt-1 text-muted">
-                        **The delegations listed are a snapshot and can change until voting closes. Delegated weight is
-                        not counted until after voting has concluded.
+                        **The delegations listed are delegations made as of {weight?.updatedAt.toLocaleString()} and can
+                        change until voting closes. Delegated weight is not counted until after voting has concluded.
                     </div>
                 )}
             </section>

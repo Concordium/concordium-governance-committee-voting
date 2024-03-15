@@ -179,8 +179,8 @@ struct AppState {
 }
 
 impl AppState {
-    /// Gets the weight assigned to an account.
-    fn get_account_weight(&self, account: &AccountAddress) -> u64 {
+    /// Gets the initial weight computed for the `account`.
+    fn get_account_initial_weight(&self, account: &AccountAddress) -> u64 {
         let amount = self
             .initial_weights
             .get(account)
@@ -269,7 +269,7 @@ pub struct DelegationResponseRow {
     pub from_account:     AccountAddress,
     /// The delegatee account
     pub to_account:       AccountAddress,
-    /// The weight delegated
+    /// The delegated weight
     pub weight:           u64,
 }
 
@@ -320,7 +320,7 @@ async fn get_delegations_by_account(
     let results = results
         .into_iter()
         .map(|del| {
-            let weight = state.get_account_weight(&del.from_account);
+            let weight = state.get_account_initial_weight(&del.from_account);
             DelegationResponseRow::create(del, weight)
         })
         .collect();
@@ -355,7 +355,7 @@ async fn get_ballot_submission_by_transaction(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AccountWeightResponse {
-    /// The voting weight calculated for the account queried
+    /// The initial voting weight calculated for the account queried
     voting_weight:    u64,
     /// Delegation made to another account from the queried account
     delegated_to:     Option<AccountAddress>,
@@ -402,14 +402,14 @@ async fn get_account_weight(
     let results = results
         .into_iter()
         .map(|del| {
-            let weight = state.get_account_weight(&del.from_account);
+            let weight = state.get_account_initial_weight(&del.from_account);
             (del.from_account, weight)
         })
         .collect();
 
     let delegations_from = PaginationResponse { results, has_more };
     let response = AccountWeightResponse {
-        voting_weight: state.get_account_weight(&account),
+        voting_weight: state.get_account_initial_weight(&account),
         delegated_to,
         delegations_from,
     };

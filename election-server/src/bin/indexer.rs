@@ -522,7 +522,7 @@ async fn node_process(
             return Err(anyhow!("Finalized block stream dropped"));
         };
         let block_info = node
-            .get_block_info(block.block_hash)
+            .get_block_info(block.height)
             .await
             .with_context(|| format!("Could not get block info for block: {}", block.block_hash))?
             .response;

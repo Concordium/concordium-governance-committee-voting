@@ -178,12 +178,16 @@ export interface Wallet {
  */
 export const activeWalletAtom = atom<Wallet | undefined>(undefined);
 
+export type AccountWeightState = AccountWeightResponse & {
+    updatedAt: Date;
+};
+
 /**
  * Holds the voting weight for each account
  */
 const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_: AccountAddress.Type) => atom<AccountWeightResponse | undefined>(undefined),
+    (_: AccountAddress.Type) => atom<AccountWeightState | undefined>(undefined),
     (a, b) => a.address === b.address,
 );
 
@@ -195,7 +199,7 @@ const accountVotingWeightSubscribeAtom = atomEffect((get, set) => {
     if (wallet?.account === undefined) return;
 
     const votingWeightAtom = votingWeightAtomFamily(wallet.account);
-    void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, weight));
+    void getAccountWeight(wallet.account).then((weight) => set(votingWeightAtom, { ...weight, updatedAt: new Date() }));
 });
 
 /**

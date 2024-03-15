@@ -81,7 +81,7 @@ type DelegationSerializable = {
     transactionHash: HexString;
     /** The slot time of the block the submission is included in */
     blockTime: string;
-    /** Whether the ballot could be verified */
+    /** The weight that was delegated */
     weight: bigint;
 };
 
@@ -96,7 +96,7 @@ type Delegation = {
     transactionHash: TransactionHash.Type;
     /** The slot time of the block the submission is included in */
     blockTime: Date;
-    /** Whether the ballot could be verified */
+    /** The weight that was delegated */
     weight: bigint;
 };
 /**
