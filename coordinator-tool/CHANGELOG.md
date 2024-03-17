@@ -1,3 +1,7 @@
+## 0.2.2
+
+- Support decryption when there are no votes.
+
 ## 0.2.1
 
 - Allow overwriting encrypted tally if it is different from computed.
