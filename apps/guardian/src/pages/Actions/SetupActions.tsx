@@ -204,7 +204,7 @@ const GenerateSecretShare = makeActionableStep(
                                     ? 'Register validation complaint'
                                     : 'Register validation OK'}
                             </Button>
-                            <Button variant="danger" onClick={rejectProposal}>
+                            <Button variant="outline-danger" onClick={rejectProposal}>
                                 Cancel
                             </Button>
                         </Modal.Footer>

@@ -6,7 +6,6 @@ import { selectedAccountAtom, electionConfigAtom, connectionErrorAtom } from '~/
 import { router } from '../router';
 import { PropsWithChildren, useMemo } from 'react';
 import { accountShowShort } from 'shared/util';
-import { BackendErrorType } from '~/shared/ffi';
 import { version } from '../../../package.json';
 
 type ConfigurationItemProps = PropsWithChildren<{
@@ -43,25 +42,16 @@ function Configuration() {
     const account = useAtomValue(selectedAccountAtom);
     const showAccount = useMemo(() => (account === undefined ? undefined : accountShowShort(account)), [account]);
     const configError = useAtomValue(connectionErrorAtom);
-    const hasConnectionError =
-        configError?.type !== undefined &&
-        [BackendErrorType.NodeConnection, BackendErrorType.Network].includes(configError.type);
+    const hasConnectionError = configError?.type !== undefined;
 
     return (
         <div className="app-configuration">
-            <ConfigurationItem
-                className="text-capitalize"
-                connected={electionConfig !== undefined}
-                error={hasConnectionError}
-            >
-                {import.meta.env.CCD_ELECTION_NETWORK}
-            </ConfigurationItem>
             <ConfigurationItem
                 className="d-flex align-items-center"
                 connected={electionConfig !== undefined}
                 error={hasConnectionError}
             >
-                {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS}
+                {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS} on {import.meta.env.CCD_ELECTION_NETWORK}
             </ConfigurationItem>
             <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>
             <div className="mt-2">v{version}</div>
