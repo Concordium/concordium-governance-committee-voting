@@ -606,16 +606,23 @@ async fn handle_decrypt(
         );
         contest
     };
-    let Some(results) = decryption.remove(&contest) else {
-        anyhow::bail!("No decryptions for contest.");
-    };
 
-    let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
-    for value in results {
-        let weight = value.plain_text.value().to_u64_digits();
-        anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
-        weights.push(weight.first().copied().unwrap_or(0));
-    }
+    let weights = if let Some(results) = decryption.remove(&contest) {
+        let mut weights: contract::PostResultParameter = Vec::with_capacity(results.len());
+        for value in results {
+            let weight = value.plain_text.value().to_u64_digits();
+            anyhow::ensure!(weight.len() <= 1, "Weight must fit into a u64.");
+            weights.push(weight.first().copied().unwrap_or(0));
+        }
+        weights
+    } else if decryption.is_empty() {
+        // no contests means we had no valid votes in the election.
+        eprintln!("No valid votes in the election. All candidates get 0 votes.");
+        vec![0u64; election_data.candidates.len()] // each candidate gets 0
+                                                   // votes.
+    } else {
+        anyhow::bail!("Encryptions only exist for incorrect contests.");
+    };
 
     {
         // Format results for display.
