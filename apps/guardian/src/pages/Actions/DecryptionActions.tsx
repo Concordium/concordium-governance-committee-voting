@@ -22,7 +22,7 @@ const DecryptionError: FC<PropsWithChildren> = ({ children }) => (
     <>
         <h1 className="text-danger">Error:</h1>
         <h3>{children}</h3>
-        <p>Please report this to the election facilitator.</p>
+        <p>Please report this to the election coordinator.</p>
     </>
 );
 

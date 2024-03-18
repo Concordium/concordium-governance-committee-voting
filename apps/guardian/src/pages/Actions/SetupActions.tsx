@@ -244,7 +244,7 @@ function Invalid() {
             <p>
                 The validity of the submissions made by one or more guardians has been questioned.
                 <br />
-                Manual intervention by the election facilitator is required.
+                Manual intervention by the election coordinator is required.
             </p>
         </>
     );
@@ -260,7 +260,7 @@ function Incomplete() {
             <p>
                 The setup phase was not completed by one or more guardians.
                 <br />
-                Manual intervention by the election facilitator is required.
+                Manual intervention by the election coordinator is required.
             </p>
         </>
     );
