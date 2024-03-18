@@ -91,3 +91,30 @@ Example usage (with all defaults applied):
 ```bash
 indexer --contract-address "<7635,0>"
 ```
+
+
+## Docker image & Release
+
+A docker image for the election server together with the frontend can be built by running
+
+```console
+docker build -f ./scripts/dapp-gc-voting.Dockerfile .
+```
+
+from the **root** of the repository. The entrypoint of the image is set to the `http` binary with the frontend directory already specified.
+
+Analogously, a docker image for the indexer can be built by running
+
+```console
+docker build -f ./scripts/indexer.Dockerfile .
+```
+
+Note that both of these will be `linux/amd64` based images even if they are built on other platforms.
+
+There are release jobs to build, tag and push the two images to dockerhub.
+
+The jobs can be triggered manually, but they will also be triggered by creation of tags matching
+`release/gc-election-server/*.*.*-*.*.*` and `release/gc-election-indexer/*.*.*`, respectively.
+For the election server the two versions are meant to be the `frontend-backend` version.
+
+The release jobs require approval after they are triggered since they access secrets to publish to dockerhub.

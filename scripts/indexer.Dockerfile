@@ -4,7 +4,7 @@
 ARG rust_version=1.74
 ARG rust_base_image=rust:${rust_version}-buster
 
-FROM ${rust_base_image} AS backend
+FROM --platform=linux/amd64 ${rust_base_image} AS backend
 
 WORKDIR /build
 COPY ./deps/ ./deps/
@@ -14,7 +14,7 @@ COPY ./election-server/ ./election-server
 
 RUN cargo build --release --bin indexer --locked --manifest-path ./election-server/Cargo.toml
 
-FROM debian:buster
+FROM --platform=linux/amd64 debian:buster
 
 COPY --from=backend /build/election-server/target/release/indexer /indexer
 

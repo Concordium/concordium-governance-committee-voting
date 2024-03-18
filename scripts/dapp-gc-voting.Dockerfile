@@ -4,7 +4,7 @@ ARG build_image=node:18-slim
 ARG rust_version=1.74
 ARG rust_base_image=rust:${rust_version}-buster
 
-FROM ${rust_base_image} AS backend
+FROM --platform=linux/amd64 ${rust_base_image} AS backend
 
 WORKDIR /build
 COPY ./deps/ ./deps/
@@ -14,7 +14,7 @@ COPY ./election-server/ ./election-server
 
 RUN cargo build --release --locked --bin http --manifest-path ./election-server/Cargo.toml
 
-FROM ${build_image} AS frontend
+FROM --platform=linux/amd64 ${build_image} AS frontend
 
 # Make the argument available in this stage, with default propagating down.
 ARG rust_version
@@ -38,7 +38,7 @@ WORKDIR /build/apps/
 # to make it simpler to maintain.
 RUN yarn install && yarn build:all
 
-FROM debian:buster
+FROM --platform=linux/amd64 debian:buster
 
 COPY --from=backend /build/election-server/target/release/http /election-server
 COPY --from=frontend /build/apps/voting/dist /dist
