@@ -79,7 +79,7 @@ const GenerateEncryptedShares = makeActionableStep(
                     Generate encrypted shares
                 </Button>
                 <p className="text-muted mt-3">
-                    Creates encryption shares of your secret key for peers and registers them.
+                    Creates encrypted shares of your secret key for peers and registers them.
                     <br />
                     Peer guardians need the encrypted share of your secret key to create their share of the decryption
                     key.
