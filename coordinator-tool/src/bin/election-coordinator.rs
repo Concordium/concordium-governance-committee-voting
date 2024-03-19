@@ -39,7 +39,12 @@ use election_common::{
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::Digest as _;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
+    fmt::Debug,
+    str::FromStr,
+};
 
 /// Command line configuration of the application.
 #[derive(Debug, clap::Parser)]
@@ -55,6 +60,30 @@ struct Args {
     node_endpoint: concordium_rust_sdk::v2::Endpoint,
     #[command(subcommand)]
     command:       Command,
+}
+
+/// Describes the possible locations of a candidate metadata file
+#[derive(Clone, Debug)]
+enum CandidateLocation {
+    /// The file is located remotely, denoted by the inner [`url::Url`]
+    Remote(url::Url),
+    /// The file is located locally, denoted by the inner [`std::path::PathBuf`]
+    Disk(std::path::PathBuf),
+}
+
+impl FromStr for CandidateLocation {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(url) = url::Url::from_str(s) {
+            return Ok(Self::Remote(url));
+        }
+        if let Ok(path) = std::path::PathBuf::from_str(s) {
+            return Ok(Self::Disk(path));
+        }
+
+        Err(anyhow::anyhow!("Failed to parse {s} as either url or path"))
+    }
 }
 
 /// Command line flags.
@@ -108,17 +137,9 @@ struct NewElectionArgs {
         long = "candidate",
         help = "The URL to candidates metadata. The order matters."
     )]
-    candidates:          Vec<url::Url>,
-    #[clap(
-        long = "manifest-out",
-        help = "Path where the election manifest file will be written."
-    )]
-    manifest_file:       std::path::PathBuf,
-    #[clap(
-        long = "parameters-out",
-        help = "Path where election parameters will be output."
-    )]
-    parameters_file:     std::path::PathBuf,
+    candidates:          Vec<CandidateLocation>,
+    #[clap(long = "out", help = "Path where files produced are written to")]
+    out:                 std::path::PathBuf,
     #[clap(
         long = "voters-file",
         help = "Path to the file with a list of eligible accounts with their weights."
@@ -401,7 +422,12 @@ async fn handle_final_weights(
             let BlockItemSummaryDetails::AccountTransaction(atx) = tx.details else {
                 continue; // Ignore non-account transactions
             };
-            let AccountTransactionEffects::AccountTransferWithMemo { amount: _, to, memo } = atx.effects else {
+            let AccountTransactionEffects::AccountTransferWithMemo {
+                amount: _,
+                to,
+                memo,
+            } = atx.effects
+            else {
                 continue; // Only consider transfers with memo.
             };
             let Ok(value) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
@@ -564,7 +590,9 @@ async fn handle_decrypt(
                         anyhow::bail!("Missing decryption share for contest {contest}");
                     };
                     let Some(share) = decryption_share.get(i) else {
-                        anyhow::bail!("Missing decryption share for contest {contest} and option {i}");
+                        anyhow::bail!(
+                            "Missing decryption share for contest {contest} and option {i}"
+                        );
                     };
                     decryption_shares_for_option.push(share);
                 }
@@ -920,7 +948,9 @@ async fn handle_tally(
         } in txs
         {
             let param = execution_tree.parameter();
-            let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref()) else {
+            let Ok(param) =
+                concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref())
+            else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
                 continue;
             };
@@ -990,20 +1020,19 @@ async fn handle_tally(
                  nothing to do."
             );
             return Ok(());
-        } else {
-            eprintln!(
-                "The encrypted tally is already registered in the contract, but it is different."
-            );
-            if keys.is_some() {
-                let confirm = dialoguer::Confirm::new()
-                    .report(true)
-                    .wait_for_newline(true)
-                    .with_prompt("Do you want to overwrite the published tally?")
-                    .interact()?;
-                anyhow::ensure!(confirm, "Aborting.");
-            }
-            true
         }
+        eprintln!(
+            "The encrypted tally is already registered in the contract, but it is different."
+        );
+        if keys.is_some() {
+            let confirm = dialoguer::Confirm::new()
+                .report(true)
+                .wait_for_newline(true)
+                .with_prompt("Do you want to overwrite the published tally?")
+                .interact()?;
+            anyhow::ensure!(confirm, "Aborting.");
+        }
+        true
     } else {
         false
     };
@@ -1142,8 +1171,8 @@ async fn handle_initial_weights(
     );
     for (balances, address) in account_balances.into_iter().zip(account_addresses) {
         let Some((&first, rest)) = balances.split_first() else {
-                    anyhow::bail!("A bug, there should always be at least one reading.");
-                };
+            anyhow::bail!("A bug, there should always be at least one reading.");
+        };
         let mut last_time = first.0;
         let mut weighted_sum = u128::from(first.1.micro_ccd);
         let mut last_balance = weighted_sum;
@@ -1218,9 +1247,9 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     }
 
     let url = &app.base_url;
-    let make_url = move |path| {
+    let make_url = move |path: String| {
         let mut url = url.clone();
-        url.set_path(path);
+        url.set_path(&path);
         url.to_string()
     };
 
@@ -1239,12 +1268,31 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         let mut candidates = Vec::with_capacity(app.candidates.len());
         let mut options = Vec::with_capacity(app.candidates.len());
         for candidate in app.candidates {
-            let candidate_url = candidate.to_string();
-            let r = reqwest::get(candidate)
-                .await
-                .context("Unable to get data for candidate.")?;
-            anyhow::ensure!(r.status().is_success(), "Unable to get data for candidate.");
-            let data = r.bytes().await?;
+            let (candidate_url, data) = match candidate {
+                CandidateLocation::Remote(url) => {
+                    let candidate_url = url.to_string();
+                    let r = reqwest::get(url)
+                        .await
+                        .context("Unable to get data for candidate.")?;
+
+                    anyhow::ensure!(r.status().is_success(), "Unable to get data for candidate.");
+                    let data: Vec<_> = r.bytes().await?.into();
+
+                    (candidate_url, data)
+                }
+                CandidateLocation::Disk(path) => {
+                    let candidate_file = path
+                        .file_name()
+                        .and_then(OsStr::to_str)
+                        .with_context(|| format!("Invalid filename for path {:?}", &path))?;
+                    let candidate_url =
+                        make_url(format!("/static/concordium/candidates/{}", candidate_file));
+                    let data = std::fs::read(&path).context("Unable to read voters file.")?;
+
+                    (candidate_url, data)
+                }
+            };
+
             let hash = contract::HashSha2256(sha2::Sha256::digest(&data).into());
             candidates.push(contract::ChecksumUrl {
                 url: candidate_url,
@@ -1277,7 +1325,8 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         };
         let manifest_json = serde_json::to_vec_pretty(&manifest)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&manifest_json).into();
-        std::fs::write(app.manifest_file, manifest_json)?;
+        let manifest_path = app.out.join("election-manifest.json");
+        std::fs::write(manifest_path, manifest_json)?;
         contract::HashSha2256(digest)
     };
 
@@ -1307,7 +1356,8 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         };
         let parameters_json = serde_json::to_vec_pretty(&parameters)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&parameters_json).into();
-        std::fs::write(app.parameters_file, parameters_json)?;
+        let parameters_path = app.out.join("election-parameters.json");
+        std::fs::write(parameters_path, parameters_json)?;
         contract::HashSha2256(digest)
     };
 
@@ -1321,15 +1371,15 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         candidates,
         guardians: app.guardians,
         eligible_voters: contract::ChecksumUrl {
-            url:  make_url("/static/concordium/eligible-voters.csv"),
+            url:  make_url("/static/concordium/eligible-voters.csv".to_string()),
             hash: eligible_voters_hash,
         },
         election_manifest: contract::ChecksumUrl {
-            url:  make_url("static/electionguard/election-manifest.json"),
+            url:  make_url("static/electionguard/election-manifest.json".to_string()),
             hash: manifest_hash,
         },
         election_parameters: contract::ChecksumUrl {
-            url:  make_url("static/electionguard/election-parameters.json"),
+            url:  make_url("static/electionguard/election-parameters.json".to_string()),
             hash: parameters_hash,
         },
         election_description: "Test election".into(),
