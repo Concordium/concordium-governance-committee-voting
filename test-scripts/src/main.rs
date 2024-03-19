@@ -597,7 +597,7 @@ async fn main() -> anyhow::Result<()> {
         let mut delegation_hashes = Vec::with_capacity(guardians.len() + 1);
         let mut hashes = Vec::with_capacity(guardians.len() + 1);
 
-        // Delegate voting power from first account to second account
+        // Delegate voting weight from first account to second account
         let delegator = guardians.first().context("Failed to get first wallet")?;
         for delegatee in [guardians.get(1), guardians.get(2)].into_iter().flatten() {
             let nonce = client

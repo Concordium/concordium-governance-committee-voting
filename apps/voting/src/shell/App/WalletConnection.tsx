@@ -211,42 +211,47 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
                     Disconnect
                 </Button>
             </section>
-            <hr />
-            <section className="mb-4">
-                <h5>Account details</h5>
-                <div className="active-connection__text-small">
-                    Voting weight: {weight?.votingWeight.toString()}*
-                    {AccountAddress.instanceOf(weight?.delegatedTo) && (
-                        <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
-                    )}
-                </div>
-                {isDelegatee && (
-                    <div className="active-connection__text-small mt-3">
-                        <b>Delegatee for**:</b>
-                        {weight?.delegationsFrom.results.map(([account, weight]) => (
-                            <div key={AccountAddress.toBase58(account)}>
-                                {accountShowShort(account)} (weight: {weight.toString()})
+            {weight !== undefined && (
+                <>
+                    <hr />
+                    <section className="mb-4">
+                        <h5>Account details</h5>
+                        <div className="active-connection__text-small">
+                            Voting weight: {weight?.votingWeight.toString()} CCD*
+                            {AccountAddress.instanceOf(weight?.delegatedTo) && (
+                                <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
+                            )}
+                        </div>
+                        {isDelegatee && (
+                            <div className="active-connection__text-small mt-3">
+                                <b>Delegatee for**:</b>
+                                {weight?.delegationsFrom.results.map(([account, weight]) => (
+                                    <div key={AccountAddress.toBase58(account)}>
+                                        {accountShowShort(account)} (delegated weight: {weight.toString()} CCD)
+                                    </div>
+                                ))}
+                                {weight?.delegationsFrom.hasMore && (
+                                    <>
+                                        ...
+                                        <br />
+                                        <Link to={getDelegationRoute(account)}>View all</Link>
+                                    </>
+                                )}
                             </div>
-                        ))}
-                        {weight?.delegationsFrom.hasMore && (
-                            <>
-                                ...
-                                <br />
-                                <Link to={getDelegationRoute(account)}>View all</Link>
-                            </>
                         )}
-                    </div>
-                )}
-                <div className="active-connection__text-small mt-3 text-muted">
-                    *The voting weight listed does not include any voting power delegated from other accounts.
-                </div>
-                {isDelegatee && (
-                    <div className="active-connection__text-small mt-1 text-muted">
-                        **The delegations listed are delegations made as of {weight?.updatedAt.toLocaleString()} and can
-                        change until voting closes. Delegated weight is not counted until after voting has concluded.
-                    </div>
-                )}
-            </section>
+                        <div className="active-connection__text-small mt-3 text-muted">
+                            *The voting weight listed does not include any delegated weight from other accounts.
+                        </div>
+                        {isDelegatee && (
+                            <div className="active-connection__text-small mt-1 text-muted">
+                                **The delegations listed are delegations made as of {weight?.updatedAt.toLocaleString()}{' '}
+                                and can change until voting closes. Delegated weight is not counted until after voting
+                                has concluded.
+                            </div>
+                        )}
+                    </section>
+                </>
+            )}
             <hr />
             <section>
                 <h5>Ballot submissions</h5>

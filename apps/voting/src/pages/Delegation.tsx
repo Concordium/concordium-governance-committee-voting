@@ -91,7 +91,7 @@ export default function Delegation() {
                                     <tr>
                                         <th>From</th>
                                         <th>To</th>
-                                        <th>Weight</th>
+                                        <th>Delegated weight</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -99,7 +99,7 @@ export default function Delegation() {
                                         <tr key={d.id.toString()}>
                                             <td>{accountShowShort(d.fromAccount)}</td>
                                             <td>{accountShowShort(d.toAccount)}</td>
-                                            <td>{d.weight.toString()}</td>
+                                            <td>{d.weight.toString()} CCD</td>
                                         </tr>
                                     ))}
                                 </tbody>

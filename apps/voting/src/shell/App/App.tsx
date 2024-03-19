@@ -3,7 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import { clsx } from 'clsx';
 
-import { electionConfigAtom } from '~/shared/store';
+import { connectionViewAtom, electionConfigAtom } from '~/shared/store';
 import { WalletConnection } from './WalletConnection';
 import { commonDateTimeFormat } from '~/shared/util';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
@@ -17,6 +17,7 @@ const showDate = (date: Date) => date.toLocaleString(undefined, commonDateTimeFo
  */
 function App() {
     const electionConfig = useAtomValue(electionConfigAtom);
+    const toggleAccount = useAtomValue(connectionViewAtom);
     const openState = useIsElectionOpen();
 
     return (
@@ -24,6 +25,7 @@ function App() {
             <div>
                 <Navbar className="justify-content-between my-2 mb-md-4" expand="md">
                     <Container>
+                        {electionConfig === undefined && <div />}
                         {electionConfig !== undefined && (
                             <>
                                 <Navbar.Brand as={NavLink} to={routes.home.path}>
@@ -47,6 +49,9 @@ function App() {
                                     <Nav>
                                         <Nav.Link as={NavLink} to={getDelegationRoute()}>
                                             Delegations
+                                        </Nav.Link>
+                                        <Nav.Link as={'div'} role='button' onClick={() => toggleAccount?.()}>
+                                            Submissions
                                         </Nav.Link>
                                     </Nav>
                                 </Navbar.Collapse>

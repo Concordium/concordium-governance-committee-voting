@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS ballots (
   verified BOOL NOT NULL
 );
 
--- Table containing voting power delegations
+-- Table containing voting weight delegations
 CREATE TABLE IF NOT EXISTS delegations (
   id INT8 PRIMARY KEY, -- For pagination
   transaction_hash BYTEA NOT NULL,

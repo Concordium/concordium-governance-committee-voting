@@ -291,7 +291,7 @@ impl DelegationResponseRow {
     }
 }
 
-/// Get voting power delegations registered for `account_address`. Returns
+/// Get voting weight delegations registered for `account_address`. Returns
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_delegations_by_account(
@@ -596,8 +596,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::info!(
-        "Starting election server version {}",
-        env!("CARGO_PKG_VERSION")
+        "Starting election server version {}, {}",
+        env!("CARGO_PKG_VERSION"),
+        &config.contract_address
     );
 
     // Verify that we serve the files matching what is registered in the contract
