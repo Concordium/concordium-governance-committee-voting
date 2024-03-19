@@ -20,18 +20,23 @@ const CONTRACT_UPDATE_INTERVAL = 30000;
 /** The interval at which the the election phase is recalculated based on the contract configuration */
 const REFRESH_ELECTION_PHASE_INTERVAL = 1000;
 
+const electionConfigErrorAtom = atom<BackendError | undefined>(undefined);
+
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
  */
 const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
+/**
+ * Holds the {@linkcode ElectionConfig}. Invoking the setter reloads the configuration from the backend.
+ */
 export const electionConfigAtom = atom(
     (get) => get(electionConfigBaseAtom),
     async (_, set) => {
         try {
             set(electionConfigBaseAtom, await connect());
-            set(connectionErrorAtom, undefined);
+            set(electionConfigErrorAtom, undefined);
         } catch (e: unknown) {
-            set(connectionErrorAtom, e as BackendError);
+            set(electionConfigErrorAtom, e as BackendError);
         }
     },
 );
@@ -78,11 +83,14 @@ export const enum SetupStep {
      * during the setup phase
      */
     Invalid,
+    /** The setup phase was not completed prior to the election beginning */
+    Incomplete,
 }
 
 export const enum TallyStep {
     AwaitEncryptedTally,
     TallyError,
+    Excluded,
     GenerateDecryptionShare,
     AwaitPeerShares,
     GenerateDecryptionProof,
@@ -113,10 +121,16 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
         const guardian = get(selectedGuardianAtom);
         if (guardian === undefined || guardians === undefined || phase === undefined) return undefined;
 
+        if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful)) {
+            return { phase: ElectionPhase.Setup, step: SetupStep.Invalid };
+        }
+
+        if (phase !== ElectionPhase.Setup && guardians.some(([, g]) => !setupCompleted(g))) {
+            return { phase: ElectionPhase.Setup, step: SetupStep.Incomplete };
+        }
+
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful))
-                    return SetupStep.Invalid;
                 if (guardians.every(([, g]) => setupCompleted(g))) return SetupStep.Done;
                 if (setupCompleted(guardian)) return SetupStep.AwaitPeerValidation;
                 if (guardians.every(([, g]) => g.hasPublicKey && g.hasEncryptedShares))
@@ -144,9 +158,13 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
 
             const step = (() => {
                 if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
-                if (guardians.every(([, g]) => g.hasDecryptionShare) || electionConfig.decryptionDeadline < now)
+                if (
+                    guardians.filter(([, g]) => !g.excluded).every(([, g]) => g.hasDecryptionShare) ||
+                    electionConfig.decryptionDeadline < now
+                )
                     return TallyStep.GenerateDecryptionProof;
                 if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
+                if (guardian.excluded) return TallyStep.Excluded;
                 if (hasTally instanceof BackendError) return TallyStep.TallyError;
                 if (hasTally) return TallyStep.GenerateDecryptionShare;
                 return TallyStep.AwaitEncryptedTally;
@@ -176,11 +194,7 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
     },
 );
 
-/**
- * Holds significant errors (those which are relevant to the user) happening while communicating with the backend.
- */
-export const connectionErrorAtom = atom<BackendError | undefined>(undefined);
-
+const guardiansStateErrorAtom = atom<BackendError | undefined>(undefined);
 /** The base atom holding the {@linkcode GuardiansState} */
 const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
 /** Whether the guardians state is currently refreshing */
@@ -199,9 +213,9 @@ export const guardiansStateAtom = atom(
         set(guardiansLoadingAtom, true);
         try {
             set(guardiansStateBaseAtom, await refreshGuardians());
-            set(connectionErrorAtom, undefined);
+            set(guardiansStateErrorAtom, undefined);
         } catch (e: unknown) {
-            set(connectionErrorAtom, e as BackendError);
+            set(guardiansStateErrorAtom, e as BackendError);
         } finally {
             set(guardiansLoadingAtom, false);
         }
@@ -239,6 +253,7 @@ export const accountsAtom = atom(
     },
 );
 
+const hasTallyConnectionErrorAtom = atom<BackendError | undefined>(undefined);
 const hasTallyBaseAtom = atom<boolean | BackendError | undefined>(undefined);
 
 /**
@@ -251,17 +266,24 @@ export const hasTallyAtom = atom(
         let value;
         try {
             value = await refreshEncryptedTally();
+            set(hasTallyConnectionErrorAtom, undefined);
         } catch (e: unknown) {
             value = e as BackendError;
         }
 
         if (value instanceof BackendError && value.type !== BackendErrorType.Internal) {
-            set(connectionErrorAtom, value);
-            return;
+            set(hasTallyConnectionErrorAtom, value);
         }
 
         set(hasTallyBaseAtom, value);
     },
+);
+
+/**
+ * Holds significant errors (those which are relevant to the user) happening while communicating with the backend.
+ */
+export const connectionErrorAtom = atom(
+    (get) => get(electionConfigErrorAtom) ?? get(guardiansStateErrorAtom) ?? get(hasTallyConnectionErrorAtom),
 );
 
 /**

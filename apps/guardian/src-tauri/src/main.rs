@@ -11,7 +11,7 @@ use concordium_rust_sdk::{
     id::types::AccountKeys,
     smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
     types::{ContractAddress, Energy, RejectReason, WalletAccount},
-    v2::{self, BlockIdentifier, Client, Endpoint, QueryError},
+    v2::{self, BlockIdentifier, Client, Endpoint, QueryError, RPCError},
 };
 use eg::{
     election_manifest::ElectionManifest,
@@ -67,7 +67,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS: u16 = 5000;
 #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
 enum Error {
     /// HTTP error when trying to get remote resource
-    #[error("Failed to get remote resource: {0}")]
+    #[error("Failed to get election configuration from server")]
     Http(#[from] reqwest::Error),
     /// Decryption of file contents failed. This can either indicate incorrect
     /// password given by the user, or file corruption.
@@ -84,13 +84,13 @@ enum Error {
     #[error("Internal error: {0:?}")]
     Internal(#[from] anyhow::Error),
     /// Could not connect to node
-    #[error("Failed to connect to concordium node: {0}")]
+    #[error("Failed to connect to concordium node")]
     NodeConnection(#[from] tonic::transport::Error),
     /// Query was rejected by the node
     #[error("Node rejected with reason: {0:#?}")]
     QueryFailed(RejectReason),
-    /// A network error happened while querying the node
-    #[error("Network error: {0}")]
+    /// An error happened while querying the node
+    #[error("Query error: {}", get_error_message(.0))]
     Network(#[from] QueryError),
     /// Duplicate account found when importing
     #[error("Account has already been imported")]
@@ -107,6 +107,15 @@ enum Error {
     /// When a decryption share result shared by some guardian is invalid
     #[error("{0}")]
     InvalidDecryptionShare(String),
+}
+
+/// Formats a [`QueryError`] for the frontend.
+fn get_error_message(error: &QueryError) -> String {
+    match error {
+        // Get the status message of an RPC error.
+        QueryError::RPCError(RPCError::CallError(status)) => status.message().to_string(),
+        _ => format!("{error}"),
+    }
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {
@@ -1383,6 +1392,8 @@ struct GuardianStateResponse {
     has_decryption_share: bool,
     /// Whether the guardian has proof of correct decryption
     has_decryption_proof: bool,
+    /// Whether the guardian is excluded from the tally phase
+    excluded:             bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
@@ -1394,6 +1405,7 @@ impl From<&contract::GuardianState> for GuardianStateResponse {
             status:               value.status.clone(),
             has_decryption_share: value.decryption_share.is_some(),
             has_decryption_proof: value.decryption_share_proof.is_some(),
+            excluded:             value.excluded,
         }
     }
 }

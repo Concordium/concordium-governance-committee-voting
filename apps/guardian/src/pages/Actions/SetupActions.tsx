@@ -79,7 +79,7 @@ const GenerateEncryptedShares = makeActionableStep(
                     Generate encrypted shares
                 </Button>
                 <p className="text-muted mt-3">
-                    Creates encryption shares of your secret key for peers and registers them.
+                    Creates encrypted shares of your secret key for peers and registers them.
                     <br />
                     Peer guardians need the encrypted share of your secret key to create their share of the decryption
                     key.
@@ -204,7 +204,7 @@ const GenerateSecretShare = makeActionableStep(
                                     ? 'Register validation complaint'
                                     : 'Register validation OK'}
                             </Button>
-                            <Button variant="danger" onClick={rejectProposal}>
+                            <Button variant="outline-danger" onClick={rejectProposal}>
                                 Cancel
                             </Button>
                         </Modal.Footer>
@@ -244,7 +244,23 @@ function Invalid() {
             <p>
                 The validity of the submissions made by one or more guardians has been questioned.
                 <br />
-                Manual intervention by the election facilitator is required.
+                Manual intervention by the election coordinator is required.
+            </p>
+        </>
+    );
+}
+
+/**
+ * Component shown when the election setup has not been completed prior to the election starting
+ */
+function Incomplete() {
+    return (
+        <>
+            <h3>Setup phase incomplete</h3>
+            <p>
+                The setup phase was not completed by one or more guardians.
+                <br />
+                Manual intervention by the election coordinator is required.
             </p>
         </>
     );
@@ -282,6 +298,7 @@ export default function SetupActions() {
             )}
             {electionStep.step === SetupStep.Done && <Ready />}
             {electionStep.step === SetupStep.Invalid && <Invalid />}
+            {electionStep.step === SetupStep.Incomplete && <Incomplete />}
         </>
     );
 }

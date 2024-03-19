@@ -22,7 +22,7 @@ const DecryptionError: FC<PropsWithChildren> = ({ children }) => (
     <>
         <h1 className="text-danger">Error:</h1>
         <h3>{children}</h3>
-        <p>Please report this to the election facilitator.</p>
+        <p>Please report this to the election coordinator.</p>
     </>
 );
 
@@ -165,11 +165,13 @@ export function DecryptionActions() {
 
     return (
         <>
-            {step === TallyStep.AwaitEncryptedTally && <>Waiting for tally to be registered</>}
+            {step === TallyStep.AwaitEncryptedTally && <h3>Waiting for tally to be registered</h3>}
             {step === TallyStep.TallyError && <DecryptionError>Could not read the election tally</DecryptionError>}
+            {step === TallyStep.Excluded && <h3>The guardian account is excluded from participating in the tally</h3>}
             {step === TallyStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
             {step === TallyStep.AwaitPeerShares && (
                 <AwaitPeers
+                    guardians={guardians.filter(([, gs]) => !gs.excluded)}
                     predicate={(g) => g.hasDecryptionShare}
                     note={
                         <>

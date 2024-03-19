@@ -173,6 +173,8 @@ export type GuardianState = {
     hasDecryptionShare: boolean;
     /** Whether the guardian has registered proof of correct decryption. */
     hasDecryptionProof: boolean;
+    /** Whether the guardian has been excluded from the tally phase */
+    excluded: boolean;
 };
 
 /**
