@@ -16,6 +16,9 @@ RUN cargo build --release --bin indexer --locked --manifest-path ./election-serv
 
 FROM --platform=linux/amd64 debian:buster
 
+# In order to use TLS when connecting to the node we need certificates.
+RUN apt-get update && apt-get install -y ca-certificates
+
 COPY --from=backend /build/election-server/target/release/indexer /indexer
 
 CMD /indexer
