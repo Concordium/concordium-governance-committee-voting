@@ -1,3 +1,8 @@
+## 0.2.3
+
+- `new-election` subcommand: Support supplying candidate metadata as paths on the host machine.
+  When specified as a path, the data is registered in the contract under a url pointing to the election server.
+
 ## 0.2.2
 
 - Support decryption when there are no votes.

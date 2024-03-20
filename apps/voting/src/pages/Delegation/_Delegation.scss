@@ -1,0 +1,22 @@
+.delegation {
+    &__account {
+        position: relative;
+        &:hover {
+            cursor: pointer;
+
+            svg {
+                fill: $gray-500;
+            }
+        }
+
+        svg {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 15px;
+            fill: $gray-300;
+            transition: fill 0.1s;
+        }
+    }
+}

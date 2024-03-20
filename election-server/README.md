@@ -11,11 +11,12 @@ cargo build --release
 ## Running the http binary
 
 ```bash
-cargo run --bin http --release -- --eligible-voters-file "path/to/voters.json" # and other configration options.
+cargo run --bin http --release -- --contract-address "<7635,0>" # and other configration options.
 ```
 
 ### Configuration
 
+```
 Usage: http [OPTIONS] --contract-address <CONTRACT_ADDRESS>
 
 Options:
@@ -33,14 +34,14 @@ Options:
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
       --prometheus-address <PROMETHEUS_ADDRESS>
           Address of the prometheus server [env: CCD_ELECTION_PROMETHEUS_ADDRESS=]
-      --candidates-metadata-dir <CANDIDATES_METADATA_DIR>
-          A directory holding metadata json files for each candidate [env: CCD_ELECTION_CANDIDATES_METADATA_DIR=] [default: ../resources/config-example/candidates]
       --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
-          A json file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=] [default: ../resources/config-example/eligible-voters.json]
+          A csv file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=] [default: ../resources/config-example/initial-weights.csv]
       --election-manifest-file <EG_MANIFEST_FILE>
           A json file consisting of the election manifest used by election guard [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=] [default: ../resources/config-example/election-manifest.json]
       --election-parameters-file <EG_PARAMETERS_FILE>
           A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=] [default: ../resources/config-example/election-parameters.json]
+      --candidates-dir <CANDIDATES_DIR>
+          An optional directory with JSON metadata for a set of candidates [env: CCD_ELECTION_CANDIDATES_DIR=]
       --frontend-dir <FRONTEND_DIR>
           Path to the directory where frontend assets are located [env: CCD_ELECTION_FRONTEND_DIR=] [default: ../apps/voting/dist]
       --allow-cors
@@ -51,7 +52,9 @@ Options:
           The contract address of the election contract (passed to frontend) [env: CCD_ELECTION_CONTRACT_ADDRESS=]
   -h, --help
           Print help
-
+  -V, --version
+          Print version
+```
 Example usage (with all defaults applied):
 ```bash
 http --contract-address "<7635,0>"
@@ -65,6 +68,7 @@ cargo run --bin indexer --release -- --contract-address "<7635,0>" # and other c
 
 ### Configuration
 
+```
 Usage: indexer [OPTIONS] --contract-address <CONTRACT_ADDRESS>
 
 Options:
@@ -82,10 +86,13 @@ Options:
           [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=] [default: ../resources/config-example/election-manifest.json]
       --election-parameters-file <EG_PARAMETERS_FILE>
           A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=] [default: ../resources/config-example/election-parameters.json]
-      --guardian-keys-file <EG_GUARDIAN_KEYS_FILE>
-          A json file consisting of the guardian public keys of the election [env: CCD_ELECTION_GUARDIAN_KEYS_FILE=] [default: ../resources/config-example/guardian-public-keys.json]
+      --request-timeout-ms <REQUEST_TIMEOUT_MS>
+          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 5000]
   -h, --help
           Print help
+  -V, --version
+          Print version
+```
 
 Example usage (with all defaults applied):
 ```bash
