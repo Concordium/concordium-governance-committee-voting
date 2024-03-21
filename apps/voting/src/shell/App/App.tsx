@@ -33,13 +33,15 @@ function App() {
                                     <div
                                         className={clsx(
                                             'fs-6 app__nav-phase',
-                                            openState === ElectionOpenState.Open ? 'text-success' : 'text-danger',
+                                            openState === ElectionOpenState.Open ? 'text-success' : 'text-muted',
                                         )}
                                     >
-                                        {openState === ElectionOpenState.Open &&
-                                            `Open until ${showDate(electionConfig.end)}`}
                                         {openState === ElectionOpenState.NotStarted &&
                                             `Opening at ${showDate(electionConfig.start)}`}
+                                        {openState === ElectionOpenState.SetupError &&
+                                            "Voting window to be determined"}
+                                        {openState === ElectionOpenState.Open &&
+                                            `Open until ${showDate(electionConfig.end)}`}
                                         {openState === ElectionOpenState.Concluded &&
                                             `Closed at ${showDate(electionConfig.end)}`}
                                     </div>
