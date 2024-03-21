@@ -18,12 +18,14 @@ yarn install
 ### Generate election contract client
 
 The application build relies on a generated contract, which is generated from the contract module source. As such, the
-contract module must first be built:
+contract module must first be built (from the [`shared package`](../shared)):
 
 _Requires [cargo-concordium](https://developer.concordium.software/en/mainnet/smart-contracts/guides/setup-tools.html#setup-tools) to be installed on the host machine_
 
 ```bash
-yarn build-election-contract && yarn generate-contract-client
+cd ../shared
+yarn generate-contract-client
+cd ../voting
 ```
 
 ## Environment variables
