@@ -20,7 +20,7 @@ FROM --platform=linux/amd64 ${build_image} AS frontend
 ARG rust_version
 
 # Install rust dependencies for building electionguard bindings
-RUN apt update && apt install curl build-essential ca-certificates -y
+RUN apt-get update && apt-get install curl build-essential -y
 
 # It's usually a bit iffy to download and run stuff.
 # But we are requiring TLS, and downloading from a trusted domain.
@@ -39,6 +39,9 @@ WORKDIR /build/apps/
 RUN yarn install && yarn build:all
 
 FROM --platform=linux/amd64 debian:buster
+
+# In order to use TLS when connecting to the node we need certificates.
+RUN apt-get update && apt-get install -y ca-certificates
 
 COPY --from=backend /build/election-server/target/release/http /election-server
 COPY --from=frontend /build/apps/voting/dist /dist
