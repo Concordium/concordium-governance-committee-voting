@@ -1,18 +1,31 @@
 .candidate {
     flex-direction: row;
     overflow: hidden;
+    position: relative;
 
     &[aria-disabled='true'] {
         cursor: default;
     }
 
-    &__body {
-        border-right: 10px solid $gray-300;
-        transition: border-color 0.1s linear;
+    &__checkmark {
+        position: absolute;
+        right: 15px;
+        top: 30px;
+        width: 40px;
+        fill: $gray-300;
+        transition: fill 0.1s;
+
+        .candidate:hover:not(.candidate--selected) & {
+            fill: $gray-400;
+        }
 
         .candidate--selected & {
-            border-color: $green;
+            fill: $success;
         }
+    }
+
+    &--selected {
+        border-color: $green;
     }
 
     img {

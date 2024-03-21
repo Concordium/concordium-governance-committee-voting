@@ -21,10 +21,10 @@ function App() {
     const openState = useIsElectionOpen();
 
     return (
-        <div className="flex-fill d-flex flex-column justify-content-between">
+        <div className="flex-fill d-flex flex-column justify-content-between app">
             <div>
                 <Navbar className="justify-content-between my-2 mb-md-4" expand="md">
-                    <Container>
+                    <Container fluid="xxl">
                         {electionConfig === undefined && <div />}
                         {electionConfig !== undefined && (
                             <>
@@ -38,28 +38,29 @@ function App() {
                                     >
                                         {openState === ElectionOpenState.NotStarted &&
                                             `Opening at ${showDate(electionConfig.start)}`}
-                                        {openState === ElectionOpenState.SetupError &&
-                                            "Voting window to be determined"}
+                                        {openState === ElectionOpenState.SetupError && 'Voting window to be determined'}
                                         {openState === ElectionOpenState.Open &&
                                             `Open until ${showDate(electionConfig.end)}`}
                                         {openState === ElectionOpenState.Concluded &&
                                             `Closed at ${showDate(electionConfig.end)}`}
                                     </div>
                                 </Navbar.Brand>
-                                <Navbar.Toggle aria-controls="basic-navbar-nav" />
+                                <div className='app__nav-actions'>
+                                    <WalletConnection />
+                                    <Navbar.Toggle aria-controls="basic-navbar-nav" className='ms-2' />
+                                </div>
                                 <Navbar.Collapse id="basic-navbar-nav">
                                     <Nav>
                                         <Nav.Link as={NavLink} to={getDelegationRoute()}>
                                             Delegations
                                         </Nav.Link>
-                                        <Nav.Link as={'div'} role='button' onClick={() => toggleAccount?.()}>
+                                        <Nav.Link as={'div'} role="button" onClick={() => toggleAccount?.()}>
                                             Submissions
                                         </Nav.Link>
                                     </Nav>
                                 </Navbar.Collapse>
                             </>
                         )}
-                        <WalletConnection />
                     </Container>
                 </Navbar>
                 <Container as="main">

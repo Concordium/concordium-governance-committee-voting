@@ -14,6 +14,7 @@ import {
 } from '~/shared/store';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import { useElectionGuard } from '~/shared/election-guard';
+import CheckIcon from '~/assets/rounded-success.svg?react';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
@@ -28,7 +29,7 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
     const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
     const handleClick = () => {
         if (isElectionOpen) {
-            onClick();
+        onClick();
         }
     };
     return (
@@ -40,7 +41,7 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
                 className={clsx('candidate', isSelected && isElectionOpen && 'candidate--selected')}
             >
                 <Image src={imageUrl} alt={name} />
-                <Card.Body className="candidate__body">
+                <Card.Body>
                     <Card.Title>{name}</Card.Title>
                     <Card.Link
                         href={descriptionUrl}
@@ -51,13 +52,14 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
                         Read more
                     </Card.Link>
                 </Card.Body>
+                <CheckIcon className="candidate__checkmark" />
             </Card>
         </Col>
     );
 }
 
 /**
- * The home page component.
+ * The home page component
  */
 export default function Home() {
     const electionConfig = useAtomValue(electionConfigAtom);
