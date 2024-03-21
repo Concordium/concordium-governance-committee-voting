@@ -20,7 +20,7 @@ FROM --platform=linux/amd64 ${build_image} AS frontend
 ARG rust_version
 
 # Install rust dependencies for building electionguard bindings
-RUN apt update && apt install curl build-essential -y
+RUN apt update && apt install curl build-essential ca-certificates -y
 
 # It's usually a bit iffy to download and run stuff.
 # But we are requiring TLS, and downloading from a trusted domain.
