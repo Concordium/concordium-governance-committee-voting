@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useState } from 'react';
 import { Button, Offcanvas, ProgressBar, ProgressBarProps } from 'react-bootstrap';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { RESET } from 'jotai/utils';
@@ -28,13 +28,13 @@ import { getDelegationRoute } from '../router';
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
 
-    const connect = useCallback(() => {
+    const connect = () => {
         if (isActive || isConnecting) {
             return;
         }
 
         void _connect();
-    }, [_connect, isActive, isConnecting]);
+    };
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
@@ -48,15 +48,20 @@ function ConnectWalletConnect() {
  * Button for connecting user through Concordium Wallet for Web.
  */
 function ConnectBrowser() {
-    const { isActive, isConnecting, connect: _connect } = useBrowserWallet();
+    const bw = useBrowserWallet();
+    if (bw === undefined) {
+        return null;
+    }
 
-    const connect = useCallback(() => {
+    const { isActive, isConnecting, connect: _connect } = bw;
+
+    const connect = () => {
         if (isActive || isConnecting) {
             return;
         }
 
         void _connect();
-    }, [_connect, isActive, isConnecting]);
+    };
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
@@ -297,17 +302,45 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
     );
 });
 
-const activeConn = {
-    Trigger: ActiveConnectionTrigger,
-    Title: ActiveConnectionTitle,
-    Body: ActiveConnectionBody,
-};
+type ConnectionProps = {
+    modalState: [boolean, Dispatch<SetStateAction<boolean>>];
+}
 
-const selectConn: typeof activeConn = {
-    Trigger: SelectConnectionTrigger,
-    Title: SelectConnectionTitle,
-    Body: SelectConnectionBody,
-};
+function SelectConnection({modalState: [showModal, setShowModal]}: ConnectionProps) {
+    return (
+        <>
+            <SelectConnectionTrigger />
+            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
+                <Offcanvas.Header closeButton>
+                    <Offcanvas.Title className="d-flex">
+                        <SelectConnectionTitle />
+                    </Offcanvas.Title>
+                </Offcanvas.Header>
+                <Offcanvas.Body>
+                    <SelectConnectionBody />
+                </Offcanvas.Body>
+            </Offcanvas>
+        </>
+    )
+}
+
+function ActiveConnection({modalState: [showModal, setShowModal]}: ConnectionProps) {
+    return (
+        <>
+            <ActiveConnectionTrigger />
+            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
+                <Offcanvas.Header closeButton>
+                    <Offcanvas.Title className="d-flex">
+                        <ActiveConnectionTitle />
+                    </Offcanvas.Title>
+                </Offcanvas.Header>
+                <Offcanvas.Body>
+                    <ActiveConnectionBody />
+                </Offcanvas.Body>
+            </Offcanvas>
+        </>
+    )
+}
 
 /**
  * Component which shows the active connection state (if any), and allows the user to manage the connection and view
@@ -315,29 +348,20 @@ const selectConn: typeof activeConn = {
  */
 export function WalletConnection() {
     const wallet = useAtomValue(activeWalletAtom);
-    const [showModal, setShowModal] = useState(false);
+    const modalState = useState(false);
+    const [, setShowModal] = modalState;
     const setConnectionViewHandler = useSetAtom(connectionViewAtom);
 
     useEffect(() => {
         setConnectionViewHandler(() => () => setShowModal(true)); // atom setter interprets a function as a `SetStateAction`, which is why we pass an action which returns a function.
         return () => setConnectionViewHandler(RESET);
-    }, [setConnectionViewHandler]);
+    }, [setConnectionViewHandler, setShowModal]);
 
-    const { Trigger, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
+    if (wallet?.account !== undefined) {
+        return <ActiveConnection modalState={modalState} />
+    }
 
     return (
-        <>
-            <Trigger />
-            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="d-flex">
-                        <Title />
-                    </Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <Body />
-                </Offcanvas.Body>
-            </Offcanvas>
-        </>
+        <SelectConnection modalState={modalState} />
     );
 }

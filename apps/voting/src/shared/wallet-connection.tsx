@@ -57,7 +57,7 @@ const initialConnectorContext: ConnectorContext = {
     },
 };
 
-const browserWalletContext = createContext<ConnectorContext>(initialConnectorContext);
+const browserWalletContext = createContext<ConnectorContext | undefined>(undefined);
 const walletConnectContext = createContext<ConnectorContext>(initialConnectorContext);
 
 /**
@@ -139,12 +139,20 @@ function WalletProvider({ connector, children }: WalletProviderProps) {
 
 type WalletsProviderProps = PropsWithChildren<{
     /** Connector instance to the Concordium browser wallet */
-    browser: BrowserWalletConnector;
+    browser: BrowserWalletConnector | undefined;
     /** Connector instance to wallet connect compatible Concordium wallet */
-    walletConnect: WalletConnectConnector;
+    walletConnect: WalletConnectConnector | undefined;
     /** The currently active wallet */
     activeWallet: Wallet | undefined;
 }>;
+
+function OptionalWalletProvider({ connector, children }: Partial<WalletProviderProps>) {
+    if (connector === undefined) {
+        return <>{children}</>;
+    }
+
+    return <WalletProvider connector={connector}>{children}</WalletProvider>;
+}
 
 /**
  * Component whose sole purpose is to provide connection management functionality to the component tree below the
@@ -158,9 +166,9 @@ function WalletsProvider({ browser, walletConnect, activeWallet, children }: Wal
     }, [activeWallet, setActiveWallet]);
 
     return (
-        <WalletProvider connector={browser}>
-            <WalletProvider connector={walletConnect}>{children}</WalletProvider>
-        </WalletProvider>
+        <OptionalWalletProvider connector={browser}>
+            <OptionalWalletProvider connector={walletConnect}>{children}</OptionalWalletProvider>
+        </OptionalWalletProvider>
     );
 }
 
@@ -179,8 +187,7 @@ interface WalletConnectionManagerState {
  */
 export class WalletConnectionManager
     extends Component<WalletConnectionManagerProps, WalletConnectionManagerState>
-    implements WalletConnectionDelegate
-{
+    implements WalletConnectionDelegate {
     constructor(props: WalletConnectionManagerProps) {
         super(props);
 
@@ -235,29 +242,29 @@ export class WalletConnectionManager
         });
     }
 
-    async componentDidMount(): Promise<void> {
-        const bwPromise = BrowserWalletConnector.create(this);
-        const wcPromise = WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK);
-        const [bw, wc] = await Promise.all([bwPromise, wcPromise]);
-
-        this.setState({ browserWalletConnector: bw, walletConnectConnector: wc });
+    componentDidMount(): void {
+        void BrowserWalletConnector.create(this)
+            .catch(() => undefined)
+            .then((c) => {
+                this.setState({ browserWalletConnector: c });
+            });
+        void WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK)
+            .then((c) => {
+                this.setState({ walletConnectConnector: c });
+            });
     }
 
     render() {
         const { browserWalletConnector, walletConnectConnector } = this.state;
-        if (browserWalletConnector === undefined || walletConnectConnector === undefined) {
-            return null;
-        }
-
         const connection = this.state.connections[0];
         const activeWallet: Wallet | undefined =
             connection === undefined
                 ? undefined
                 : {
-                      chain: this.state.chains.get(connection),
-                      account: this.state.accounts.get(connection),
-                      connection,
-                  };
+                    chain: this.state.chains.get(connection),
+                    account: this.state.accounts.get(connection),
+                    connection,
+                };
 
         return (
             <WalletsProvider

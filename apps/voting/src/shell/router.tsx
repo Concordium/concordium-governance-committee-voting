@@ -16,9 +16,6 @@ const relativeRoutes = {
     /** Query delegation status for account */
     delegation: {
         path: '/delegation/:account?',
-    },
-    account: {
-        path: '/account'
     }
 } satisfies RouteChildren;
 
