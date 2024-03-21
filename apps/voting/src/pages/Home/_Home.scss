@@ -10,7 +10,8 @@
     &__checkmark {
         position: absolute;
         right: 15px;
-        top: 30px;
+        top: 50%;
+        transform: translateY(-50%);
         width: 40px;
         fill: $gray-300;
         transition: fill 0.1s;
@@ -33,5 +34,9 @@
         height: 105px;
         object-fit: cover;
         object-position: center;
+    }
+
+    &__score {
+        font-size: 11px;
     }
 }

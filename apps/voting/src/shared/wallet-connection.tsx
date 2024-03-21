@@ -187,7 +187,8 @@ interface WalletConnectionManagerState {
  */
 export class WalletConnectionManager
     extends Component<WalletConnectionManagerProps, WalletConnectionManagerState>
-    implements WalletConnectionDelegate {
+    implements WalletConnectionDelegate
+{
     constructor(props: WalletConnectionManagerProps) {
         super(props);
 
@@ -248,10 +249,9 @@ export class WalletConnectionManager
             .then((c) => {
                 this.setState({ browserWalletConnector: c });
             });
-        void WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK)
-            .then((c) => {
-                this.setState({ walletConnectConnector: c });
-            });
+        void WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK).then((c) => {
+            this.setState({ walletConnectConnector: c });
+        });
     }
 
     render() {
@@ -261,10 +261,10 @@ export class WalletConnectionManager
             connection === undefined
                 ? undefined
                 : {
-                    chain: this.state.chains.get(connection),
-                    account: this.state.accounts.get(connection),
-                    connection,
-                };
+                      chain: this.state.chains.get(connection),
+                      account: this.state.accounts.get(connection),
+                      connection,
+                  };
 
         return (
             <WalletsProvider

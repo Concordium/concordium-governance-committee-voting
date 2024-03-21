@@ -45,9 +45,9 @@ function App() {
                                             `Closed at ${showDate(electionConfig.end)}`}
                                     </div>
                                 </Navbar.Brand>
-                                <div className='app__nav-actions'>
+                                <div className="app__nav-actions">
                                     <WalletConnection />
-                                    <Navbar.Toggle aria-controls="basic-navbar-nav" className='ms-2' />
+                                    <Navbar.Toggle aria-controls="basic-navbar-nav" className="ms-2" />
                                 </div>
                                 <Navbar.Collapse id="basic-navbar-nav">
                                     <Nav>

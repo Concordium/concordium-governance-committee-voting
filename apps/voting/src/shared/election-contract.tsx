@@ -69,9 +69,24 @@ export function getElectionConfig(): Promise<ElectionContract.ReturnValueViewCon
 
 /**
  * Gets the current state of all guardians
- * @returns A promise resolving with the corresponding @linkcode ElectionContract.ReturnValueViewGuardiansState}
+ * @returns A promise resolving with the corresponding {@linkcode ElectionContract.ReturnValueViewGuardiansState}
  */
 export async function getGuardiansState(): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
     const res = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
     return ElectionContract.parseReturnValueViewGuardiansState(res);
+}
+
+/**
+ * Gets the election result
+ * @returns A promise resolving with the corresponding list of candidate results
+ */
+export async function getElectionResult() {
+    const res = await ElectionContract.dryRunViewElectionResult(contract, Parameter.empty());
+    const parsed = ElectionContract.parseReturnValueViewElectionResult(res);
+
+    if (parsed?.type !== 'Some') {
+        return undefined;
+    }
+
+    return parsed.content;
 }

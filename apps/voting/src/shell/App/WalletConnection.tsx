@@ -304,9 +304,9 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
 
 type ConnectionProps = {
     modalState: [boolean, Dispatch<SetStateAction<boolean>>];
-}
+};
 
-function SelectConnection({modalState: [showModal, setShowModal]}: ConnectionProps) {
+function SelectConnection({ modalState: [showModal, setShowModal] }: ConnectionProps) {
     return (
         <>
             <SelectConnectionTrigger />
@@ -321,10 +321,10 @@ function SelectConnection({modalState: [showModal, setShowModal]}: ConnectionPro
                 </Offcanvas.Body>
             </Offcanvas>
         </>
-    )
+    );
 }
 
-function ActiveConnection({modalState: [showModal, setShowModal]}: ConnectionProps) {
+function ActiveConnection({ modalState: [showModal, setShowModal] }: ConnectionProps) {
     return (
         <>
             <ActiveConnectionTrigger />
@@ -339,7 +339,7 @@ function ActiveConnection({modalState: [showModal, setShowModal]}: ConnectionPro
                 </Offcanvas.Body>
             </Offcanvas>
         </>
-    )
+    );
 }
 
 /**
@@ -358,10 +358,8 @@ export function WalletConnection() {
     }, [setConnectionViewHandler, setShowModal]);
 
     if (wallet?.account !== undefined) {
-        return <ActiveConnection modalState={modalState} />
+        return <ActiveConnection modalState={modalState} />;
     }
 
-    return (
-        <SelectConnection modalState={modalState} />
-    );
+    return <SelectConnection modalState={modalState} />;
 }

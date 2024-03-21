@@ -1,10 +1,10 @@
 import { clsx } from 'clsx';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
 import { Buffer } from 'buffer/index.js';
 
-import { registerVotes } from '~/shared/election-contract';
+import { getElectionResult, registerVotes } from '~/shared/election-contract';
 import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
@@ -15,21 +15,24 @@ import {
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import { useElectionGuard } from '~/shared/election-guard';
 import CheckIcon from '~/assets/rounded-success.svg?react';
+import { useAsyncMemo } from 'shared/util';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
     onClick(): void;
     isSelected: boolean;
+    votes: string | undefined;
 }
 
 /**
  * Renders an election candidate
  */
-function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isSelected }: CandidateProps) {
-    const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
+function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isSelected, votes }: CandidateProps) {
+    const electionState = useIsElectionOpen();
+    const isElectionOpen = electionState === ElectionOpenState.Open;
     const handleClick = () => {
         if (isElectionOpen) {
-        onClick();
+            onClick();
         }
     };
     return (
@@ -43,6 +46,11 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
                 <Image src={imageUrl} alt={name} />
                 <Card.Body>
                     <Card.Title>{name}</Card.Title>
+                    {electionState === ElectionOpenState.Concluded && (
+                        <Card.Text className="candidate__score mt-n2 mb-0 text-muted">
+                            {votes !== undefined ? `Election score: ${votes}` : 'Tally in progress'}
+                        </Card.Text>
+                    )}
                     <Card.Link
                         href={descriptionUrl}
                         onClick={(e) => e.stopPropagation()}
@@ -52,7 +60,7 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
                         Read more
                     </Card.Link>
                 </Card.Body>
-                <CheckIcon className="candidate__checkmark" />
+                {isElectionOpen && <CheckIcon className="candidate__checkmark" />}
             </Card>
         </Col>
     );
@@ -69,9 +77,26 @@ export default function Home() {
     const wallet = useAtomValue(activeWalletAtom);
     const openViewConnection = useAtomValue(connectionViewAtom);
     const addSubmission = useSetAtom(addSubmittedBallotAtom);
-    const isElectionOpen = useIsElectionOpen() === ElectionOpenState.Open;
+    const electionState = useIsElectionOpen();
+    const isElectionOpen = electionState === ElectionOpenState.Open;
     const { getEncryptedBallot } = useElectionGuard();
     const [loading, setLoading] = useState(false);
+    const electionResult = useAsyncMemo(getElectionResult);
+    const candidates = useMemo(() => {
+        if (electionResult !== undefined && electionConfig?.candidates !== undefined) {
+            const res = [...electionConfig.candidates];
+            res.sort((a, b) => {
+                const aVotes = electionResult[a.index]?.cummulative_votes;
+                const bVotes = electionResult[b.index]?.cummulative_votes;
+                if (aVotes > bVotes) return -1;
+                if (aVotes < bVotes) return 1;
+                return 0;
+            });
+            return res;
+        }
+
+        return electionConfig?.candidates;
+    }, [electionResult, electionConfig]);
 
     /**
      * Toggle the selection of a candidate at `index`
@@ -90,16 +115,20 @@ export default function Home() {
      * Confirms the ballot submission, i.e. attempts to register the ballot on chain.
      */
     const confirmSubmission = async () => {
-        if (wallet?.connection === undefined || electionConfig === undefined || wallet?.account === undefined) {
+        if (wallet?.connection === undefined || candidates === undefined || wallet?.account === undefined) {
             throw new Error('Expected required parameters to be defined'); // Will not happen.
         }
+
         setLoading(true);
-        const ballot = electionConfig.candidates.map((_, i) => selected.includes(i));
-        const encrypted = await getEncryptedBallot(ballot);
-        setLoading(false);
-        const hexVotes = Buffer.from(encrypted).toString('hex');
-        const transaction = await registerVotes(hexVotes, wallet.connection, wallet.account);
-        addSubmission(transaction);
+        try {
+            const ballot = candidates.map((c) => selected.includes(c.index));
+            const encrypted = await getEncryptedBallot(ballot);
+            const hexVotes = Buffer.from(encrypted).toString('hex');
+            const transaction = await registerVotes(hexVotes, wallet.connection, wallet.account);
+            addSubmission(transaction);
+        } finally {
+            setLoading(false);
+        }
 
         closeConfirm();
         openViewConnection?.();
@@ -126,19 +155,20 @@ export default function Home() {
         }
     }, [awaitConnection, wallet?.connection, submit, wallet?.account]);
 
-    if (electionConfig === undefined) {
+    if (candidates === undefined) {
         return null;
     }
 
     return (
         <>
             <Row className="mt-n4">
-                {electionConfig?.candidates.map((c) => (
+                {candidates?.map((c) => (
                     <Candidate
                         key={c.index}
                         candidate={c}
                         onClick={() => toggleCandidate(c.index)}
                         isSelected={selected.includes(c.index)}
+                        votes={electionResult?.[c.index]?.cummulative_votes?.toString()}
                     />
                 ))}
             </Row>
@@ -160,17 +190,17 @@ export default function Home() {
                             for any candidate(s).
                         </p>
                     )}
-                    {selected.length === electionConfig.candidates.length && (
+                    {selected.length === candidates.length && (
                         <p>
                             You have selected all candidates. Confirming this submission will result in a ballot with
                             equal weight distribution on all candidates.
                         </p>
                     )}
-                    {0 < selected.length && selected.length < electionConfig.candidates.length && (
+                    {0 < selected.length && selected.length < candidates.length && (
                         <>
                             <p>You have selected the following candidates:</p>
                             <ul>
-                                {electionConfig.candidates
+                                {candidates
                                     .filter((c) => selected.includes(c.index))
                                     .map((c) => (
                                         <li key={c.index}>{c.name}</li>
