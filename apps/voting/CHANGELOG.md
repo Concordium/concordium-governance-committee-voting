@@ -1,3 +1,7 @@
+## 0.2.1
+
+- Various minor changes and bugfixes
+
 ## 0.2.0
 
 - Votes are displayed using a hex schema when signature is requested.

@@ -11,12 +11,13 @@ import {
     Energy,
     AccountAddress,
     TransactionHash,
+    Parameter,
 } from '@concordium/web-sdk';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 
-const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
+export const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
 
 const registerVotesSchema = toBuffer(schema.entrypoints.registerVotes.parameter, 'base64');
@@ -64,4 +65,28 @@ export async function registerVotes(
  */
 export function getElectionConfig(): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
     return ElectionContract.getElectionConfig(contract);
+}
+
+/**
+ * Gets the current state of all guardians
+ * @returns A promise resolving with the corresponding {@linkcode ElectionContract.ReturnValueViewGuardiansState}
+ */
+export async function getGuardiansState(): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
+    const res = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
+    return ElectionContract.parseReturnValueViewGuardiansState(res);
+}
+
+/**
+ * Gets the election result
+ * @returns A promise resolving with the corresponding list of candidate results
+ */
+export async function getElectionResult() {
+    const res = await ElectionContract.dryRunViewElectionResult(contract, Parameter.empty());
+    const parsed = ElectionContract.parseReturnValueViewElectionResult(res);
+
+    if (parsed?.type !== 'Some') {
+        return undefined;
+    }
+
+    return parsed.content;
 }

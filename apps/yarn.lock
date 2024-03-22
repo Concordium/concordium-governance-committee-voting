@@ -1272,6 +1272,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@restart/ui@npm:^1.6.8":
+  version: 1.6.8
+  resolution: "@restart/ui@npm:1.6.8"
+  dependencies:
+    "@babel/runtime": "npm:^7.21.0"
+    "@popperjs/core": "npm:^2.11.6"
+    "@react-aria/ssr": "npm:^3.5.0"
+    "@restart/hooks": "npm:^0.4.9"
+    "@types/warning": "npm:^3.0.0"
+    dequal: "npm:^2.0.3"
+    dom-helpers: "npm:^5.2.0"
+    uncontrollable: "npm:^8.0.1"
+    warning: "npm:^4.0.3"
+  peerDependencies:
+    react: ">=16.14.0"
+    react-dom: ">=16.14.0"
+  checksum: d87c397316f2c3e34b31541b4a880065c904ca22b0236d1479f273e1216bfb75713e9f545aa8adfeca888cd5f3aca287fa90932feb26a04d7eeacf4a06286a20
+  languageName: node
+  linkType: hard
+
 "@rollup/plugin-virtual@npm:^3.0.1":
   version: 3.0.2
   resolution: "@rollup/plugin-virtual@npm:3.0.2"
@@ -6354,6 +6374,33 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-bootstrap@npm:^2.10.2":
+  version: 2.10.2
+  resolution: "react-bootstrap@npm:2.10.2"
+  dependencies:
+    "@babel/runtime": "npm:^7.22.5"
+    "@restart/hooks": "npm:^0.4.9"
+    "@restart/ui": "npm:^1.6.8"
+    "@types/react-transition-group": "npm:^4.4.6"
+    classnames: "npm:^2.3.2"
+    dom-helpers: "npm:^5.2.1"
+    invariant: "npm:^2.2.4"
+    prop-types: "npm:^15.8.1"
+    prop-types-extra: "npm:^1.1.0"
+    react-transition-group: "npm:^4.4.5"
+    uncontrollable: "npm:^7.2.1"
+    warning: "npm:^4.0.3"
+  peerDependencies:
+    "@types/react": ">=16.14.8"
+    react: ">=16.14.0"
+    react-dom: ">=16.14.0"
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: bd50d18df9ee726b1a48e18ba3586602401503993786ebcffcc73ee38c9775ed3532b53f9251bea12c5346d1f7b065c3f920cd1ac295554533f636b0c3b0ee76
+  languageName: node
+  linkType: hard
+
 "react-bootstrap@npm:^2.9.1":
   version: 2.9.1
   resolution: "react-bootstrap@npm:2.9.1"
@@ -6923,6 +6970,7 @@ __metadata:
     glob: "npm:^10.3.10"
     prettier: "npm:^3.0.3"
     react: "npm:^18.2.0"
+    react-bootstrap: "npm:^2.10.2"
     tsx: "npm:^4.1.3"
     typescript: "npm:^5.2.2"
   languageName: unknown
@@ -7785,6 +7833,7 @@ __metadata:
     uuid: "npm:^9.0.1"
     vite: "npm:^5.0.11"
     vite-plugin-handlebars: "npm:^2.0.0"
+    vite-plugin-svgr: "npm:^4.2.0"
     vite-plugin-top-level-await: "patch:vite-plugin-top-level-await@npm%3A1.3.1#~/.yarn/patches/vite-plugin-top-level-await-npm-1.3.1-d3a3de5f37.patch"
     vite-plugin-wasm: "npm:^3.2.2"
     vite-tsconfig-paths: "npm:^4.2.1"

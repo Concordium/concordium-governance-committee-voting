@@ -15,7 +15,7 @@ import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 import { ResourceVerificationError, expectValue, getChecksumResource, isDefined } from 'shared/util';
 import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 
-import { getElectionConfig } from './election-contract';
+import { getElectionConfig, getGuardiansState } from './election-contract';
 import { pollUntil } from './util';
 import { NETWORK } from './constants';
 import {
@@ -80,6 +80,8 @@ export interface ElectionConfig {
     parameters: ElectionParameters;
     /** The registered public keys of the election guardians */
     guardianKeys: GuardianPublicKey[];
+    /** Whether the setup phase has been completed successfully */
+    setupDone: boolean;
 }
 
 /**
@@ -118,8 +120,8 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
         return;
     }
 
-    void getElectionConfig().then(async (config) => {
-        if (config === undefined) {
+    void Promise.all([getElectionConfig(), getGuardiansState()]).then(async ([config, guardians]) => {
+        if (config === undefined || guardians === undefined) {
             return undefined;
         }
 
@@ -133,6 +135,13 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             ...candidatePromises,
         ]);
 
+        const setupDone = guardians.every(
+            ([, g]) =>
+                g.public_key.type === 'Some' &&
+                g.encrypted_share.type === 'Some' &&
+                g.status.type === 'Some' &&
+                g.status.content.type === 'VerificationSuccessful',
+        );
         const mappedConfig: ElectionConfig = {
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
@@ -141,6 +150,7 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             manifest,
             parameters,
             guardianKeys: config.guardian_keys,
+            setupDone,
         };
 
         set(electionConfigBaseAtom, mappedConfig);

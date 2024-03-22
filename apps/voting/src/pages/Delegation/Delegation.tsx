@@ -1,10 +1,39 @@
 import { AccountAddress } from '@concordium/web-sdk';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Col, Form, Overlay, Row, Spinner, Table, Tooltip } from 'react-bootstrap';
 import { useNavigate, useParams } from 'react-router-dom';
 import { accountShowShort } from 'shared/util';
+import CopyIcon from '~/assets/copy.svg?react';
 import { DelegationsResponse, getDelegations } from '~/shared/election-server';
 import { getDelegationRoute } from '~/shell/router';
+
+type AccountCellProps = {
+    account: AccountAddress.Type;
+};
+function AccountCell({ account }: AccountCellProps) {
+    const [show, setShow] = useState(false);
+    const ref = useRef(null);
+
+    const handleClick = () => {
+        void navigator.clipboard.writeText(account.address);
+        setShow(true);
+        setTimeout(() => {
+            setShow(false);
+        }, 1000);
+    };
+
+    return (
+        <>
+            <td ref={ref} className="delegation__account" onClick={handleClick}>
+                {accountShowShort(account)}
+                <CopyIcon />
+            </td>
+            <Overlay target={ref.current} show={show} placement="top">
+                {(props) => <Tooltip {...props}>Copied</Tooltip>}
+            </Overlay>
+        </>
+    );
+}
 
 /**
  * Page for viewing the delegations related to an account
@@ -68,7 +97,6 @@ export default function Delegation() {
             <Col md={18} lg={12}>
                 <div className="text-center">
                     <Form.Group className="mb-3" controlId="ccd-account">
-                        <Form.Label>Concordium account</Form.Label>
                         <Form.Control
                             className="text-center"
                             type="search"
@@ -91,15 +119,15 @@ export default function Delegation() {
                                     <tr>
                                         <th>From</th>
                                         <th>To</th>
-                                        <th>Weight</th>
+                                        <th>Delegated weight</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {delegations?.results.map((d) => (
                                         <tr key={d.id.toString()}>
-                                            <td>{accountShowShort(d.fromAccount)}</td>
-                                            <td>{accountShowShort(d.toAccount)}</td>
-                                            <td>{d.weight.toString()}</td>
+                                            <AccountCell account={d.fromAccount} />
+                                            <AccountCell account={d.toAccount} />
+                                            <td>{d.weight.toString()} CCD</td>
                                         </tr>
                                     ))}
                                 </tbody>
