@@ -1,3 +1,7 @@
+## 0.2.2
+
+- Fix type error when closing wallet connect popup.
+
 ## 0.2.1
 
 - Various minor changes and bugfixes

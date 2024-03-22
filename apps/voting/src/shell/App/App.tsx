@@ -20,6 +20,15 @@ function App() {
     const toggleAccount = useAtomValue(connectionViewAtom);
     const openState = useIsElectionOpen();
 
+    const open = electionConfig !== undefined && (
+        <div className={clsx(openState === ElectionOpenState.Open ? 'text-success' : 'text-muted')}>
+            {openState === ElectionOpenState.NotStarted && `Opening at ${showDate(electionConfig.start)}`}
+            {openState === ElectionOpenState.SetupError && 'Voting window to be determined'}
+            {openState === ElectionOpenState.Open && `Open until ${showDate(electionConfig.end)}`}
+            {openState === ElectionOpenState.Concluded && `Closed at ${showDate(electionConfig.end)}`}
+        </div>
+    );
+
     return (
         <div className="flex-fill d-flex flex-column justify-content-between app">
             <div>
@@ -30,20 +39,7 @@ function App() {
                             <>
                                 <Navbar.Brand as={NavLink} to={routes.home.path}>
                                     {electionConfig.description}
-                                    <div
-                                        className={clsx(
-                                            'fs-6 app__nav-phase',
-                                            openState === ElectionOpenState.Open ? 'text-success' : 'text-muted',
-                                        )}
-                                    >
-                                        {openState === ElectionOpenState.NotStarted &&
-                                            `Opening at ${showDate(electionConfig.start)}`}
-                                        {openState === ElectionOpenState.SetupError && 'Voting window to be determined'}
-                                        {openState === ElectionOpenState.Open &&
-                                            `Open until ${showDate(electionConfig.end)}`}
-                                        {openState === ElectionOpenState.Concluded &&
-                                            `Closed at ${showDate(electionConfig.end)}`}
-                                    </div>
+                                    <span className="d-none d-md-block fs-6 position-absolute">{open}</span>
                                 </Navbar.Brand>
                                 <div className="app__nav-actions">
                                     <WalletConnection />
@@ -64,6 +60,7 @@ function App() {
                     </Container>
                 </Navbar>
                 <Container as="main">
+                    <div className="d-md-none text-center fs-5 mb-3">{open}</div>
                     <Outlet />
                 </Container>
             </div>

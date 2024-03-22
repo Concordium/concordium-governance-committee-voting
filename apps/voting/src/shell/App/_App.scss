@@ -67,15 +67,6 @@
         white-space: pre-wrap;
     }
 
-    &__nav-phase {
-        display: none;
-
-        @include media-breakpoint-up(md) {
-            display: block;
-            position: absolute;
-        }
-    }
-
     &__nav-actions {
         @include media-breakpoint-up(md) {
             order: 1;

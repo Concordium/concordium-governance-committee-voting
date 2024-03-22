@@ -99,7 +99,7 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
             if (wc instanceof BrowserWalletConnector && (await wc.client.getSelectedChain()) !== NETWORK.genesisHash) {
                 await wc.disconnect();
                 throw new Error(`Expected wallet network to be ${NETWORK.name}`);
-            } else if (wc instanceof WalletConnectConnector) {
+            } else if (wc instanceof WalletConnectConnector && conn !== undefined) {
                 // This is a workaround as it does not seem to be possible to access the network used internally in the
                 // cryptoX wallet.
                 const account = (conn as WalletConnectConnection).getConnectedAccount();
