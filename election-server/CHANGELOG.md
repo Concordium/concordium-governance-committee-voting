@@ -1,6 +1,10 @@
+## 0.2.2
+
+- Update concordium rust dependencies
+
 ## 0.2.1
 
-Support TLS in docker images.
+- Support TLS in docker images.
 
 ## 0.2.0
 
