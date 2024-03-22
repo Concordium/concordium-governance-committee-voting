@@ -1268,7 +1268,6 @@ dependencies = [
  "chrono",
  "clap",
  "concordium-rust-sdk",
- "concordium-std",
  "concordium_governance_committee_election",
  "csv",
  "deadpool-postgres",
