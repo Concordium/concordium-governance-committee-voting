@@ -97,7 +97,6 @@ export default function Delegation() {
             <Col md={18} lg={12}>
                 <div className="text-center">
                     <Form.Group className="mb-3" controlId="ccd-account">
-                        <Form.Label>Concordium account</Form.Label>
                         <Form.Control
                             className="text-center"
                             type="search"

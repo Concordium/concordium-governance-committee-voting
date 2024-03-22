@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button, Offcanvas, ProgressBar, ProgressBarProps } from 'react-bootstrap';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { RESET } from 'jotai/utils';
@@ -21,6 +21,7 @@ import { commonDateTimeFormat } from '~/shared/util';
 import { accountShowShort } from 'shared/util';
 import { Link } from 'react-router-dom';
 import { getDelegationRoute } from '../router';
+import { Explain } from 'shared/components';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.
@@ -33,7 +34,7 @@ function ConnectWalletConnect() {
             return;
         }
 
-        void _connect();
+        void _connect().catch(alert);
     };
 
     return (
@@ -60,7 +61,7 @@ function ConnectBrowser() {
             return;
         }
 
-        void _connect();
+        void _connect().catch(alert);
     };
 
     return (
@@ -222,7 +223,10 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
                     <section className="mb-4">
                         <h5>Account details</h5>
                         <div className="active-connection__text-small">
-                            Voting weight: {weight?.votingWeight.toString()} CCD*
+                            <Explain description="The voting weight used to scale the votes cast by the account.">
+                                Voting weight
+                            </Explain>
+                            : {weight?.votingWeight.toString()} CCD*
                             {AccountAddress.instanceOf(weight?.delegatedTo) && (
                                 <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
                             )}
@@ -232,7 +236,11 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
                                 <b>Delegatee for**:</b>
                                 {weight?.delegationsFrom.results.map(([account, weight]) => (
                                     <div key={AccountAddress.toBase58(account)}>
-                                        {accountShowShort(account)} (delegated weight: {weight.toString()} CCD)
+                                        {accountShowShort(account)} (
+                                        <Explain description="The voting weight of another account, which has been delegated to the currently selected account.">
+                                            delegated weight
+                                        </Explain>
+                                        : {weight.toString()} CCD)
                                     </div>
                                 ))}
                                 {weight?.delegationsFrom.hasMore && (
@@ -302,45 +310,17 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
     );
 });
 
-type ConnectionProps = {
-    modalState: [boolean, Dispatch<SetStateAction<boolean>>];
+const activeConn = {
+    Trigger: ActiveConnectionTrigger,
+    Title: ActiveConnectionTitle,
+    Body: ActiveConnectionBody,
 };
 
-function SelectConnection({ modalState: [showModal, setShowModal] }: ConnectionProps) {
-    return (
-        <>
-            <SelectConnectionTrigger />
-            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="d-flex">
-                        <SelectConnectionTitle />
-                    </Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <SelectConnectionBody />
-                </Offcanvas.Body>
-            </Offcanvas>
-        </>
-    );
-}
-
-function ActiveConnection({ modalState: [showModal, setShowModal] }: ConnectionProps) {
-    return (
-        <>
-            <ActiveConnectionTrigger />
-            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
-                <Offcanvas.Header closeButton>
-                    <Offcanvas.Title className="d-flex">
-                        <ActiveConnectionTitle />
-                    </Offcanvas.Title>
-                </Offcanvas.Header>
-                <Offcanvas.Body>
-                    <ActiveConnectionBody />
-                </Offcanvas.Body>
-            </Offcanvas>
-        </>
-    );
-}
+const selectConn: typeof activeConn = {
+    Trigger: SelectConnectionTrigger,
+    Title: SelectConnectionTitle,
+    Body: SelectConnectionBody,
+};
 
 /**
  * Component which shows the active connection state (if any), and allows the user to manage the connection and view
@@ -348,8 +328,7 @@ function ActiveConnection({ modalState: [showModal, setShowModal] }: ConnectionP
  */
 export function WalletConnection() {
     const wallet = useAtomValue(activeWalletAtom);
-    const modalState = useState(false);
-    const [, setShowModal] = modalState;
+    const [showModal, setShowModal] = useState(false);
     const setConnectionViewHandler = useSetAtom(connectionViewAtom);
 
     useEffect(() => {
@@ -357,9 +336,21 @@ export function WalletConnection() {
         return () => setConnectionViewHandler(RESET);
     }, [setConnectionViewHandler, setShowModal]);
 
-    if (wallet?.account !== undefined) {
-        return <ActiveConnection modalState={modalState} />;
-    }
+    const { Trigger, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
 
-    return <SelectConnection modalState={modalState} />;
+    return (
+        <>
+            <Trigger />
+            <Offcanvas show={showModal} onHide={() => setShowModal(false)} placement="end">
+                <Offcanvas.Header closeButton>
+                    <Offcanvas.Title className="d-flex">
+                        <Title />
+                    </Offcanvas.Title>
+                </Offcanvas.Header>
+                <Offcanvas.Body>
+                    <Body />
+                </Offcanvas.Body>
+            </Offcanvas>
+        </>
+    );
 }

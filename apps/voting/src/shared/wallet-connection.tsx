@@ -1,6 +1,7 @@
 import {
     BrowserWalletConnector,
     CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
+    WalletConnectConnection,
     WalletConnectConnector,
     WalletConnection,
     WalletConnectionDelegate,
@@ -22,6 +23,7 @@ import { NETWORK } from './constants';
 import { activeWalletAtom, Wallet } from './store';
 import { AccountAddress } from '@concordium/web-sdk';
 import { updateMapEntry } from './util';
+import { grpc } from './election-contract';
 
 export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     projectId: CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
@@ -93,7 +95,23 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
     const connect = useCallback(async () => {
         setIsConnecting(true);
         try {
-            return await wc.connect();
+            const conn = await wc.connect();
+            if (wc instanceof BrowserWalletConnector && (await wc.client.getSelectedChain()) !== NETWORK.genesisHash) {
+                await wc.disconnect();
+                throw new Error(`Expected wallet network to be ${NETWORK.name}`);
+            } else if (wc instanceof WalletConnectConnector) {
+                // This is a workaround as it does not seem to be possible to access the network used internally in the
+                // cryptoX wallet.
+                const account = (conn as WalletConnectConnection).getConnectedAccount();
+                try {
+                    await grpc.getAccountInfo(AccountAddress.fromBase58(account));
+                } catch {
+                    await wc.disconnect();
+                    throw new Error(`Expected wallet network to be ${NETWORK.name}`);
+                }
+            }
+
+            return conn;
         } finally {
             setIsConnecting(false);
         }

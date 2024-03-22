@@ -16,6 +16,7 @@ import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import { useElectionGuard } from '~/shared/election-guard';
 import CheckIcon from '~/assets/rounded-success.svg?react';
 import { useAsyncMemo } from 'shared/util';
+import { Explain } from 'shared/components';
 
 interface CandidateProps {
     candidate: IndexedCandidateDetails;
@@ -48,10 +49,19 @@ function Candidate({ candidate: { name, imageUrl, descriptionUrl }, onClick, isS
                     <Card.Title>{name}</Card.Title>
                     {electionState === ElectionOpenState.Concluded && (
                         <Card.Text className="candidate__score mt-n2 mb-0 text-muted">
-                            {votes !== undefined ? `Election score: ${votes}` : 'Tally in progress'}
+                            {votes !== undefined && (
+                                <>
+                                    <Explain description="The sum of all weighted votes cast for that specific candidate.">
+                                        Election score
+                                    </Explain>
+                                    : {votes}
+                                </>
+                            )}
+                            {votes === undefined && <>Tally in progress</>}
                         </Card.Text>
                     )}
                     <Card.Link
+                        className="fs-6"
                         href={descriptionUrl}
                         onClick={(e) => e.stopPropagation()}
                         target="_blank"

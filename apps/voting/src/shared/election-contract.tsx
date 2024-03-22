@@ -17,7 +17,7 @@ import { TypedSmartContractParameters, WalletConnection } from '@concordium/wall
 
 import { CONTRACT_ADDRESS, GRPC_ADDRESS, GRPC_PORT } from './constants';
 
-const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
+export const grpc = new ConcordiumGRPCWebClient(GRPC_ADDRESS, GRPC_PORT);
 const contract = ElectionContract.createUnchecked(grpc, CONTRACT_ADDRESS);
 
 const registerVotesSchema = toBuffer(schema.entrypoints.registerVotes.parameter, 'base64');

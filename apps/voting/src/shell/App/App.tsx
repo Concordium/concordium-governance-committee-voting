@@ -68,7 +68,14 @@ function App() {
                 </Container>
             </div>
             <Container as="footer" className="app__footer mb-3">
-                <div>Version: {pkg.version}</div>
+                <span>Version: {pkg.version}</span>
+                <a
+                    target="_blank"
+                    href="https://developer.concordium.software/en/mainnet/net/voting/gc-voting.html"
+                    rel="noreferrer"
+                >
+                    Documentation
+                </a>
             </Container>
         </div>
     );
