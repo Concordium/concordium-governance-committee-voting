@@ -13,10 +13,10 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
+    common::types::Amount,
     smart_contracts::common::AccountAddress,
     types::{hashes::TransactionHash, ContractAddress},
 };
-use concordium_std::Amount;
 use election_common::{get_scaling_factor, WeightRow};
 use election_server::{
     db::{DatabasePool, StoredBallotSubmission, StoredDelegation},

@@ -2,11 +2,10 @@ use anyhow::{ensure, Context};
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
     contract_client::{ContractClient, ViewError},
-    smart_contracts::common::{self as contracts_common},
-    types::{hashes::TransactionHash, smart_contracts::InstanceInfo},
+    smart_contracts::common as contracts_common,
+    types::{hashes::TransactionHash, smart_contracts::InstanceInfo, ContractAddress},
     v2::{self, BlockIdentifier},
 };
-use concordium_std::ContractAddress;
 use eg::ballot::BallotEncrypted;
 use serde::Serialize;
 use std::{fs::File, path::Path};
