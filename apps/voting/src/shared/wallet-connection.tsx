@@ -1,11 +1,17 @@
 import {
     BrowserWalletConnector,
     CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
-    WalletConnectConnection,
+    MAINNET,
     WalletConnectConnector,
+    WalletConnectEvents,
+    WalletConnectMethods,
     WalletConnection,
     WalletConnectionDelegate,
     WalletConnector,
+    concordiumWalletMainnet,
+    concordiumWalletTestnet,
+    cryptoXWalletMainnet,
+    cryptoXWalletTestnet,
 } from '@concordium/wallet-connectors';
 import { SignClientTypes } from '@walletconnect/types';
 import {
@@ -19,7 +25,7 @@ import {
     useState,
 } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { NETWORK } from './constants';
+import { IS_MOBILE, NETWORK } from './constants';
 import { activeWalletAtom, Wallet } from './store';
 import { AccountAddress } from '@concordium/web-sdk';
 import { updateMapEntry } from './util';
@@ -77,6 +83,12 @@ export function useWalletConnect() {
     return useContext(walletConnectContext);
 }
 
+const WALLETS = IS_MOBILE
+    ? NETWORK === MAINNET
+        ? [cryptoXWalletMainnet, concordiumWalletMainnet]
+        : [cryptoXWalletTestnet, concordiumWalletTestnet]
+    : undefined;
+
 /**
  * Hook for managing connections of a {@linkcode WalletConnector}.
  *
@@ -95,14 +107,26 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
     const connect = useCallback(async () => {
         setIsConnecting(true);
         try {
-            const conn = await wc.connect();
+            let conn: WalletConnection | undefined;
             if (wc instanceof BrowserWalletConnector && (await wc.client.getSelectedChain()) !== NETWORK.genesisHash) {
+                conn = await wc.connect();
                 await wc.disconnect();
                 throw new Error(`Expected wallet network to be ${NETWORK.name}`);
-            } else if (wc instanceof WalletConnectConnector && conn !== undefined) {
+            } else if (wc instanceof WalletConnectConnector) {
                 // This is a workaround as it does not seem to be possible to access the network used internally in the
                 // cryptoX wallet.
-                const account = (conn as WalletConnectConnection).getConnectedAccount();
+                const temp = await wc.connectWithScope(
+                    [WalletConnectMethods.SignAndSendTransaction],
+                    [WalletConnectEvents.AccountsChanged],
+                    WALLETS,
+                );
+
+                if (temp === undefined) {
+                    return undefined;
+                }
+
+                const account = temp.getConnectedAccount();
+                conn = temp;
                 try {
                     await grpc.getAccountInfo(AccountAddress.fromBase58(account));
                 } catch {

@@ -13,3 +13,5 @@ export const GRPC_PORT = Number(port);
 
 /** The contract address of the election smart contract */
 export const CONTRACT_ADDRESS = ContractAddress.fromSerializable(CONFIG.contractAddress);
+
+export const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|Opera Mini/i.test(navigator.userAgent);
