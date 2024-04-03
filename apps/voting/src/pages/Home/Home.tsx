@@ -91,7 +91,7 @@ export default function Home() {
     const isElectionOpen = electionState === ElectionOpenState.Open;
     const { getEncryptedBallot } = useElectionGuard();
     const [loading, setLoading] = useState(false);
-    const electionResult = useAsyncMemo(getElectionResult);
+    const electionResult = useAsyncMemo(getElectionResult, console.error, []);
     const candidates = useMemo(() => {
         if (electionResult !== undefined && electionConfig?.candidates !== undefined) {
             const res = [...electionConfig.candidates];

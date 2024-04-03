@@ -19,7 +19,7 @@ env:
   NODE_VERSION: "18.16.0"
   RUST_VERSION: "1.74"
   RUST_FMT: nightly-2023-04-01-x86_64-unknown-linux-gnu
-  CARGO_CONCORDIUM_VERSION: "3.0.0"
+  CARGO_CONCORDIUM_VERSION: "3.2.0"
   CCD_ELECTION_CONTRACT_ADDRESS: <0,0> # Otherwise build will fail
 
 jobs:
@@ -48,6 +48,8 @@ jobs:
             ./apps/node_modules
             ./apps/voting/node_modules
             ./apps/guardian/node_modules
+            ./apps/shared/node_modules
+            ./apps/ccd-bootstrap/node_modules
           key: ${{ runner.os }}-yarn-${{ hashFiles('./apps/yarn.lock') }}-${{ env.DUMMY }}
           restore-keys: |
             ${{ runner.os }}-yarn
@@ -104,6 +106,8 @@ jobs:
             ./apps/node_modules
             ./apps/voting/node_modules
             ./apps/guardian/node_modules
+            ./apps/shared/node_modules
+            ./apps/ccd-bootstrap/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Generate contract client
@@ -139,6 +143,8 @@ jobs:
             ./apps/node_modules
             ./apps/voting/node_modules
             ./apps/guardian/node_modules
+            ./apps/shared/node_modules
+            ./apps/ccd-bootstrap/node_modules
           key: ${{ runner.os }}-yarn
 
       - name: Restore generated contract client

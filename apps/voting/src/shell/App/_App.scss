@@ -3,7 +3,6 @@
         line-height: 1;
         display: flex;
         align-items: center;
-        // flex-direction: column;
         margin: 0 10px 5px;
         font-weight: $font-weight-bold;
         font-size: 14px;
@@ -63,17 +62,15 @@
         }
     }
 
-    .navbar-brand {
-        white-space: pre-wrap;
+    .navbar {
+        @include media-breakpoint-down(md) {
+            padding-bottom: 15px;
+            border-bottom: 1px solid $gray-300;
+        }
     }
 
-    &__nav-phase {
-        display: none;
-
-        @include media-breakpoint-up(md) {
-            display: block;
-            position: absolute;
-        }
+    .navbar-brand {
+        white-space: pre-wrap;
     }
 
     &__nav-actions {
