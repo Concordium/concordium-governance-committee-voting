@@ -1,3 +1,7 @@
+## 0.2.3
+
+- Fix not being able to connect with browser wallet
+
 ## 0.2.2
 
 - Fix type error when closing wallet connect popup.
