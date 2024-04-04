@@ -108,7 +108,7 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
         setIsConnecting(true);
         try {
             let conn: WalletConnection | undefined;
-            if (wc instanceof BrowserWalletConnector) {
+            outer: if (wc instanceof BrowserWalletConnector) {
                 conn = await wc.connect();
 
                 if ((await wc.client.getSelectedChain()) !== NETWORK.genesisHash) {
@@ -125,7 +125,7 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
                 );
 
                 if (temp === undefined) {
-                    return undefined;
+                    break outer;
                 }
 
                 const account = temp.getConnectedAccount();
