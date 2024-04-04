@@ -1,3 +1,7 @@
+## 0.2.4
+
+- Fix issue where the walletconnect modal could not be reopened when closed.
+
 ## 0.2.3
 
 - Fix not being able to connect with browser wallet

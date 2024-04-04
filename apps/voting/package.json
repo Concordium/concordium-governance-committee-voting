@@ -1,7 +1,7 @@
 {
     "name": "voting",
     "private": true,
-    "version": "0.2.3",
+    "version": "0.2.4",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -14,7 +14,7 @@
         "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
-        "@concordium/wallet-connectors": "0.6.0-alpha.4",
+        "@concordium/wallet-connectors": "0.6.0-alpha.5",
         "@concordium/web-sdk": "^7.1.0",
         "@protobuf-ts/grpcweb-transport": "^2.9.1",
         "@walletconnect/types": "^2.10.4",
