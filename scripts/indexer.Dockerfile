@@ -1,7 +1,7 @@
 # This dockerfile is meant to be run from the **root of the repository**.
 # It builds a docker image that contains the indexer.
 
-ARG rust_version=1.74
+ARG rust_version=1.76
 ARG rust_base_image=rust:${rust_version}-buster
 
 FROM --platform=linux/amd64 ${rust_base_image} AS backend
