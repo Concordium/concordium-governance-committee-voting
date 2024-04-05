@@ -320,9 +320,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@concordium/wallet-connectors@npm:0.6.0-alpha.5":
-  version: 0.6.0-alpha.5
-  resolution: "@concordium/wallet-connectors@npm:0.6.0-alpha.5"
+"@concordium/wallet-connectors@npm:0.6.0-alpha.6":
+  version: 0.6.0-alpha.6
+  resolution: "@concordium/wallet-connectors@npm:0.6.0-alpha.6"
   dependencies:
     "@concordium/browser-wallet-api-helpers": "npm:^3.0.0"
     "@walletconnect/modal": "npm:^2.6.2"
@@ -330,7 +330,7 @@ __metadata:
     "@walletconnect/sign-client": "npm:^2.1.4"
   peerDependencies:
     "@concordium/web-sdk": 7.x
-  checksum: 1970bb11918c288438673613c596c6d380e426c044ddb25499affab323e3897fdc0ec97f05d210a4a465610277376fa6b5a8da002be856cfec4615c329fb1707
+  checksum: c2b5e44270125885adc168cb24f0699b104587ada3df9843557ff478626a42a89d7402357adcb2c96d720676c968aa90dec837e9eef49d8e0a17c1dabc013f41
   languageName: node
   linkType: hard
 
@@ -7855,7 +7855,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "voting@workspace:voting"
   dependencies:
-    "@concordium/wallet-connectors": "npm:0.6.0-alpha.5"
+    "@concordium/wallet-connectors": "npm:0.6.0-alpha.6"
     "@concordium/web-sdk": "npm:^7.1.0"
     "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
     "@swc-jotai/react-refresh": "npm:^0.1.0"
