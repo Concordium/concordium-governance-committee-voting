@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ballots (
   id INT8 PRIMARY KEY, -- For pagination
   transaction_hash BYTEA NOT NULL,
   block_time TIMESTAMP WITH TIME ZONE NOT NULL,
-  ballot JSONB NOT NULL,
+  ballot BYTEA NOT NULL,
   account BYTEA NOT NULL,
   verified BOOL NOT NULL
 );

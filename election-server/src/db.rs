@@ -6,11 +6,9 @@ use concordium_rust_sdk::{
 };
 use deadpool_postgres::{GenericClient, Object};
 use eg::ballot::BallotEncrypted;
+use election_common::{decode, encode};
 use serde::Serialize;
-use tokio_postgres::{
-    types::{Json, ToSql},
-    NoTls,
-};
+use tokio_postgres::{types::ToSql, NoTls};
 
 use crate::util::{BallotSubmission, VotingWeightDelegation};
 
@@ -86,13 +84,16 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
         let id: i64 = value.try_get(0)?;
         let raw_transaction_hash: &[u8] = value.try_get(1)?;
         let block_time: DateTime<Utc> = value.try_get(2)?;
-        let Json(ballot) = value.try_get(3)?;
+        let raw_ballot: &[u8] = value.try_get(3)?;
         let raw_account: &[u8] = value.try_get(4)?;
         let verified: bool = value.try_get(5)?;
 
         let account_bytes: [u8; ACCOUNT_ADDRESS_SIZE] = raw_account
             .try_into()
             .map_err(|_| DatabaseError::TypeConversion)?;
+
+        let ballot: BallotEncrypted =
+            decode(raw_ballot).map_err(|e| DatabaseError::Other(format!("{e}")))?;
 
         let stored_ballot = Self {
             id: id as u64,
@@ -359,7 +360,7 @@ impl<'a> Transaction<'a> {
         let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
             &block_time,
-            &Json(&ballot.ballot),
+            &encode(&ballot.ballot).map_err(|e| DatabaseError::Other(format!("{e}")))?,
             &ballot.account.0.as_ref(),
             &ballot.verified,
         ];
