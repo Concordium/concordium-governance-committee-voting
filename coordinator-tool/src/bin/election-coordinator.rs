@@ -785,7 +785,7 @@ async fn handle_reset(
     let confirm = dialoguer::Confirm::new()
         .report(true)
         .wait_for_newline(true)
-        .with_prompt("Confirm excluding guardians.")
+        .with_prompt("Confirm tally decryption reset.")
         .interact()?;
     anyhow::ensure!(confirm, "Aborting.");
 

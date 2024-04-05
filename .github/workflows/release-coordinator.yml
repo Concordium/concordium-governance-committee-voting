@@ -23,7 +23,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@1.74
+        uses: dtolnay/rust-toolchain@1.76
       - name: Build election-coordinator binary
         run: cargo build --release --manifest-path coordinator-tool/Cargo.toml
       - name: Upload artifact

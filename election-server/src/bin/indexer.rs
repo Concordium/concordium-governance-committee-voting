@@ -209,9 +209,10 @@ async fn run_db_process(
                 Ok(time) => {
                     successive_db_errors = 0;
                     tracing::info!(
-                        "Processed block {} at height {} transactions in {}ms",
+                        "Processed block {} at height {} with {} transactions in {}ms",
                         block_data.block_hash,
                         block_data.height.height,
+                        block_data.transactions.len(),
                         time.num_milliseconds()
                     );
                     retry_block_data = None;
@@ -328,7 +329,7 @@ async fn set_shutdown(flag: Arc<AtomicBool>) -> anyhow::Result<()> {
 }
 
 /// Extracts the relevant [`TransactionData`] (if any) from `transaction`.
-#[tracing::instrument(skip(transaction), fields(tx_hash = %transaction.hash))]
+#[tracing::instrument(skip_all, fields(tx_hash = %transaction.hash))]
 fn get_transaction_data(
     transaction: BlockItemSummary,
     contract_address: &ContractAddress,
