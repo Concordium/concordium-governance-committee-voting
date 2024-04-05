@@ -18,6 +18,7 @@ eg = { version = "0.1", path = "../deps/electionguard-rust/src/eg" }
 election-common = { version = "*", path = "../election-common" }
 futures = "0.3"
 indicatif = "0.17"
+rayon = "1.10"
 # We use rusttls to avoid depending on openssl on linux. This simplifies installation for users.
 reqwest = { version = "0.11", default-features=false, features = ["rustls-tls-webpki-roots", "gzip", "json"] }
 serde = { version = "1.0", features = ["derive"] }
