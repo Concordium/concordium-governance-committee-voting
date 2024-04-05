@@ -1,3 +1,7 @@
+## 0.2.4
+
+- Parallelize the tally computation.
+
 ## 0.2.3
 
 - `new-election` subcommand: Support supplying candidate metadata as paths on the host machine.
