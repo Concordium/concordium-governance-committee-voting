@@ -344,6 +344,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// Insert a ballot submission into the DB.
+    #[tracing::instrument(level = "debug", skip_all, fields(transaction_hash = %ballot.transaction_hash))]
     pub async fn insert_ballot(
         &self,
         ballot: &BallotSubmission,
@@ -360,15 +361,21 @@ impl<'a> Transaction<'a> {
         let params: [&(dyn ToSql + Sync); 5] = [
             &ballot.transaction_hash.as_ref(),
             &block_time,
-            &encode(&ballot.ballot).map_err(|e| DatabaseError::Other(format!("{e}")))?,
+            &encode(&ballot.ballot)
+                .map_err(|e| DatabaseError::Other(format!("{e}")))
+                .inspect_err(|e| tracing::warn!("Failed to encode encrypted ballot: {e}"))?,
             &ballot.account.0.as_ref(),
             &ballot.verified,
         ];
-        self.inner.execute(&insert_ballot, &params).await?;
+        self.inner
+            .execute(&insert_ballot, &params)
+            .await
+            .inspect_err(|e| tracing::error!("Failed to execute statement: {e}"))?;
         Ok(())
     }
 
     /// Insert a ballot submission into the DB.
+    #[tracing::instrument(skip_all, fields(transaction_hash = %delegation.transaction_hash))]
     pub async fn insert_delegation(
         &self,
         delegation: &VotingWeightDelegation,
@@ -391,7 +398,10 @@ impl<'a> Transaction<'a> {
             &delegation.from_account.0.as_ref(),
             &delegation.to_account.0.as_ref(),
         ];
-        self.inner.execute(&insert_ballot, &params).await?;
+        self.inner
+            .execute(&insert_ballot, &params)
+            .await
+            .inspect_err(|e| tracing::error!("Failed to execute statement: {e}"))?;
         Ok(())
     }
 }
