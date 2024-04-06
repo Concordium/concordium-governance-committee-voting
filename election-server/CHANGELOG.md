@@ -1,6 +1,14 @@
+## 0.2.3
+
+- Fix unicode escape error from postgres by storing encrypted ballots as `BYTEA` instead of `JSONB`.
+
+## 0.2.2
+
+- Update concordium rust dependencies
+
 ## 0.2.1
 
-Support TLS in docker images.
+- Support TLS in docker images.
 
 ## 0.2.0
 

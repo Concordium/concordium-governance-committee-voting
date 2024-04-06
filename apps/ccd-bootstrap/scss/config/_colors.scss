@@ -10,6 +10,7 @@ $red: #dc5050;
 $green: #33c364;
 $yellow: #fbcd29;
 $purple: #7939ba;
+$black: #000000;
 
 $primary: $mineral-blue;
 $secondary: $ocean-blue;
@@ -20,3 +21,10 @@ $min-contrast-ratio: 2;
 $button-gradient: linear-gradient(95deg, #005a78 -3.22%, #48a2ae 87.51%);
 $header-gradient: linear-gradient(91deg, #b6dadf 13.38%, #daecef 93.45%);
 $bg-gradient: linear-gradient(180deg, #f2f2f2 0%, #fff 100%);
+
+$navbar-light-color: rgba($black, 0.5);
+$navbar-light-hover-color: rgba($black, 0.7);
+$navbar-light-active-color: rgba($secondary, 1);
+
+$navbar-light-brand-color: $navbar-light-active-color;
+$navbar-light-brand-hover-color: $navbar-light-active-color;

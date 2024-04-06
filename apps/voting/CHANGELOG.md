@@ -1,3 +1,25 @@
+## 0.2.5
+
+- Fix issue where walletconnect modal would not connect properly.
+
+## 0.2.4
+
+- Fix issue where the walletconnect modal could not be reopened when closed.
+
+## 0.2.3
+
+- Fix not being able to connect with browser wallet
+
+## 0.2.2
+
+- Fix type error when closing wallet connect popup.
+- Fix deeplinking to wallets on iOS
+- Minor style changes
+
+## 0.2.1
+
+- Various minor changes and bugfixes
+
 ## 0.2.0
 
 - Votes are displayed using a hex schema when signature is requested.

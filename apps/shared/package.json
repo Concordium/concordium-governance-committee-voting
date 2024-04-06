@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build-election-contract": "cargo concordium build --schema-embed --schema-json-out ./__generated__/election-contract --out ./tmp/module.wasm.v1 -- --manifest-path ../../contracts/concordium-governance-committee-election/Cargo.toml",
+        "build-election-contract": "cargo concordium build --schema-embed --schema-json-out ./__generated__/election-contract --out ./tmp/module.wasm.v1 --verifiable docker.io/concordium/verifiable-sc:1.70.0 -- --manifest-path ../../contracts/concordium-governance-committee-election/Cargo.toml",
         "generate-contract-client": "yarn build-election-contract && tsx ./scripts/generate-election-contract-client.ts",
         "lint": "eslint . --cache --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint-fix": "yarn lint --fix",
@@ -20,7 +20,8 @@
         "@concordium/web-sdk": "^7.1.0",
         "buffer": "^6.0.3",
         "date-fns": "^3.3.1",
-        "react": "^18.2.0"
+        "react": "^18.2.0",
+        "react-bootstrap": "^2.10.2"
     },
     "devDependencies": {
         "@concordium/ccd-js-gen": "^1.0.1",

@@ -21,6 +21,7 @@ import { commonDateTimeFormat } from '~/shared/util';
 import { accountShowShort } from 'shared/util';
 import { Link } from 'react-router-dom';
 import { getDelegationRoute } from '../router';
+import { Explain } from 'shared/components';
 
 /**
  * Button for connecting user through wallet connect compatible Concordium wallet.
@@ -28,13 +29,13 @@ import { getDelegationRoute } from '../router';
 function ConnectWalletConnect() {
     const { isActive, isConnecting, connect: _connect } = useWalletConnect();
 
-    const connect = useCallback(() => {
+    const connect = () => {
         if (isActive || isConnecting) {
             return;
         }
 
-        void _connect();
-    }, [_connect, isActive, isConnecting]);
+        void _connect().catch(alert);
+    };
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
@@ -48,15 +49,20 @@ function ConnectWalletConnect() {
  * Button for connecting user through Concordium Wallet for Web.
  */
 function ConnectBrowser() {
-    const { isActive, isConnecting, connect: _connect } = useBrowserWallet();
+    const bw = useBrowserWallet();
+    if (bw === undefined) {
+        return null;
+    }
 
-    const connect = useCallback(() => {
+    const { isActive, isConnecting, connect: _connect } = bw;
+
+    const connect = () => {
         if (isActive || isConnecting) {
             return;
         }
 
-        void _connect();
-    }, [_connect, isActive, isConnecting]);
+        void _connect().catch(alert);
+    };
 
     return (
         <button onClick={connect} className="clear connect-wallet__button">
@@ -211,42 +217,54 @@ const ActiveConnectionBody = withActiveAccount(({ connection, account }) => {
                     Disconnect
                 </Button>
             </section>
-            <hr />
-            <section className="mb-4">
-                <h5>Account details</h5>
-                <div className="active-connection__text-small">
-                    Voting weight: {weight?.votingWeight.toString()}*
-                    {AccountAddress.instanceOf(weight?.delegatedTo) && (
-                        <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
-                    )}
-                </div>
-                {isDelegatee && (
-                    <div className="active-connection__text-small mt-3">
-                        <b>Delegatee for**:</b>
-                        {weight?.delegationsFrom.results.map(([account, weight]) => (
-                            <div key={AccountAddress.toBase58(account)}>
-                                {accountShowShort(account)} (weight: {weight.toString()})
+            {weight !== undefined && (
+                <>
+                    <hr />
+                    <section className="mb-4">
+                        <h5>Account details</h5>
+                        <div className="active-connection__text-small">
+                            <Explain description="The voting weight used to scale the votes cast by the account.">
+                                Voting weight
+                            </Explain>
+                            : {weight?.votingWeight.toString()} CCD*
+                            {AccountAddress.instanceOf(weight?.delegatedTo) && (
+                                <b> (delegated to {accountShowShort(weight.delegatedTo)})</b>
+                            )}
+                        </div>
+                        {isDelegatee && (
+                            <div className="active-connection__text-small mt-3">
+                                <b>Delegatee for**:</b>
+                                {weight?.delegationsFrom.results.map(([account, weight]) => (
+                                    <div key={AccountAddress.toBase58(account)}>
+                                        {accountShowShort(account)} (
+                                        <Explain description="The voting weight of another account, which has been delegated to the currently selected account.">
+                                            delegated weight
+                                        </Explain>
+                                        : {weight.toString()} CCD)
+                                    </div>
+                                ))}
+                                {weight?.delegationsFrom.hasMore && (
+                                    <>
+                                        ...
+                                        <br />
+                                        <Link to={getDelegationRoute(account)}>View all</Link>
+                                    </>
+                                )}
                             </div>
-                        ))}
-                        {weight?.delegationsFrom.hasMore && (
-                            <>
-                                ...
-                                <br />
-                                <Link to={getDelegationRoute(account)}>View all</Link>
-                            </>
                         )}
-                    </div>
-                )}
-                <div className="active-connection__text-small mt-3 text-muted">
-                    *The voting weight listed does not include any voting power delegated from other accounts.
-                </div>
-                {isDelegatee && (
-                    <div className="active-connection__text-small mt-1 text-muted">
-                        **The delegations listed are delegations made as of {weight?.updatedAt.toLocaleString()} and can
-                        change until voting closes. Delegated weight is not counted until after voting has concluded.
-                    </div>
-                )}
-            </section>
+                        <div className="active-connection__text-small mt-3 text-muted">
+                            *The voting weight listed does not include any delegated weight from other accounts.
+                        </div>
+                        {isDelegatee && (
+                            <div className="active-connection__text-small mt-1 text-muted">
+                                **The delegations listed are delegations made as of {weight?.updatedAt.toLocaleString()}{' '}
+                                and can change until voting closes. Delegated weight is not counted until after voting
+                                has concluded.
+                            </div>
+                        )}
+                    </section>
+                </>
+            )}
             <hr />
             <section>
                 <h5>Ballot submissions</h5>
@@ -316,7 +334,7 @@ export function WalletConnection() {
     useEffect(() => {
         setConnectionViewHandler(() => () => setShowModal(true)); // atom setter interprets a function as a `SetStateAction`, which is why we pass an action which returns a function.
         return () => setConnectionViewHandler(RESET);
-    }, [setConnectionViewHandler]);
+    }, [setConnectionViewHandler, setShowModal]);
 
     const { Trigger, Title, Body } = wallet?.account !== undefined ? activeConn : selectConn;
 

@@ -8,3 +8,8 @@ body,
     display: flex;
     flex-direction: column;
 }
+
+wcm-modal {
+    position: relative;
+    z-index: 10000; // ensure that it's above bootstrap offcanvas
+}

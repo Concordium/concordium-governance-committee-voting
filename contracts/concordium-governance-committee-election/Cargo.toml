@@ -14,12 +14,13 @@ std = ["concordium-std/std"]
 bump_alloc = ["concordium-std/bump_alloc"]
 serde = ["dep:serde"]
 
+# Cannot depend on local dependencies as we need to support verifiable builds
 [dependencies]
-concordium-std = { path = "../../deps/concordium-rust-smart-contracts/concordium-std", version = "10.0", default-features = false }
+concordium-std = { version = "10.0", default-features = false }
 serde = { version = "1.0", optional = true, features = ["derive"] }
 
 [dev-dependencies]
-concordium-smart-contract-testing = {path = "../../deps/concordium-rust-smart-contracts/contract-testing/", version = "4"}
+concordium-smart-contract-testing = { version = "4" }
 chrono = "0.4"
 
 [lib]

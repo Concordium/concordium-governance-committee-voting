@@ -746,6 +746,8 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 [[package]]
 name = "concordium-contracts-common"
 version = "9.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27f49ffe8ff944ec174f597b3f0d1f84e77e6dd3e8eb2fad3bdd08c8d1dcf7c9"
 dependencies = [
  "base64",
  "bs58",
@@ -766,6 +768,8 @@ dependencies = [
 [[package]]
 name = "concordium-contracts-common-derive"
 version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f9db2f3ebe6616b1658ec10acc3e9ca31f65824e3ab5ad88f3cf2532e25aed2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -775,6 +779,8 @@ dependencies = [
 [[package]]
 name = "concordium-rust-sdk"
 version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "104d243a251ee51d2b8f104050fe3a3582dc476ea5e3faa3952bd7d680ef5803"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -806,6 +812,8 @@ dependencies = [
 [[package]]
 name = "concordium-smart-contract-engine"
 version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23751642d6672291e4feac02252f5f1d258cd3c093873a7f59f3d9a7cc165f82"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -829,6 +837,8 @@ dependencies = [
 [[package]]
 name = "concordium-std"
 version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "645eeaa2c81e2daa6289ef1cfcca8170419feecdb7d93d5421113880553361df"
 dependencies = [
  "concordium-contracts-common",
 ]
@@ -836,6 +846,8 @@ dependencies = [
 [[package]]
 name = "concordium-wasm"
 version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26a581ef6ae1b23e149eaf5ed1e43c1da877ded9ae0de4989cd71b76d25c67d7"
 dependencies = [
  "anyhow",
  "concordium-contracts-common",
@@ -847,6 +859,8 @@ dependencies = [
 [[package]]
 name = "concordium_base"
 version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00b92eba25481b3cec616943c433d780d1ca6db02cf2bc9be8d8d192d54dedb8"
 dependencies = [
  "aes",
  "anyhow",
@@ -893,10 +907,12 @@ dependencies = [
 [[package]]
 name = "concordium_base_derive"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9a154e9a64d58d3e9f890c603df847b8685cfd0bac3fadd18498af539650bed"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.51",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1244,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "election-server"
-version = "0.2.1"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "axum 0.7.4",
@@ -1252,7 +1268,6 @@ dependencies = [
  "chrono",
  "clap",
  "concordium-rust-sdk",
- "concordium-std",
  "concordium_governance_committee_election",
  "csv",
  "deadpool-postgres",

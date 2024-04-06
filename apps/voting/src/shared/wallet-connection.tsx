@@ -1,10 +1,17 @@
 import {
     BrowserWalletConnector,
     CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
+    MAINNET,
     WalletConnectConnector,
+    WalletConnectEvents,
+    WalletConnectMethods,
     WalletConnection,
     WalletConnectionDelegate,
     WalletConnector,
+    concordiumWalletMainnet,
+    concordiumWalletTestnet,
+    cryptoXWalletMainnet,
+    cryptoXWalletTestnet,
 } from '@concordium/wallet-connectors';
 import { SignClientTypes } from '@walletconnect/types';
 import {
@@ -18,10 +25,11 @@ import {
     useState,
 } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { NETWORK } from './constants';
+import { IS_MOBILE, NETWORK } from './constants';
 import { activeWalletAtom, Wallet } from './store';
 import { AccountAddress } from '@concordium/web-sdk';
 import { updateMapEntry } from './util';
+import { grpc } from './election-contract';
 
 export const WALLET_CONNECT_OPTS: SignClientTypes.Options = {
     projectId: CONCORDIUM_WALLET_CONNECT_PROJECT_ID,
@@ -57,7 +65,7 @@ const initialConnectorContext: ConnectorContext = {
     },
 };
 
-const browserWalletContext = createContext<ConnectorContext>(initialConnectorContext);
+const browserWalletContext = createContext<ConnectorContext | undefined>(undefined);
 const walletConnectContext = createContext<ConnectorContext>(initialConnectorContext);
 
 /**
@@ -74,6 +82,12 @@ export function useBrowserWallet() {
 export function useWalletConnect() {
     return useContext(walletConnectContext);
 }
+
+const WALLETS = IS_MOBILE
+    ? NETWORK === MAINNET
+        ? [cryptoXWalletMainnet, concordiumWalletMainnet]
+        : [cryptoXWalletTestnet, concordiumWalletTestnet]
+    : undefined;
 
 /**
  * Hook for managing connections of a {@linkcode WalletConnector}.
@@ -93,7 +107,38 @@ function useWalletConnector(wc: WalletConnector): ConnectorContext {
     const connect = useCallback(async () => {
         setIsConnecting(true);
         try {
-            return await wc.connect();
+            let conn: WalletConnection | undefined;
+            outer: if (wc instanceof BrowserWalletConnector) {
+                conn = await wc.connect();
+
+                if ((await wc.client.getSelectedChain()) !== NETWORK.genesisHash) {
+                    await wc.disconnect();
+                    throw new Error(`Expected wallet network to be ${NETWORK.name}`);
+                }
+            } else if (wc instanceof WalletConnectConnector) {
+                // This is a workaround as it does not seem to be possible to access the network used internally in the
+                // cryptoX wallet.
+                const temp = await wc.connectWithScope(
+                    [WalletConnectMethods.SignAndSendTransaction],
+                    [WalletConnectEvents.AccountsChanged],
+                    WALLETS,
+                );
+
+                if (temp === undefined) {
+                    break outer;
+                }
+
+                const account = temp.getConnectedAccount();
+                conn = temp;
+                try {
+                    await grpc.getAccountInfo(AccountAddress.fromBase58(account));
+                } catch {
+                    await wc.disconnect();
+                    throw new Error(`Expected wallet network to be ${NETWORK.name}`);
+                }
+            }
+
+            return conn;
         } finally {
             setIsConnecting(false);
         }
@@ -139,12 +184,20 @@ function WalletProvider({ connector, children }: WalletProviderProps) {
 
 type WalletsProviderProps = PropsWithChildren<{
     /** Connector instance to the Concordium browser wallet */
-    browser: BrowserWalletConnector;
+    browser: BrowserWalletConnector | undefined;
     /** Connector instance to wallet connect compatible Concordium wallet */
-    walletConnect: WalletConnectConnector;
+    walletConnect: WalletConnectConnector | undefined;
     /** The currently active wallet */
     activeWallet: Wallet | undefined;
 }>;
+
+function OptionalWalletProvider({ connector, children }: Partial<WalletProviderProps>) {
+    if (connector === undefined) {
+        return <>{children}</>;
+    }
+
+    return <WalletProvider connector={connector}>{children}</WalletProvider>;
+}
 
 /**
  * Component whose sole purpose is to provide connection management functionality to the component tree below the
@@ -158,9 +211,9 @@ function WalletsProvider({ browser, walletConnect, activeWallet, children }: Wal
     }, [activeWallet, setActiveWallet]);
 
     return (
-        <WalletProvider connector={browser}>
-            <WalletProvider connector={walletConnect}>{children}</WalletProvider>
-        </WalletProvider>
+        <OptionalWalletProvider connector={browser}>
+            <OptionalWalletProvider connector={walletConnect}>{children}</OptionalWalletProvider>
+        </OptionalWalletProvider>
     );
 }
 
@@ -235,20 +288,19 @@ export class WalletConnectionManager
         });
     }
 
-    async componentDidMount(): Promise<void> {
-        const bwPromise = BrowserWalletConnector.create(this);
-        const wcPromise = WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK);
-        const [bw, wc] = await Promise.all([bwPromise, wcPromise]);
-
-        this.setState({ browserWalletConnector: bw, walletConnectConnector: wc });
+    componentDidMount(): void {
+        void BrowserWalletConnector.create(this)
+            .catch(() => undefined)
+            .then((c) => {
+                this.setState({ browserWalletConnector: c });
+            });
+        void WalletConnectConnector.create(WALLET_CONNECT_OPTS, this, NETWORK).then((c) => {
+            this.setState({ walletConnectConnector: c });
+        });
     }
 
     render() {
         const { browserWalletConnector, walletConnectConnector } = this.state;
-        if (browserWalletConnector === undefined || walletConnectConnector === undefined) {
-            return null;
-        }
-
         const connection = this.state.connections[0];
         const activeWallet: Wallet | undefined =
             connection === undefined

@@ -1,7 +1,7 @@
 {
     "name": "voting",
     "private": true,
-    "version": "0.2.0",
+    "version": "0.2.5",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -14,7 +14,7 @@
         "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
-        "@concordium/wallet-connectors": "^0.4.0",
+        "@concordium/wallet-connectors": "0.6.0-alpha.6",
         "@concordium/web-sdk": "^7.1.0",
         "@protobuf-ts/grpcweb-transport": "^2.9.1",
         "@walletconnect/types": "^2.10.4",
@@ -48,6 +48,7 @@
         "uuid": "^9.0.1",
         "vite": "^5.0.11",
         "vite-plugin-handlebars": "^2.0.0",
+        "vite-plugin-svgr": "^4.2.0",
         "vite-plugin-top-level-await": "patch:vite-plugin-top-level-await@npm%3A1.3.1#~/.yarn/patches/vite-plugin-top-level-await-npm-1.3.1-d3a3de5f37.patch",
         "vite-plugin-wasm": "^3.2.2",
         "vite-tsconfig-paths": "^4.2.1"

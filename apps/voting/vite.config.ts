@@ -4,6 +4,7 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import handlebars from 'vite-plugin-handlebars';
+import svgr from 'vite-plugin-svgr';
 import { v4 as uuid } from 'uuid';
 import 'dotenv/config';
 
@@ -65,6 +66,7 @@ const viteConfig: UserConfig = {
         tsconfigPaths(),
         wasm() as PluginOption,
         topLevelAwait(), // For legacy browser compatibility
+        svgr(),
     ],
     worker: {
         plugins: () => [topLevelAwait(), wasm() as PluginOption],
