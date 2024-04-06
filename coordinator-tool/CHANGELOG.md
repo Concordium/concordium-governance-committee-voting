@@ -1,5 +1,6 @@
 ## 0.2.4
 
+- Parallelize the tally computation.
 - Updates concordium rust dependencies
 
 ## 0.2.3

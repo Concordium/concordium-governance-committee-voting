@@ -38,6 +38,7 @@ use election_common::{
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -940,26 +941,38 @@ async fn handle_tally(
             break;
         }
 
-        for indexer::ContractUpdateInfo {
-            execution_tree,
-            transaction_hash,
-            sender,
-            ..
-        } in txs
-        {
-            let param = execution_tree.parameter();
-            let Ok(param) =
+        let results = txs
+            .into_par_iter()
+            .flat_map(
+                |indexer::ContractUpdateInfo {
+                     execution_tree,
+                     transaction_hash,
+                     sender,
+                     ..
+                 }| {
+                    let param = execution_tree.parameter();
+                    let Ok(param) =
                 concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref())
             else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                continue;
+                return None;
             };
 
-            let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
+                    let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
                 eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                continue;
+                return None;
             };
-            let verified = ballot.verify(&verification_context);
+                    Some((
+                        ballot.verify(&verification_context),
+                        sender,
+                        ballot,
+                        transaction_hash,
+                    ))
+                },
+            )
+            .collect_vec_list();
+
+        for (verified, sender, ballot, transaction_hash) in results.into_iter().flatten() {
             if verified {
                 // Replace any previous ballot from the sender.
                 ballots.insert(AccountAddressEq::from(sender), (ballot, transaction_hash));
