@@ -1,4 +1,6 @@
+use anyhow::{ensure, Context};
 use concordium_base::contracts_common::{AccountAddress, Amount};
+use concordium_governance_committee_election::{ChecksumUrl, HashSha2256};
 use eg::{
     election_manifest::ContestIndex,
     joint_election_public_key::Ciphertext,
@@ -51,3 +53,30 @@ pub struct WeightRow {
 
 /// Get the scaling factor used to scale the encrypted ballots
 pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_000u64 }
+
+/// get the resource behind [`ChecksumUrl`] while checking the integrity of it.
+pub async fn get_resource_checked(url: &ChecksumUrl) -> anyhow::Result<Vec<u8>> {
+    use sha2::Digest;
+
+    let response = reqwest::get(&url.url)
+        .await
+        .with_context(|| format!("Failed to get resource at {}", &url.url))?;
+    ensure!(
+        response.status().is_success(),
+        "Failed to get resource at {}, server responded with {}",
+        &url.url,
+        response.status()
+    );
+
+    let data = response.bytes().await?;
+    let hash = HashSha2256(sha2::Sha256::digest(&data).into());
+    ensure!(
+        hash == url.hash,
+        "Failed to verify resource at {}, checksum mismatch (expected {}, computed {})",
+        url.url,
+        url.hash,
+        hash
+    );
+
+    Ok(data.into())
+}

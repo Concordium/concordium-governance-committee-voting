@@ -11,16 +11,15 @@ use axum_prometheus::{
 };
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
     common::types::Amount,
     smart_contracts::common::AccountAddress,
     types::{hashes::TransactionHash, ContractAddress},
 };
-use election_common::{get_scaling_factor, WeightRow};
+use election_common::{get_resource_checked, get_scaling_factor, WeightRow};
 use election_server::{
     db::{DatabasePool, StoredBallotSubmission, StoredDelegation},
-    util::{create_client, get_election_config, verify_checksum, verify_contract},
+    util::{create_client, get_election_config, verify_contract},
 };
 use futures::FutureExt;
 use handlebars::{no_escape, Handlebars};
@@ -28,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::{cmp, collections::HashMap};
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::{ServeDir, ServeFile},
+    services::ServeDir,
 };
 
 /// Command line configuration of the application.
@@ -44,7 +43,7 @@ struct AppConfig {
         default_value = "https://grpc.testnet.concordium.com:20000",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint:        concordium_rust_sdk::v2::Endpoint,
+    node_endpoint:      concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -54,70 +53,45 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:        tokio_postgres::config::Config,
+    db_connection:      tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value_t = 16,
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size:            usize,
+    pool_size:          usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:            tracing_subscriber::filter::LevelFilter,
+    log_level:          tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
         default_value_t = 5000,
         env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
     )]
-    request_timeout_ms:   u64,
+    request_timeout_ms: u64,
     /// Address the http server will listen on
     #[clap(
         long = "listen-address",
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address:       std::net::SocketAddr,
+    listen_address:     std::net::SocketAddr,
     /// Address of the prometheus server
     #[clap(long = "prometheus-address", env = "CCD_ELECTION_PROMETHEUS_ADDRESS")]
-    prometheus_address:   Option<std::net::SocketAddr>,
-    /// A csv file consisting of the list of eligible voters and their
-    /// respective voting weights
-    #[clap(
-        long = "eligible-voters-file",
-        default_value = "../resources/config-example/initial-weights.csv",
-        env = "CCD_ELECTION_ELIGIBLE_VOTERS_FILE"
-    )]
-    eligible_voters_file: std::path::PathBuf,
-    /// A json file consisting of the election manifest used by election guard
-    #[clap(
-        long = "election-manifest-file",
-        default_value = "../resources/config-example/election-manifest.json",
-        env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
-    )]
-    eg_manifest_file:     std::path::PathBuf,
-    /// A json file consisting of the election parameters used by election guard
-    #[clap(
-        long = "election-parameters-file",
-        default_value = "../resources/config-example/election-parameters.json",
-        env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
-    )]
-    eg_parameters_file:   std::path::PathBuf,
-    /// An optional directory with JSON metadata for a set of candidates
-    #[clap(long = "candidates-dir", env = "CCD_ELECTION_CANDIDATES_DIR")]
-    candidates_dir:       Option<std::path::PathBuf>,
+    prometheus_address: Option<std::net::SocketAddr>,
     /// Path to the directory where frontend assets are located
     #[clap(
         long = "frontend-dir",
         default_value = "../apps/voting/dist",
         env = "CCD_ELECTION_FRONTEND_DIR"
     )]
-    frontend_dir:         std::path::PathBuf,
+    frontend_dir:       std::path::PathBuf,
     /// Allow requests from other origins. Useful for development where frontend
     /// is not served from the server.
     #[clap(
@@ -125,7 +99,7 @@ struct AppConfig {
         default_value_t = false,
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
-    allow_cors:           bool,
+    allow_cors:         bool,
     /// The network to connect users to (passed to frontend).
     #[clap(
         long = "network",
@@ -133,10 +107,10 @@ struct AppConfig {
         default_value_t = concordium_rust_sdk::web3id::did::Network::Testnet,
         help = "The network to connect users to (passed to frontend). Possible values: testnet, mainnet"
     )]
-    network:              concordium_rust_sdk::web3id::did::Network,
+    network:            concordium_rust_sdk::web3id::did::Network,
     /// The contract address of the election contract (passed to frontend)
     #[clap(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
-    contract_address:     ContractAddress,
+    contract_address:   ContractAddress,
 }
 
 impl AppConfig {
@@ -150,25 +124,6 @@ impl AppConfig {
         let config_string =
             serde_json::to_string(&config).expect("JSON serialization always succeeds");
         serde_json::json!({ "config": config_string })
-    }
-
-    /// Deserializes the election guard config files. The supplied [`Client`] is
-    /// used to verify the files match the checksum registered in the
-    /// election contract.
-    fn verify_config_files(&self, contract_config: &ElectionConfig) -> Result<(), anyhow::Error> {
-        verify_checksum(
-            &self.eg_manifest_file,
-            contract_config.election_manifest.hash.0,
-        )?;
-        verify_checksum(
-            &self.eg_parameters_file,
-            contract_config.election_parameters.hash.0,
-        )?;
-        verify_checksum(
-            &self.eligible_voters_file,
-            contract_config.eligible_voters.hash.0,
-        )?;
-        Ok(())
     }
 }
 
@@ -473,9 +428,13 @@ async fn setup_http(
     config: &AppConfig,
     prometheus_layer: PrometheusLayer,
 ) -> Result<tokio::task::JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
-    let reader = csv::Reader::from_path(&config.eligible_voters_file)
-        .context("Failed to read eligible voters file")?;
+    let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
+    let client = create_client(config.node_endpoint.clone(), request_timeout).await?;
+    let mut contract_client = verify_contract(client, config.contract_address).await?;
+    let contract_config = get_election_config(&mut contract_client).await?;
+    let initial_weights = get_resource_checked(&contract_config.eligible_voters).await?;
 
+    let reader = csv::Reader::from_reader(std::io::Cursor::new(initial_weights));
     let mut initial_weights = HashMap::new();
     for row in reader.into_deserialize::<WeightRow>() {
         let WeightRow { account, amount } = row.context("Failed to parse eligible voters file")?;
@@ -509,26 +468,7 @@ async fn setup_http(
         )
         .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
-        .with_state(state)
-        .route_service(
-            "/static/concordium/eligible-voters.csv",
-            ServeFile::new(&config.eligible_voters_file),
-        )
-        .route_service(
-            "/static/electionguard/election-manifest.json",
-            ServeFile::new(&config.eg_manifest_file),
-        )
-        .route_service(
-            "/static/electionguard/election-parameters.json",
-            ServeFile::new(&config.eg_parameters_file),
-        );
-
-    if let Some(candidates_dir) = &config.candidates_dir {
-        http_api = http_api.nest_service(
-            "/static/concordium/candidates",
-            ServeDir::new(candidates_dir),
-        )
-    }
+        .with_state(state);
 
     // Serve the frontend
     http_api = http_api
@@ -600,15 +540,6 @@ async fn main() -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION"),
         &config.contract_address
     );
-
-    // Verify that we serve the files matching what is registered in the contract
-    {
-        let request_timeout = std::time::Duration::from_millis(config.request_timeout_ms);
-        let client = create_client(config.node_endpoint.clone(), request_timeout).await?;
-        let mut contract_client = verify_contract(client, config.contract_address).await?;
-        let contract_config = get_election_config(&mut contract_client).await?;
-        config.verify_config_files(&contract_config)?;
-    }
 
     let (prometheus_layer, prometheus_handle) = setup_prometheus(&config);
     let http_handle = setup_http(&config, prometheus_layer).await?;

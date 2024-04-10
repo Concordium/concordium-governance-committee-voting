@@ -33,7 +33,7 @@ use eg::{
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
-    decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
+    decode, encode, get_resource_checked, get_scaling_factor, EncryptedTally, GuardianDecryption,
     GuardianDecryptionProof, WeightRow,
 };
 use futures::TryStreamExt;
@@ -840,32 +840,12 @@ async fn get_election_data(
     let end = config.election_end.try_into()?;
 
     let election_manifest: ElectionManifest = {
-        let response = reqwest::get(config.election_manifest.url)
-            .await
-            .context("Failed to get election manifest.")?;
-        anyhow::ensure!(
-            response.status().is_success(),
-            "Failed to get election manifest, server responded with {}",
-            response.status()
-        );
-        response
-            .json()
-            .await
-            .context("Unable to parse election manifest.")?
+        let response = get_resource_checked(&config.election_manifest).await?;
+        serde_json::from_slice(&response).context("Unable to parse election manifest")?
     };
     let election_parameters: ElectionParameters = {
-        let response = reqwest::get(config.election_parameters.url)
-            .await
-            .context("Failed to get election parameters.")?;
-        anyhow::ensure!(
-            response.status().is_success(),
-            "Failed to get election parameters, server responded with {}",
-            response.status()
-        );
-        response
-            .json()
-            .await
-            .context("Unable to parse election parameters.")?
+        let response = get_resource_checked(&config.election_parameters).await?;
+        serde_json::from_slice(&response).context("Unable to parse election parameters")?
     };
 
     let mut guardian_public_keys = config
@@ -951,17 +931,17 @@ async fn handle_tally(
                      ..
                  }| {
                     let param = execution_tree.parameter();
-                    let Ok(param) =
-                concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref())
-            else {
-                eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                return None;
-            };
+                    let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(
+                        param.as_ref(),
+                    ) else {
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
 
                     let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
-                eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                return None;
-            };
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
                     Some((
                         ballot.verify(&verification_context),
                         sender,

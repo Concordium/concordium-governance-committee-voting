@@ -2,9 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{anyhow, Context};
-use concordium_governance_committee_election::{
-    self as contract, ChecksumUrl, ElectionConfig, HashSha2256,
-};
+use concordium_governance_committee_election::{self as contract, ChecksumUrl, ElectionConfig};
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     contract_client::{ContractClient, ContractUpdateError},
@@ -29,13 +27,12 @@ use eg::{
     },
 };
 use election_common::{
-    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
-    GuardianDecryptionProofState,
+    decode, encode, get_resource_checked, EncryptedTally, GuardianDecryption,
+    GuardianDecryptionProof, GuardianDecryptionProofState,
 };
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
-use sha2::Digest;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -266,19 +263,7 @@ impl HttpClient {
         &self,
         url: &ChecksumUrl,
     ) -> Result<J, Error> {
-        let data = self.0.get(url.url.clone()).send().await?.bytes().await?;
-        let hash = HashSha2256(sha2::Sha256::digest(&data).into());
-        if url.hash != hash {
-            return Err(anyhow!(
-                "Verification of remote resource at {} failed. Expected checksum {} did not match \
-                 computed hash {}.",
-                url.url,
-                url.hash,
-                hash
-            )
-            .into());
-        }
-
+        let data = get_resource_checked(url).await?;
         let result = serde_json::from_slice(&data)
             .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
         Ok(result)
