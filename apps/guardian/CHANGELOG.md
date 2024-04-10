@@ -1,3 +1,7 @@
+## 0.1.3
+
+- Updates wording of unlock dialog
+
 ## 0.1.2
 
 - Updates concordium rust dependencies
