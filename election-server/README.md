@@ -8,11 +8,25 @@ To build both binaries included in the project, do
 cargo build --release
 ```
 
+## Setting up a postgres DB
+
+Both binaries require a connection to a postgres database. To set up a database which matches the default connection string in the crate, run the following docker command:
+
+```sh
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=password -e POSTGRES_DB="gc-election" --rm postgres
+```
+
+This does __not__ mount a volume, i.e. no data is persisted between runs.
+
 ## Running the http binary
 
 ```bash
 cargo run --bin http --release -- --contract-address "<7635,0>" # and other configration options.
 ```
+
+### Building the frontend served by `http`
+
+The `http` binary serves the voting dApp, thus this needs to be built for `http` to work in full. Please refer to the [voting dApp documentation](../apps/voting/README.md) for instructions on how to do this.
 
 ### Configuration
 
