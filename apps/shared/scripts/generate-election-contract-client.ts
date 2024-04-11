@@ -18,7 +18,10 @@ program
     .requiredOption(
         '-m, --module <module-file>',
         'Path to the smart contract module to generate clients from.',
-        path.resolve(__dirname, '../tmp/module.wasm.v1'),
+        path.resolve(
+            __dirname,
+            '../../../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1',
+        ),
     )
     .parse(process.argv);
 

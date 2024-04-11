@@ -110,13 +110,19 @@ jobs:
             ./apps/ccd-bootstrap/node_modules
           key: ${{ runner.os }}-yarn
 
+      - name: Build contract
+        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
+        working-directory: ./contracts/concordium-governance-committee-election
+        run: |
+          rustup default ${{ env.RUST_VERSION }}
+          rustup target install wasm32-unknown-unknown
+          cargo concordium build --schema-embed --out concordium-out/module.wasm.v1
+
       - name: Generate contract client
         if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
         working-directory: ./apps/shared
         run: |
-          rustup default ${{ env.RUST_VERSION }}
-          rustup target install wasm32-unknown-unknown
-          yarn generate-contract-client
+          yarn generate
 
   check:
     if: github.event.pull_request.draft == false
@@ -155,7 +161,7 @@ jobs:
           key: ${{ runner.os }}-election-contract
 
       - name: Build
-        run: yarn build:all
+        run: yarn build:ci
 
       - name: Lint
         run: yarn lint:all && yarn fmt-check:all

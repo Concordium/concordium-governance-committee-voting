@@ -17,17 +17,16 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::decode;
+use election_common::{decode, HttpClient};
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
-        create_client, get_election_config, verify_checksum, verify_contract, BallotSubmission,
-        ElectionContract, VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
+        create_client, get_election_config, verify_contract, BallotSubmission, ElectionContract,
+        VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
     },
 };
 use futures::{future, TryStreamExt};
 use std::{
-    fs,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -76,19 +75,6 @@ struct AppConfig {
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
     max_behind_s:       u32,
-    #[clap(
-        long = "election-manifest-file",
-        default_value = "../resources/config-example/election-manifest.json",
-        env = "CCD_ELECTION_ELECTION_MANIFEST_FILE"
-    )]
-    eg_manifest_file:   std::path::PathBuf,
-    /// A json file consisting of the election parameters used by election guard
-    #[clap(
-        long = "election-parameters-file",
-        default_value = "../resources/config-example/election-parameters.json",
-        env = "CCD_ELECTION_ELECTION_PARAMETERS_FILE"
-    )]
-    eg_parameters_file: std::path::PathBuf,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
@@ -102,28 +88,17 @@ impl AppConfig {
     /// Deserializes the election guard config files. The supplied [`Client`] is
     /// used to verify the files match the checksum registered in the
     /// election contract.
-    fn read_and_verify_config_files(
+    async fn request_and_verify_config_files(
         &self,
         contract_config: &ElectionConfig,
-    ) -> Result<(ElectionManifest, ElectionParameters), anyhow::Error> {
-        verify_checksum(
-            &self.eg_manifest_file,
-            contract_config.election_manifest.hash.0,
-        )
-        .context("Manifest file hash not as recorded in the contract.")?;
-        let election_manifest: ElectionManifest = serde_json::from_reader(
-            fs::File::open(&self.eg_manifest_file).context("Could not read election manifest")?,
-        )?;
-
-        verify_checksum(
-            &self.eg_parameters_file,
-            contract_config.election_parameters.hash.0,
-        )
-        .context("Election parameters file hash not as recorded in the contract.")?;
-        let election_parameters: ElectionParameters = serde_json::from_reader(
-            fs::File::open(&self.eg_parameters_file)
-                .context("Could not read election parameters")?,
-        )?;
+    ) -> anyhow::Result<(ElectionManifest, ElectionParameters)> {
+        let client = HttpClient::try_create(self.request_timeout_ms)?;
+        let election_manifest = client
+            .get_json_resource_checked(&contract_config.election_manifest)
+            .await?;
+        let election_parameters = client
+            .get_json_resource_checked(&contract_config.election_parameters)
+            .await?;
         Ok((election_manifest, election_parameters))
     }
 }
@@ -609,8 +584,9 @@ async fn main() -> anyhow::Result<()> {
 
     let mut contract_client = verify_contract(client, config.contract_address).await?;
     let contract_config = get_election_config(&mut contract_client).await?;
-    let (election_manifest, election_parameters) =
-        config.read_and_verify_config_files(&contract_config)?;
+    let (election_manifest, election_parameters) = config
+        .request_and_verify_config_files(&contract_config)
+        .await?;
 
     // Since the database connection is managed by the background task we use a
     // oneshot channel to get the height we should start querying at. First the

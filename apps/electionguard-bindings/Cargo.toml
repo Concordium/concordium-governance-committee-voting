@@ -17,7 +17,7 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 # console_error_panic_hook = { version = "0.1", optional = true }
 eg = { path = "../../deps/electionguard-rust/src/eg" }
 util = { path = "../../deps/electionguard-rust/src/util" }
-election-common = { path = "../../election-common" }
+election-common = { path = "../../election-common", default-features = false }
 getrandom = { version = "0.2", features = ["js"] } # This is only required to enable js feature in "eg"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"

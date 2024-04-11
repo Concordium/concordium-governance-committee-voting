@@ -2,9 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{anyhow, Context};
-use concordium_governance_committee_election::{
-    self as contract, ChecksumUrl, ElectionConfig, HashSha2256,
-};
+use concordium_governance_committee_election::{self as contract, ElectionConfig};
 use concordium_rust_sdk::{
     base::hashes::BlockHash,
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
@@ -32,17 +30,15 @@ use eg::{
 };
 use election_common::{
     decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
-    GuardianDecryptionProofState,
+    GuardianDecryptionProofState, HttpClient,
 };
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
-use sha2::Digest;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     str::FromStr,
-    time::Duration,
 };
 use tauri::{App, AppHandle, Manager, State, Window};
 use tokio::sync::Mutex;
@@ -279,37 +275,6 @@ struct ElectionContractMarker;
 /// The election contract client
 type ElectionClient = ContractClient<ElectionContractMarker>;
 
-/// Wrapper around [`reqwest::Client`] to provide
-/// `HttpClient::get_resource_checked`
-#[derive(Debug, Clone)]
-struct HttpClient(reqwest::Client);
-
-impl HttpClient {
-    /// Gets the remote resource at `url` while also checking the content
-    /// against the checksum included as part of the [`ChecksumUrl`]
-    async fn get_resource_checked<J: DeserializeOwned>(
-        &self,
-        url: &ChecksumUrl,
-    ) -> Result<J, Error> {
-        let data = self.0.get(url.url.clone()).send().await?.bytes().await?;
-        let hash = HashSha2256(sha2::Sha256::digest(&data).into());
-        if url.hash != hash {
-            return Err(anyhow!(
-                "Verification of remote resource at {} failed. Expected checksum {} did not match \
-                 computed hash {}.",
-                url.url,
-                url.hash,
-                hash
-            )
-            .into());
-        }
-
-        let result = serde_json::from_slice(&data)
-            .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
-        Ok(result)
-    }
-}
-
 /// The contract (and correspondingly node) connection configuration.
 #[derive(Clone)]
 struct ConnectionConfig {
@@ -326,7 +291,6 @@ impl ConnectionConfig {
         let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
             .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
-        let timeout = Duration::from_millis(timeout);
         let contract_address = ContractAddress::from_str(env!("CCD_ELECTION_CONTRACT_ADDRESS"))
             .expect("Could not parse CCD_ELECTION_CONTRACT_ADDRESS");
         let network_id = env!("CCD_ELECTION_NETWORK");
@@ -342,6 +306,9 @@ impl ConnectionConfig {
         } else {
             endpoint
         };
+
+        let http = HttpClient::try_create(timeout)?;
+        let timeout = core::time::Duration::from_millis(timeout);
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let mut node = Client::new(endpoint).await?;
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
@@ -356,13 +323,7 @@ impl ConnectionConfig {
             )
             .into());
         }
-
         let contract = ElectionClient::create(node, contract_address).await?;
-        let http = reqwest::Client::builder()
-            .connect_timeout(timeout)
-            .timeout(timeout)
-            .build()?;
-        let http = HttpClient(http);
 
         let contract_connection = Self { contract, http };
         Ok(contract_connection)
@@ -379,11 +340,11 @@ impl ConnectionConfig {
             .await?;
         let manifest: ElectionManifest = self
             .http
-            .get_resource_checked(&config.election_manifest)
+            .get_json_resource_checked(&config.election_manifest)
             .await?;
         let parameters: ElectionParameters = self
             .http
-            .get_resource_checked(&config.election_parameters)
+            .get_json_resource_checked(&config.election_parameters)
             .await?;
 
         let eg_config = ElectionGuardConfig {
