@@ -1,4 +1,8 @@
+#[cfg(feature = "http")]
+use anyhow::{ensure, Context};
 use concordium_base::contracts_common::{AccountAddress, Amount};
+#[cfg(feature = "http")]
+use concordium_governance_committee_election::{ChecksumUrl, HashSha2256};
 use eg::{
     election_manifest::ContestIndex,
     joint_election_public_key::Ciphertext,
@@ -51,3 +55,66 @@ pub struct WeightRow {
 
 /// Get the scaling factor used to scale the encrypted ballots
 pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_000u64 }
+
+/// Wrapper around [`reqwest::Client`] to provide
+/// `HttpClient::get_resource_checked`
+#[cfg(feature = "http")]
+#[derive(Debug, Clone)]
+pub struct HttpClient(reqwest::Client);
+
+#[cfg(feature = "http")]
+impl HttpClient {
+    pub fn try_create(timeout_ms: u64) -> anyhow::Result<Self> {
+        let timeout = core::time::Duration::from_millis(timeout_ms);
+        let client = reqwest::Client::builder()
+            .connect_timeout(timeout)
+            .timeout(timeout)
+            .build()
+            .context("Failed to construct http client")?;
+
+        Ok(Self(client))
+    }
+
+    /// get the resource behind [`ChecksumUrl`] while checking the integrity of
+    /// it.
+    pub async fn get_resource_checked(&self, url: &ChecksumUrl) -> anyhow::Result<Vec<u8>> {
+        use sha2::Digest;
+
+        let response = self
+            .0
+            .get(&url.url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to get resource at {}", &url.url))?;
+        ensure!(
+            response.status().is_success(),
+            "Failed to get resource at {}, server responded with {}",
+            &url.url,
+            response.status()
+        );
+
+        let data = response.bytes().await?;
+        let hash = HashSha2256(sha2::Sha256::digest(&data).into());
+        ensure!(
+            hash == url.hash,
+            "Failed to verify resource at {}, checksum mismatch (expected {}, computed {})",
+            url.url,
+            url.hash,
+            hash
+        );
+
+        Ok(data.into())
+    }
+
+    /// Gets the remote resource at `url` while also checking the content
+    /// against the checksum included as part of the [`ChecksumUrl`]
+    pub async fn get_json_resource_checked<J: serde::de::DeserializeOwned>(
+        &self,
+        url: &ChecksumUrl,
+    ) -> anyhow::Result<J> {
+        let data = self.get_resource_checked(url).await?;
+        let result = serde_json::from_slice(&data)
+            .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
+        Ok(result)
+    }
+}
