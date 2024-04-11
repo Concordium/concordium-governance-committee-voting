@@ -1,6 +1,6 @@
 ## Unreleased
 
-- Improve error message when requests to get remote resources fail
+- Improve error message when requests to get remote resources fail.
 
 ## 0.1.2
 
