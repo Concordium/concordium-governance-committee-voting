@@ -1354,16 +1354,24 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     };
 
     let eligible_voters_hash = {
-        let data = std::fs::read(app.voters_file).context("Unable to read voters file.")?;
+        let data = std::fs::read(&app.voters_file).context("Unable to read voters file.")?;
         contract::HashSha2256(sha2::Sha256::digest(data).into())
     };
+
+    let eligible_voters_filename = app
+        .voters_file
+        .file_name()
+        .context("voters-file must be a path to a file")?
+        .to_str()
+        .context("voters-file path is not valid unicode")?
+        .to_string();
 
     let init_param = contract::InitParameter {
         admin_account: wallet.address,
         candidates,
         guardians: app.guardians,
         eligible_voters: contract::ChecksumUrl {
-            url:  make_url("eligible-voters.csv".to_string())?,
+            url:  make_url(eligible_voters_filename)?,
             hash: eligible_voters_hash,
         },
         election_manifest: contract::ChecksumUrl {
@@ -1382,7 +1390,6 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     };
 
     let param = concordium_std::OwnedParameter::from_serial(&init_param)?; // Example
-
     let param_json = contract::InitParameter::get_type()
         .to_json_string_pretty(&concordium_std::to_bytes(&init_param))?;
     eprintln!("JSON parameter that will be used to initialize the contract.");
