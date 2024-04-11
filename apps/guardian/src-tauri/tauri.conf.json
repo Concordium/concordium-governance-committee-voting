@@ -24,6 +24,14 @@
                 "exists": true
             }
         },
+        "cli": {
+            "args": [
+                {
+                    "name": "node",
+                    "takesValue": true
+                }
+            ]
+        },
         "bundle": {
             "active": true,
             "targets": "all",

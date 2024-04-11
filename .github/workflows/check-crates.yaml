@@ -17,6 +17,7 @@ env:
   # The following environment variables need to be set for build to succeed.
   CCD_ELECTION_NODE: ""
   CCD_ELECTION_CONTRACT_ADDRESS: ""
+  CCD_ELECTION_NETWORK: ""
 
 jobs:
   clippy:
