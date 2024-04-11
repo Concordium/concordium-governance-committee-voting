@@ -13,6 +13,7 @@ use concordium_rust_sdk::{
     smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
     types::{ContractAddress, Energy, RejectReason, WalletAccount},
     v2::{self, BlockIdentifier, Client, Endpoint, QueryError, RPCError},
+    web3id::did::Network,
 };
 use eg::{
     election_manifest::ElectionManifest,
@@ -74,28 +75,11 @@ const TESTNET_GENESIS_HASH: &str =
 const MAINNET_GENESIS_HASH: &str =
     "9dd9ca4d19e9393877d2c44b70f89acbfc0883c2243e5eeaecc0d1cd0503f478";
 
-/// The networks supported by the application
-enum SupportedNetwork {
-    Testnet,
-    Mainnet,
+trait GenesisHash {
+    fn genesis_hash(&self) -> BlockHash;
 }
 
-impl FromStr for SupportedNetwork {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "testnet" => Ok(Self::Testnet),
-            "mainnet" => Ok(Self::Mainnet),
-            _ => Err(anyhow!(
-                "Unsupported network. Either specify 'testnet' or 'mainnet'"
-            )),
-        }
-    }
-}
-
-impl SupportedNetwork {
-    /// Get the genesis hash of the network.
+impl GenesisHash for Network {
     fn genesis_hash(&self) -> BlockHash {
         match self {
             Self::Testnet => BlockHash::from_str(TESTNET_GENESIS_HASH).unwrap(),
@@ -361,7 +345,10 @@ impl ConnectionConfig {
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let mut node = Client::new(endpoint).await?;
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
-        let expected_genesis_hash = network_id.parse::<SupportedNetwork>()?.genesis_hash();
+        let expected_genesis_hash = network_id
+            .parse::<Network>()
+            .context("CCD_ELECTION_NETWORK needs to be either 'testnet' or 'mainnet'")?
+            .genesis_hash();
         if genesis_hash != expected_genesis_hash {
             return Err(anyhow!(
                 "Invalid node specified. Application must use a {} node",
@@ -1606,8 +1593,7 @@ fn main() {
                 .get(CLI_ARG_NODE)
                 .map(|node_arg| &node_arg.value)
             {
-                let node_endpoint =
-                    v2::Endpoint::from_str(node_arg).inspect_err(|e| println!("{e}"))?;
+                let node_endpoint = v2::Endpoint::from_str(node_arg)?;
                 AppConfigState(Mutex::new(AppConfig::create(node_endpoint)))
             } else {
                 AppConfigState::default()
