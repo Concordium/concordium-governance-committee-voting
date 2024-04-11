@@ -1600,13 +1600,12 @@ fn main() {
                     .context("Failed to create app data directory")?;
             }
 
-            let app_config = if let Some(node_arg) = app.get_cli_matches()?.args.get(CLI_ARG_NODE) {
-                let serde_json::Value::String(node_arg) = &node_arg.value else {
-                    return Err(
-                        anyhow!("Expected '--node' argument to be a single string value").into(),
-                    );
-                };
-
+            let app_config = if let Some(serde_json::Value::String(node_arg)) = app
+                .get_cli_matches()?
+                .args
+                .get(CLI_ARG_NODE)
+                .map(|node_arg| &node_arg.value)
+            {
                 let node_endpoint =
                     v2::Endpoint::from_str(node_arg).inspect_err(|e| println!("{e}"))?;
                 AppConfigState(Mutex::new(AppConfig::create(node_endpoint)))
