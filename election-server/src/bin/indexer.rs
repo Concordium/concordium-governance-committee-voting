@@ -17,7 +17,7 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::{decode, get_resource_checked};
+use election_common::{decode, HttpClient};
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
@@ -92,13 +92,13 @@ impl AppConfig {
         &self,
         contract_config: &ElectionConfig,
     ) -> anyhow::Result<(ElectionManifest, ElectionParameters)> {
-        let election_manifest = get_resource_checked(&contract_config.election_manifest).await?;
-        let election_manifest = serde_json::from_slice(&election_manifest)?;
-
-        let election_parameters =
-            get_resource_checked(&contract_config.election_parameters).await?;
-        let election_parameters = serde_json::from_slice(&election_parameters)?;
-
+        let client = HttpClient::try_create(self.request_timeout_ms)?;
+        let election_manifest = client
+            .get_json_resource_checked(&contract_config.election_manifest)
+            .await?;
+        let election_parameters = client
+            .get_json_resource_checked(&contract_config.election_parameters)
+            .await?;
         Ok((election_manifest, election_parameters))
     }
 }

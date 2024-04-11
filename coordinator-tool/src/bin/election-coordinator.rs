@@ -33,8 +33,8 @@ use eg::{
     verifiable_decryption::VerifiableDecryption,
 };
 use election_common::{
-    decode, encode, get_resource_checked, get_scaling_factor, EncryptedTally, GuardianDecryption,
-    GuardianDecryptionProof, WeightRow,
+    decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
+    GuardianDecryptionProof, HttpClient, WeightRow,
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -839,14 +839,14 @@ async fn get_election_data(
     let start = config.election_start.try_into()?;
     let end = config.election_end.try_into()?;
 
-    let election_manifest: ElectionManifest = {
-        let response = get_resource_checked(&config.election_manifest).await?;
-        serde_json::from_slice(&response).context("Unable to parse election manifest")?
-    };
-    let election_parameters: ElectionParameters = {
-        let response = get_resource_checked(&config.election_parameters).await?;
-        serde_json::from_slice(&response).context("Unable to parse election parameters")?
-    };
+    let client = HttpClient::try_create(5000)?;
+
+    let election_manifest = client
+        .get_json_resource_checked(&config.election_manifest)
+        .await?;
+    let election_parameters = client
+        .get_json_resource_checked(&config.election_parameters)
+        .await?;
 
     let mut guardian_public_keys = config
         .guardian_keys

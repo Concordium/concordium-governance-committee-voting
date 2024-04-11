@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::{anyhow, Context};
-use concordium_governance_committee_election::{self as contract, ChecksumUrl, ElectionConfig};
+use concordium_governance_committee_election::{self as contract, ElectionConfig};
 use concordium_rust_sdk::{
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     contract_client::{ContractClient, ContractUpdateError},
@@ -27,8 +27,8 @@ use eg::{
     },
 };
 use election_common::{
-    decode, encode, get_resource_checked, EncryptedTally, GuardianDecryption,
-    GuardianDecryptionProof, GuardianDecryptionProofState,
+    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
+    GuardianDecryptionProofState, HttpClient,
 };
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
@@ -37,7 +37,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     str::FromStr,
-    time::Duration,
 };
 use tauri::{App, AppHandle, State, Window};
 use tokio::sync::Mutex;
@@ -251,25 +250,6 @@ struct ElectionContractMarker;
 /// The election contract client
 type ElectionClient = ContractClient<ElectionContractMarker>;
 
-/// Wrapper around [`reqwest::Client`] to provide
-/// `HttpClient::get_resource_checked`
-#[derive(Debug, Clone)]
-struct HttpClient(reqwest::Client);
-
-impl HttpClient {
-    /// Gets the remote resource at `url` while also checking the content
-    /// against the checksum included as part of the [`ChecksumUrl`]
-    async fn get_resource_checked<J: DeserializeOwned>(
-        &self,
-        url: &ChecksumUrl,
-    ) -> Result<J, Error> {
-        let data = get_resource_checked(url).await?;
-        let result = serde_json::from_slice(&data)
-            .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
-        Ok(result)
-    }
-}
-
 /// The contract (and correspondingly node) connection configuration.
 #[derive(Clone)]
 struct ConnectionConfig {
@@ -288,7 +268,6 @@ impl ConnectionConfig {
         let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
             .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
-        let timeout = Duration::from_millis(timeout);
         let contract_address = ContractAddress::from_str(env!("CCD_ELECTION_CONTRACT_ADDRESS"))
             .expect("Could not parse CCD_ELECTION_CONTRACT_ADDRESS");
 
@@ -303,15 +282,12 @@ impl ConnectionConfig {
         } else {
             endpoint
         };
+
+        let http = HttpClient::try_create(timeout)?;
+        let timeout = core::time::Duration::from_millis(timeout);
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let node = Client::new(endpoint).await?;
         let contract = ElectionClient::create(node, contract_address).await?;
-
-        let http = reqwest::Client::builder()
-            .connect_timeout(timeout)
-            .timeout(timeout)
-            .build()?;
-        let http = HttpClient(http);
 
         let contract_connection = Self { contract, http };
         Ok(contract_connection)
@@ -328,11 +304,11 @@ impl ConnectionConfig {
             .await?;
         let manifest: ElectionManifest = self
             .http
-            .get_resource_checked(&config.election_manifest)
+            .get_json_resource_checked(&config.election_manifest)
             .await?;
         let parameters: ElectionParameters = self
             .http
-            .get_resource_checked(&config.election_parameters)
+            .get_json_resource_checked(&config.election_parameters)
             .await?;
 
         let eg_config = ElectionGuardConfig {

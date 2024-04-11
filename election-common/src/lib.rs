@@ -8,7 +8,7 @@ use eg::{
         DecryptionProofResponseShare, DecryptionProofStateShare, DecryptionShareResult,
     },
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The representation of an encrypted tally, i.e. one [`Ciphertext`] per
@@ -54,29 +54,63 @@ pub struct WeightRow {
 /// Get the scaling factor used to scale the encrypted ballots
 pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_000u64 }
 
-/// get the resource behind [`ChecksumUrl`] while checking the integrity of it.
-pub async fn get_resource_checked(url: &ChecksumUrl) -> anyhow::Result<Vec<u8>> {
-    use sha2::Digest;
+/// Wrapper around [`reqwest::Client`] to provide
+/// `HttpClient::get_resource_checked`
+#[derive(Debug, Clone)]
+pub struct HttpClient(reqwest::Client);
 
-    let response = reqwest::get(&url.url)
-        .await
-        .with_context(|| format!("Failed to get resource at {}", &url.url))?;
-    ensure!(
-        response.status().is_success(),
-        "Failed to get resource at {}, server responded with {}",
-        &url.url,
-        response.status()
-    );
+impl HttpClient {
+    pub fn try_create(timeout_ms: u64) -> anyhow::Result<Self> {
+        let timeout = core::time::Duration::from_millis(timeout_ms);
+        let client = reqwest::Client::builder()
+            .connect_timeout(timeout)
+            .timeout(timeout)
+            .build()
+            .context("Failed to construct http client")?;
 
-    let data = response.bytes().await?;
-    let hash = HashSha2256(sha2::Sha256::digest(&data).into());
-    ensure!(
-        hash == url.hash,
-        "Failed to verify resource at {}, checksum mismatch (expected {}, computed {})",
-        url.url,
-        url.hash,
-        hash
-    );
+        Ok(Self(client))
+    }
 
-    Ok(data.into())
+    /// get the resource behind [`ChecksumUrl`] while checking the integrity of
+    /// it.
+    pub async fn get_resource_checked(&self, url: &ChecksumUrl) -> anyhow::Result<Vec<u8>> {
+        use sha2::Digest;
+
+        let response = self
+            .0
+            .get(&url.url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to get resource at {}", &url.url))?;
+        ensure!(
+            response.status().is_success(),
+            "Failed to get resource at {}, server responded with {}",
+            &url.url,
+            response.status()
+        );
+
+        let data = response.bytes().await?;
+        let hash = HashSha2256(sha2::Sha256::digest(&data).into());
+        ensure!(
+            hash == url.hash,
+            "Failed to verify resource at {}, checksum mismatch (expected {}, computed {})",
+            url.url,
+            url.hash,
+            hash
+        );
+
+        Ok(data.into())
+    }
+
+    /// Gets the remote resource at `url` while also checking the content
+    /// against the checksum included as part of the [`ChecksumUrl`]
+    pub async fn get_json_resource_checked<J: DeserializeOwned>(
+        &self,
+        url: &ChecksumUrl,
+    ) -> anyhow::Result<J> {
+        let data = self.get_resource_checked(url).await?;
+        let result = serde_json::from_slice(&data)
+            .with_context(|| format!("Failed to deserialize data at {}", url.url))?;
+        Ok(result)
+    }
 }

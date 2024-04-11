@@ -13,4 +13,5 @@ eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
 reqwest = "0.12"
 rmp-serde = "1.1"
 serde = "1.0"
+serde_json = "1.0.115"
 sha2 = "0.10"
