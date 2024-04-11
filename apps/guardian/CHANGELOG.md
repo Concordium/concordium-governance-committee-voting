@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Improve error message when requests to get remote resources fail.
+- Updates wording of unlock dialog
 
 ## 0.1.2
 
