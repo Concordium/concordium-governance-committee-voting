@@ -1260,10 +1260,10 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     }
 
     let url = &app.base_url;
-    let make_url = move |path: String| {
-        let mut url = url.clone();
-        url.set_path(&path);
-        url.to_string()
+    let make_url = move |path: String| -> anyhow::Result<String> {
+        let url = url.clone();
+        let url = url.join(&path).context("Failed to construct URL")?;
+        Ok(url.to_string())
     };
 
     anyhow::ensure!(
@@ -1298,8 +1298,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
                         .file_name()
                         .and_then(OsStr::to_str)
                         .with_context(|| format!("Invalid filename for path {:?}", &path))?;
-                    let candidate_url =
-                        make_url(format!("/static/concordium/candidates/{}", candidate_file));
+                    let candidate_url = make_url(format!("candidates/{}", candidate_file))?;
                     let data = std::fs::read(&path).context("Unable to read voters file.")?;
 
                     (candidate_url, data)
@@ -1384,15 +1383,15 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         candidates,
         guardians: app.guardians,
         eligible_voters: contract::ChecksumUrl {
-            url:  make_url("/static/concordium/eligible-voters.csv".to_string()),
+            url:  make_url("eligible-voters.csv".to_string())?,
             hash: eligible_voters_hash,
         },
         election_manifest: contract::ChecksumUrl {
-            url:  make_url("static/electionguard/election-manifest.json".to_string()),
+            url:  make_url("election-manifest.json".to_string())?,
             hash: manifest_hash,
         },
         election_parameters: contract::ChecksumUrl {
-            url:  make_url("static/electionguard/election-parameters.json".to_string()),
+            url:  make_url("election-parameters.json".to_string())?,
             hash: parameters_hash,
         },
         election_description: "Test election".into(),

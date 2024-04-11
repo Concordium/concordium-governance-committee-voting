@@ -66,6 +66,14 @@ yarn tauri-build
 
 This produces an application package/binary corresponding to the host operating system.
 
+### Signing the application
+
+Please follow the instructions provided by the official tauri docs with regards to signing applications for the
+respective platforms:
+
+- [MacOS](https://tauri.app/v1/guides/distribution/sign-macos)
+- [Windows](https://tauri.app/v1/guides/distribution/sign-windows#c-prepare-variables)
+
 ## Bump application version
 
 - Bump version in `./src-tauri/tauri.conf.json` and correspondingly `./package.json` (the latter is mostly for good
