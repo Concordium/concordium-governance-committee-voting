@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.82"
+anyhow = "1.0"
 concordium_base = { version = "4.0" }
 concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election" }
 eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
