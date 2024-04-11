@@ -1,5 +1,7 @@
+#[cfg(feature = "http")]
 use anyhow::{ensure, Context};
 use concordium_base::contracts_common::{AccountAddress, Amount};
+#[cfg(feature = "http")]
 use concordium_governance_committee_election::{ChecksumUrl, HashSha2256};
 use eg::{
     election_manifest::ContestIndex,
@@ -8,7 +10,7 @@ use eg::{
         DecryptionProofResponseShare, DecryptionProofStateShare, DecryptionShareResult,
     },
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The representation of an encrypted tally, i.e. one [`Ciphertext`] per
@@ -56,9 +58,11 @@ pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_0
 
 /// Wrapper around [`reqwest::Client`] to provide
 /// `HttpClient::get_resource_checked`
+#[cfg(feature = "http")]
 #[derive(Debug, Clone)]
 pub struct HttpClient(reqwest::Client);
 
+#[cfg(feature = "http")]
 impl HttpClient {
     pub fn try_create(timeout_ms: u64) -> anyhow::Result<Self> {
         let timeout = core::time::Duration::from_millis(timeout_ms);
@@ -104,7 +108,7 @@ impl HttpClient {
 
     /// Gets the remote resource at `url` while also checking the content
     /// against the checksum included as part of the [`ChecksumUrl`]
-    pub async fn get_json_resource_checked<J: DeserializeOwned>(
+    pub async fn get_json_resource_checked<J: serde::de::DeserializeOwned>(
         &self,
         url: &ChecksumUrl,
     ) -> anyhow::Result<J> {
