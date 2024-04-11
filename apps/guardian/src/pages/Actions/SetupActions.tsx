@@ -32,11 +32,12 @@ const GenerateGuardianKey = makeActionableStep(
                             step={ActionStep.HandleProposal}
                             activeStep={step}
                             error={error}
+                            action
                             note={
                                 proposal ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}` : ``
                             }
                         >
-                            Awaiting transaction approval
+                            Send key registration
                             <div className="generate__step-note text-muted"></div>
                         </Step>
                         <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
@@ -103,6 +104,7 @@ const GenerateEncryptedShares = makeActionableStep(
                                 step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
+                                action
                                 note={
                                     proposal
                                         ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(
@@ -111,7 +113,9 @@ const GenerateEncryptedShares = makeActionableStep(
                                         : ``
                                 }
                             >
-                                Awaiting transaction approval
+                                {peerValidationMessage !== undefined
+                                    ? 'Register validation complaint'
+                                    : 'Register encrypted shares'}
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
@@ -179,6 +183,7 @@ const GenerateSecretShare = makeActionableStep(
                                 step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
+                                action
                                 note={
                                     proposal
                                         ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(
@@ -187,7 +192,9 @@ const GenerateSecretShare = makeActionableStep(
                                         : ``
                                 }
                             >
-                                Awaiting transaction approval
+                                {peerValidationMessage !== undefined
+                                    ? 'Register validation complaint'
+                                    : 'Register validation OK'}
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>

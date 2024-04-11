@@ -61,13 +61,14 @@ const GenerateDecryptionShare = makeActionableStep(
                                 step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
+                                action
                                 note={
                                     proposal
                                         ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}`
                                         : ``
                                 }
                             >
-                                Awaiting transaction approval
+                                Send share registration
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>
@@ -122,13 +123,14 @@ const GenerateDecryptionProof = makeActionableStep(
                                 step={ActionStep.HandleProposal}
                                 activeStep={step}
                                 error={error}
+                                action
                                 note={
                                     proposal
                                         ? `Transaction fee: ${CCD_SYMBOL}${CcdAmount.toCcd(proposal).toString()}`
                                         : ``
                                 }
                             >
-                                Awaiting transaction approval
+                                Send proof registration
                                 <div className="generate__step-note text-muted"></div>
                             </Step>
                             <Step step={ActionStep.UpdateConctract} activeStep={step} error={error}>

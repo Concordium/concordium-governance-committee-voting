@@ -17,6 +17,7 @@ import { BackendError, GuardianState, GuardiansState } from '~/shared/ffi';
 import { guardiansStateAtom } from '~/shared/store';
 import SuccessIcon from '~/assets/rounded-success.svg?react';
 import ErrorIcon from '~/assets/rounded-warning.svg?react';
+import ArrowIcon from '~/assets/arrow-right.svg?react';
 
 /**
  * The steps run for each guardian action performed.
@@ -49,6 +50,11 @@ export type StepProps = PropsWithChildren<{
      * transaction signals detection of invalid submissions.
      */
     warn?: boolean;
+    /**
+     * Whether this steps requires user to perform an action. Defaults to false, meaning we're waiting for a process to
+     * finish.
+     */
+    action?: boolean;
 }>;
 
 /**
@@ -68,7 +74,7 @@ const enum StepStatus {
     Warn,
 }
 
-export function Step({ step, activeStep, error, children, note, warn = false }: StepProps) {
+export function Step({ step, activeStep, error, children, note, warn = false, action = false }: StepProps) {
     const ownError = step === activeStep ? error : undefined;
     const status = useMemo(() => {
         if (step > activeStep) {
@@ -84,7 +90,8 @@ export function Step({ step, activeStep, error, children, note, warn = false }: 
     return (
         <li className={clsx('generate__step', status === StepStatus.Warn && 'generate__step--warn')}>
             <div className="generate__step-icon">
-                {status === StepStatus.Active && <Spinner animation="border" size="sm" />}
+                {status === StepStatus.Active && !action && <Spinner animation="border" size="sm" />}
+                {status === StepStatus.Active && action && <ArrowIcon width="20" height="20" fill="black" />}
                 {(status === StepStatus.Error || status === StepStatus.Warn) && <ErrorIcon width="20" />}
                 {status === StepStatus.Success && <SuccessIcon width="20" />}
             </div>
