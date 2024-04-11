@@ -1,3 +1,7 @@
+## Unreleased
+
+- Remove election configuration files from server, as these are expected to be hosted statically elsewhere.
+
 ## 0.2.3
 
 - Fix unicode escape error from postgres by storing encrypted ballots as `BYTEA` instead of `JSONB`.

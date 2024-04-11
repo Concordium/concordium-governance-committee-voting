@@ -34,7 +34,7 @@ use eg::{
 };
 use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
-    GuardianDecryptionProof, WeightRow,
+    GuardianDecryptionProof, HttpClient, WeightRow,
 };
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -839,34 +839,14 @@ async fn get_election_data(
     let start = config.election_start.try_into()?;
     let end = config.election_end.try_into()?;
 
-    let election_manifest: ElectionManifest = {
-        let response = reqwest::get(config.election_manifest.url)
-            .await
-            .context("Failed to get election manifest.")?;
-        anyhow::ensure!(
-            response.status().is_success(),
-            "Failed to get election manifest, server responded with {}",
-            response.status()
-        );
-        response
-            .json()
-            .await
-            .context("Unable to parse election manifest.")?
-    };
-    let election_parameters: ElectionParameters = {
-        let response = reqwest::get(config.election_parameters.url)
-            .await
-            .context("Failed to get election parameters.")?;
-        anyhow::ensure!(
-            response.status().is_success(),
-            "Failed to get election parameters, server responded with {}",
-            response.status()
-        );
-        response
-            .json()
-            .await
-            .context("Unable to parse election parameters.")?
-    };
+    let client = HttpClient::try_create(5000)?;
+
+    let election_manifest = client
+        .get_json_resource_checked(&config.election_manifest)
+        .await?;
+    let election_parameters = client
+        .get_json_resource_checked(&config.election_parameters)
+        .await?;
 
     let mut guardian_public_keys = config
         .guardian_keys
@@ -951,17 +931,17 @@ async fn handle_tally(
                      ..
                  }| {
                     let param = execution_tree.parameter();
-                    let Ok(param) =
-                concordium_std::from_bytes::<contract::RegisterVotesParameter>(param.as_ref())
-            else {
-                eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                return None;
-            };
+                    let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(
+                        param.as_ref(),
+                    ) else {
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
 
                     let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
-                eprintln!("Unable to parse ballot from transaction {transaction_hash}");
-                return None;
-            };
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
                     Some((
                         ballot.verify(&verification_context),
                         sender,
@@ -1374,16 +1354,24 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     };
 
     let eligible_voters_hash = {
-        let data = std::fs::read(app.voters_file).context("Unable to read voters file.")?;
+        let data = std::fs::read(&app.voters_file).context("Unable to read voters file.")?;
         contract::HashSha2256(sha2::Sha256::digest(data).into())
     };
+
+    let eligible_voters_filename = app
+        .voters_file
+        .file_name()
+        .context("voters-file must be a path to a file")?
+        .to_str()
+        .context("voters-file path is not valid unicode")?
+        .to_string();
 
     let init_param = contract::InitParameter {
         admin_account: wallet.address,
         candidates,
         guardians: app.guardians,
         eligible_voters: contract::ChecksumUrl {
-            url:  make_url("eligible-voters.csv".to_string())?,
+            url:  make_url(eligible_voters_filename)?,
             hash: eligible_voters_hash,
         },
         election_manifest: contract::ChecksumUrl {
@@ -1402,7 +1390,6 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
     };
 
     let param = concordium_std::OwnedParameter::from_serial(&init_param)?; // Example
-
     let param_json = contract::InitParameter::get_type()
         .to_json_string_pretty(&concordium_std::to_bytes(&init_param))?;
     eprintln!("JSON parameter that will be used to initialize the contract.");
