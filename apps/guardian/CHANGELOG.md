@@ -1,3 +1,7 @@
+## Unreleased
+
+- Improve dialogue on guardian action modal
+
 ## 0.1.2
 
 - Updates concordium rust dependencies
