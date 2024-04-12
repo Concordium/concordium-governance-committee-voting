@@ -8,11 +8,25 @@ To build both binaries included in the project, do
 cargo build --release
 ```
 
+## Setting up a postgres DB
+
+Both binaries require a connection to a postgres database. To set up a database which matches the default connection string in the crate, run the following docker command:
+
+```sh
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=password -e POSTGRES_DB="gc-election" --rm postgres
+```
+
+This does __not__ mount a volume, i.e. no data is persisted between runs.
+
 ## Running the http binary
 
 ```bash
 cargo run --bin http --release -- --contract-address "<7635,0>" # and other configration options.
 ```
+
+### Building the frontend served by `http`
+
+The `http` binary serves the voting dApp, thus this needs to be built for `http` to work in full. Please refer to the [voting dApp documentation](../apps/voting/README.md) for instructions on how to do this.
 
 ### Configuration
 
@@ -34,14 +48,6 @@ Options:
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
       --prometheus-address <PROMETHEUS_ADDRESS>
           Address of the prometheus server [env: CCD_ELECTION_PROMETHEUS_ADDRESS=]
-      --eligible-voters-file <ELIGIBLE_VOTERS_FILE>
-          A csv file consisting of the list of eligible voters and their respective voting weights [env: CCD_ELECTION_ELIGIBLE_VOTERS_FILE=] [default: ../resources/config-example/initial-weights.csv]
-      --election-manifest-file <EG_MANIFEST_FILE>
-          A json file consisting of the election manifest used by election guard [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=] [default: ../resources/config-example/election-manifest.json]
-      --election-parameters-file <EG_PARAMETERS_FILE>
-          A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=] [default: ../resources/config-example/election-parameters.json]
-      --candidates-dir <CANDIDATES_DIR>
-          An optional directory with JSON metadata for a set of candidates [env: CCD_ELECTION_CANDIDATES_DIR=]
       --frontend-dir <FRONTEND_DIR>
           Path to the directory where frontend assets are located [env: CCD_ELECTION_FRONTEND_DIR=] [default: ../apps/voting/dist]
       --allow-cors
@@ -82,10 +88,6 @@ Options:
           Maximum log level [env: CCD_ELECTION_LOG_LEVEL=] [default: info]
       --max-behind-seconds <MAX_BEHIND_S>
           Max amount of seconds a response from a node can fall behind before trying another [env: CCD_ELECTION_MAX_BEHIND_SECONDS=] [default: 240]
-      --election-manifest-file <EG_MANIFEST_FILE>
-          [env: CCD_ELECTION_ELECTION_MANIFEST_FILE=] [default: ../resources/config-example/election-manifest.json]
-      --election-parameters-file <EG_PARAMETERS_FILE>
-          A json file consisting of the election parameters used by election guard [env: CCD_ELECTION_ELECTION_PARAMETERS_FILE=] [default: ../resources/config-example/election-parameters.json]
       --request-timeout-ms <REQUEST_TIMEOUT_MS>
           The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 5000]
   -h, --help

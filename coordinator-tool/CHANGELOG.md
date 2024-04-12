@@ -1,3 +1,7 @@
+## Unreleased
+
+- Add `description` argument to `new-election`
+
 ## 0.2.4
 
 - Parallelize the tally computation.

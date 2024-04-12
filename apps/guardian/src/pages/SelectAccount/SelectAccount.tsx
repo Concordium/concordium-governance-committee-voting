@@ -77,7 +77,7 @@ function PasswordPrompt({ show, onHide, onAccountLoad }: PasswordPromptProps) {
                         <Form.Label>Password</Form.Label>
                         <Form.Control
                             type="password"
-                            placeholder="Select password"
+                            placeholder="Enter password"
                             isInvalid={formState.errors.password !== undefined}
                             {...register('password', {
                                 required: 'Password required',

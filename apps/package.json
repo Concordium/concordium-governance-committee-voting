@@ -33,7 +33,8 @@
     },
     "packageManager": "yarn@4.0.1",
     "scripts": {
-        "build:all": "yarn workspaces foreach --all -pt run build",
+        "build:ci": "yarn workspaces foreach --all -pt run build",
+        "build:all": "yarn workspace shared run generate && yarn build:ci",
         "lint:all": "yarn workspaces foreach --all -p run lint",
         "lint-fix:all": "yarn workspaces foreach --all -p run lint-fix",
         "prettier": "prettier ./.*.* ./*.* -u",
