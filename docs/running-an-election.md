@@ -34,6 +34,7 @@ election-coordinator new-election \
   --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 \
   --threshold 2 \
   --admin admin.export \
+  --description 'Concordium GC election 2024'
   --election-start '2024-02-01T00:00:00Z' \
   --election-end '2024-02-07T00:00:00Z' \
   --decryption-deadline '2024-02-08T00:00:00Z' \
@@ -45,7 +46,7 @@ election-coordinator new-election \
   --guardian 3ybJ66spZ2xdWF3avgxQb2meouYa7mpvMWNPmUnczU8FoF8cGB \
   --candidate candidate1.json \
   --candidate https://some.url/candidate2.json \
-  --base-url http://localhost:8081 # The location of the resources making up the election configuration.
+  --base-url http://localhost:8081/gc-election-2024/ # The location of the resources making up the election configuration.
 ```
 
 ### Set environment variables
