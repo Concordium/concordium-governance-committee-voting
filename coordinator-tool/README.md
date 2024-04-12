@@ -80,13 +80,14 @@ The weights are stored in the `initial-weights.csv` file.
 ### Create a new election instance
 
 ```
-election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --decryption-deadline '2024-02-08T00:00:00Z' --delegation-string 'This is how you delegate' --out ./election-out  --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate candidates/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000' --base-url https://gcvoting.testnet.concordium.com`
+election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --description 'Concordium GC election 2024' --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --decryption-deadline '2024-02-08T00:00:00Z' --delegation-string 'This is how you delegate' --out ./election-out  --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate candidates/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000' --base-url https://gcvoting.testnet.concordium.com`
 ```
 
 The options are the following
 
 - `--admin` is the path to the keys that will be used to create the contract, and serve as the admin
 - `--module` is the path to the compiled election smart contract in `wasm.v1` format
+- `--description` is a short, descriptive title for the election
 - `--threshold` is the threshold for the number of guardians needed for decryption of the result of the election
 - `--election-start` and `--election-end` are clear
 - `--decryption-deadline` is the time guardians must register their decryptions before
