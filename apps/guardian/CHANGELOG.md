@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Improve dialogue on guardian action modal
 - Improve error message when requests to get remote resources fail.
 - Updates wording of unlock dialog
 
