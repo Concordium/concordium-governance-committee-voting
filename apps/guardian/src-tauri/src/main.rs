@@ -4,12 +4,14 @@
 use anyhow::{anyhow, Context};
 use concordium_governance_committee_election::{self as contract, ElectionConfig};
 use concordium_rust_sdk::{
+    base::hashes::BlockHash,
     common::encryption::{decrypt, encrypt, EncryptedData, Password},
     contract_client::{ContractClient, ContractUpdateError},
     id::types::AccountKeys,
     smart_contracts::common::{self as contracts_common, AccountAddress, Amount},
     types::{ContractAddress, Energy, RejectReason, WalletAccount},
     v2::{self, BlockIdentifier, Client, Endpoint, QueryError, RPCError},
+    web3id::did::Network,
 };
 use eg::{
     election_manifest::ElectionManifest,
@@ -38,7 +40,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use tauri::{App, AppHandle, State, Window};
+use tauri::{App, AppHandle, Manager, State, Window};
 use tokio::sync::Mutex;
 use tonic::transport::ClientTlsConfig;
 use util::csprng::Csprng;
@@ -58,6 +60,29 @@ const DECRYPTION_SECRET_STATES: &str = "secret-decryption_states.json.aes";
 /// The default request timeout to use if not specified by environment variable
 /// "CCD_ELECTION_REQUEST_TIMEOUT_MS".
 const DEFAULT_REQUEST_TIMEOUT_MS: u16 = 5000;
+
+/// The CLI argument to specify to override the node used internally.
+const CLI_ARG_NODE: &str = "node";
+
+/// The genesis hash of testnet
+const TESTNET_GENESIS_HASH: &str =
+    "4221332d34e1694168c2a0c0b3fd0f273809612cb13d000d5c2e00e85f50f796";
+/// The genesis hash of mainnet
+const MAINNET_GENESIS_HASH: &str =
+    "9dd9ca4d19e9393877d2c44b70f89acbfc0883c2243e5eeaecc0d1cd0503f478";
+
+trait GenesisHash {
+    fn genesis_hash(&self) -> BlockHash;
+}
+
+impl GenesisHash for Network {
+    fn genesis_hash(&self) -> BlockHash {
+        match self {
+            Self::Testnet => BlockHash::from_str(TESTNET_GENESIS_HASH).unwrap(),
+            Self::Mainnet => BlockHash::from_str(MAINNET_GENESIS_HASH).unwrap(),
+        }
+    }
+}
 
 /// Describes any error happening in the backend.
 #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
@@ -262,14 +287,13 @@ struct ConnectionConfig {
 impl ConnectionConfig {
     /// Creates a connection to a concordium node and a contract client. This
     /// function panics if the necessary environment variables are not set.
-    async fn try_create_from_env() -> Result<Self, Error> {
-        let endpoint = Endpoint::from_str(env!("CCD_ELECTION_NODE"))
-            .expect("Could not parse CCD_ELECTION_NODE");
+    async fn try_create_from_env(endpoint: v2::Endpoint) -> Result<Self, Error> {
         let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
             .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
         let contract_address = ContractAddress::from_str(env!("CCD_ELECTION_CONTRACT_ADDRESS"))
             .expect("Could not parse CCD_ELECTION_CONTRACT_ADDRESS");
+        let network_id = env!("CCD_ELECTION_NETWORK");
 
         let endpoint = if endpoint
             .uri()
@@ -286,7 +310,19 @@ impl ConnectionConfig {
         let http = HttpClient::try_create(timeout)?;
         let timeout = core::time::Duration::from_millis(timeout);
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
-        let node = Client::new(endpoint).await?;
+        let mut node = Client::new(endpoint).await?;
+        let genesis_hash = node.get_consensus_info().await?.genesis_block;
+        let expected_genesis_hash = network_id
+            .parse::<Network>()
+            .context("CCD_ELECTION_NETWORK needs to be either 'testnet' or 'mainnet'")?
+            .genesis_hash();
+        if genesis_hash != expected_genesis_hash {
+            return Err(anyhow!(
+                "Invalid node specified. Application must use a {} node",
+                network_id
+            )
+            .into());
+        }
         let contract = ElectionClient::create(node, contract_address).await?;
 
         let contract_connection = Self { contract, http };
@@ -322,8 +358,10 @@ impl ConnectionConfig {
 /// The application config necessary for the application to function. All fields
 /// are optional to allow initializing the application with an "empty" version
 /// of this.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct AppConfig {
+    /// The node endpoint used internally in the application
+    node_endpoint:  v2::Endpoint,
     /// The connection to the contract. Best to access this through
     /// [`AppConfig::connection`] as this lazily creates the connection and
     /// caches it.
@@ -338,14 +376,38 @@ struct AppConfig {
     election_guard: Option<ElectionGuardConfig>,
 }
 
+impl Default for AppConfig {
+    fn default() -> Self {
+        let node_endpoint = Endpoint::from_str(env!("CCD_ELECTION_NODE"))
+            .expect("Could not parse CCD_ELECTION_NODE");
+        Self {
+            node_endpoint,
+            connection: Default::default(),
+            election: Default::default(),
+            election_guard: Default::default(),
+        }
+    }
+}
+
 impl AppConfig {
+    /// Creates a new [`AppConfig`]
+    fn create(node_endpoint: v2::Endpoint) -> Self {
+        Self {
+            node_endpoint,
+            connection: Default::default(),
+            election: Default::default(),
+            election_guard: Default::default(),
+        }
+    }
+
     /// Gets the connection. If a connection does not exist, a new one is
     /// created and stored in the configuration before being returned.
     async fn connection(&mut self) -> Result<ConnectionConfig, Error> {
         let connection = if let Some(connection) = &self.connection {
             connection.clone()
         } else {
-            let connection = ConnectionConfig::try_create_from_env().await?;
+            let connection =
+                ConnectionConfig::try_create_from_env(self.node_endpoint.clone()).await?;
             self.connection = Some(connection.clone());
             connection
         };
@@ -1474,7 +1536,6 @@ fn main() {
         .setup(move |app: &mut App| {
             #[cfg(debug_assertions)]
             {
-                use tauri::Manager;
                 let window = app.get_window("main").unwrap();
                 window.open_devtools();
                 window.maximize().ok();
@@ -1483,13 +1544,26 @@ fn main() {
             // Will not fail due to being declared accessible in `tauri.conf.json`
             let app_data_dir = app.path_resolver().app_data_dir().unwrap();
             if !app_data_dir.exists() {
-                std::fs::create_dir(&app_data_dir)?;
+                std::fs::create_dir(&app_data_dir)
+                    .context("Failed to create app data directory")?;
             }
+
+            let app_config = if let Some(serde_json::Value::String(node_arg)) = app
+                .get_cli_matches()?
+                .args
+                .get(CLI_ARG_NODE)
+                .map(|node_arg| &node_arg.value)
+            {
+                let node_endpoint = v2::Endpoint::from_str(node_arg)?;
+                AppConfigState(Mutex::new(AppConfig::create(node_endpoint)))
+            } else {
+                AppConfigState::default()
+            };
+            app.manage(app_config);
 
             Ok(())
         })
         .manage(ActiveGuardianState::default())
-        .manage(AppConfigState::default())
         .manage(ContractDataState::default())
         .invoke_handler(tauri::generate_handler![
             connect,

@@ -3,6 +3,7 @@
 - Improve dialogue on guardian action modal
 - Improve error message when requests to get remote resources fail.
 - Updates wording of unlock dialog
+- Make it possible to override the node endpoint to use through `--node` command line argument
 
 ## 0.1.2
 
