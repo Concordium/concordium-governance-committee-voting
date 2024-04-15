@@ -188,7 +188,7 @@ export function DecryptionActions() {
                 </AwaitPeers>
             )}
             {step === TallyStep.Incomplete && (
-                <h3>The election decryption was not completed by a sufficient amount of guardians</h3>
+                <h3>The decryption was not completed by a sufficient amount of guardians</h3>
             )}
             {step === TallyStep.GenerateDecryptionProof && <GenerateDecryptionProof />}
             {step === TallyStep.AwaitPeerShares && (
