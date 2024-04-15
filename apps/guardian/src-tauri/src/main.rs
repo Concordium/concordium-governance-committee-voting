@@ -1502,6 +1502,13 @@ async fn refresh_encrypted_tally(
     Ok(true)
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectResponse {
+    contract_config:     ElectionConfig,
+    election_parameters: ElectionParameters,
+}
+
 /// Initializes a connection to the contract and queries the necessary election
 /// configuration data. Returns the election configuration stored in the
 /// election contract
@@ -1511,10 +1518,16 @@ async fn refresh_encrypted_tally(
 /// - [`Error::NetworkError`]
 /// - [`Error::Http`]
 #[tauri::command]
-async fn connect(app_config: State<'_, AppConfigState>) -> Result<ElectionConfig, Error> {
+async fn connect(app_config: State<'_, AppConfigState>) -> Result<ConnectResponse, Error> {
     let mut app_config_guard = app_config.0.lock().await;
-    let election_config = app_config_guard.election().await?;
-    Ok(election_config)
+    let contract_config = app_config_guard.election().await?;
+    let eg_config = app_config_guard.election_guard().await?;
+
+    let response = ConnectResponse {
+        contract_config,
+        election_parameters: eg_config.parameters,
+    };
+    Ok(response)
 }
 
 /// Calculates the [`Amount`] for a given amount of [`Energy`].

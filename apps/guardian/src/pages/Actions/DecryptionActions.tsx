@@ -187,8 +187,11 @@ export function DecryptionActions() {
                     Waiting for peers to register their shares of the decryption.
                 </AwaitPeers>
             )}
+            {step === TallyStep.Incomplete && (
+                <h3>The election decryption was not completed by a sufficient amount of guardians</h3>
+            )}
             {step === TallyStep.GenerateDecryptionProof && <GenerateDecryptionProof />}
-            {step === TallyStep.Done && (
+            {step === TallyStep.AwaitPeerShares && (
                 <AwaitPeers
                     predicate={(g) => g.hasDecryptionProof}
                     guardians={guardians.filter(([, gs]) => gs.hasDecryptionShare)}
@@ -196,6 +199,7 @@ export function DecryptionActions() {
                     Your decryption is complete. Combined decryption progress:
                 </AwaitPeers>
             )}
+            {step === TallyStep.Done && <h3>Decryption complete.</h3>}
         </>
     );
 }

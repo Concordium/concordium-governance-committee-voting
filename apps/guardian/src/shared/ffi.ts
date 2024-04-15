@@ -124,8 +124,8 @@ export type ElectionConfig = {
     decryptionDeadline: Date;
     /** The election description */
     electionDescription: string;
-    /** Whether the encrypted tally has been registered in the contract */
-    hasEncryptedTally: boolean;
+    /** The threshold of guardians needed to decrypt the election tally */
+    guardianThreshold: number;
 };
 
 /**
@@ -139,11 +139,13 @@ export type ElectionConfig = {
  */
 export async function connect(): Promise<ElectionConfig> {
     const response = await invokeWrapped<any>('connect');
+    const guardianThreshold = response.electionParameters.varying_parameters.k;
     const mapped: ElectionConfig = {
-        ...response,
+        ...response.contractConfig,
         electionStart: new Date(response.electionStart),
         electionEnd: new Date(response.electionEnd),
         decryptionDeadline: new Date(response.decryptionDeadline),
+        guardianThreshold,
     };
     return mapped;
 }

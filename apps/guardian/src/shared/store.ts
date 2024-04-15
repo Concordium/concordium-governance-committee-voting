@@ -93,7 +93,9 @@ export const enum TallyStep {
     Excluded,
     GenerateDecryptionShare,
     AwaitPeerShares,
+    Incomplete,
     GenerateDecryptionProof,
+    AwaitPeerProofs,
     Done,
 }
 
@@ -117,26 +119,26 @@ export const setupCompleted = (guardian: GuardianState) =>
 export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
     (get) => {
         const phase = get(electionPhaseBaseAtom);
-        const guardians = get(guardiansStateBaseAtom);
+        const guardians = get(guardiansStateBaseAtom)?.map(([, g]) => g);
         const guardian = get(selectedGuardianAtom);
         if (guardian === undefined || guardians === undefined || phase === undefined) return undefined;
 
-        if (guardians.some(([, g]) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful)) {
+        if (guardians.some((g) => g.status !== null && g.status !== GuardianStatus.VerificationSuccessful)) {
             return { phase: ElectionPhase.Setup, step: SetupStep.Invalid };
         }
 
-        if (phase !== ElectionPhase.Setup && guardians.some(([, g]) => !setupCompleted(g))) {
+        if (phase !== ElectionPhase.Setup && guardians.some((g) => !setupCompleted(g))) {
             return { phase: ElectionPhase.Setup, step: SetupStep.Incomplete };
         }
 
         if (phase === ElectionPhase.Setup) {
             const step = (() => {
-                if (guardians.every(([, g]) => setupCompleted(g))) return SetupStep.Done;
+                if (guardians.every(setupCompleted)) return SetupStep.Done;
                 if (setupCompleted(guardian)) return SetupStep.AwaitPeerValidation;
-                if (guardians.every(([, g]) => g.hasPublicKey && g.hasEncryptedShares))
+                if (guardians.every((g) => g.hasPublicKey && g.hasEncryptedShares))
                     return SetupStep.GenerateSecretShare;
                 if (guardian.hasPublicKey && guardian.hasEncryptedShares) return SetupStep.AwaitPeerShares;
-                if (guardians.every(([, g]) => g.hasPublicKey)) return SetupStep.GenerateEncryptedShares;
+                if (guardians.every((g) => g.hasPublicKey)) return SetupStep.GenerateEncryptedShares;
                 if (guardian.hasPublicKey) return SetupStep.AwaitPeerKeys;
                 return SetupStep.GenerateKey;
             })();
@@ -156,12 +158,16 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
             );
             const now = new Date();
 
+            const includedGuardians = guardians.filter((g) => !g.excluded);
             const step = (() => {
-                if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.Done;
+                if (includedGuardians.every((g) => g.hasDecryptionShare && g.hasDecryptionProof)) return TallyStep.Done;
+                if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.AwaitPeerShares;
                 if (
-                    guardians.filter(([, g]) => !g.excluded).every(([, g]) => g.hasDecryptionShare) ||
-                    electionConfig.decryptionDeadline < now
+                    electionConfig.decryptionDeadline < now &&
+                    includedGuardians.filter((g) => g.hasDecryptionShare).length < electionConfig.guardianThreshold
                 )
+                    return TallyStep.Incomplete;
+                if (includedGuardians.every((g) => g.hasDecryptionShare) || electionConfig.decryptionDeadline < now)
                     return TallyStep.GenerateDecryptionProof;
                 if (guardian.hasDecryptionShare) return TallyStep.AwaitPeerShares;
                 if (guardian.excluded) return TallyStep.Excluded;
