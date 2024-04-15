@@ -126,7 +126,7 @@ enum Error {
     #[error("Failed to validate peer submissions")]
     PeerValidation(Vec<AccountAddress>),
     /// When a decryption share result shared by some guardian is invalid
-    #[error("{0}")]
+    #[error("{0} - manual intervention required by the election coordinator")]
     InvalidDecryptionShare(String),
 }
 
