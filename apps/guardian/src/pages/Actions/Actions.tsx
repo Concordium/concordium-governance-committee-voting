@@ -7,6 +7,7 @@ import Button from '~/shared/Button';
 import { Link } from 'react-router-dom';
 import { routes } from '~/shell/router';
 import { DecryptionActions } from './DecryptionActions';
+import { Countdown } from 'shared/components';
 
 const Dots = () => <div className="actions__header-dots">• • • • •</div>;
 
@@ -50,8 +51,11 @@ export default function Actions() {
                     <>
                         <h1 className="text-muted">Election is in progress.</h1>
                         <p>
-                            Voting concludes at <b>{electionConfig.electionEnd.toLocaleString()}</b>.<br />
-                            After this point, your help is needed to decrypt the election results.
+                            Your help is needed to decrypt the election results in:
+                            <br />
+                            <b>
+                                <Countdown to={electionConfig.electionEnd} />
+                            </b>
                         </p>
                     </>
                 )}
