@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.4
 
 - Remove election configuration files from server, as these are expected to be hosted statically elsewhere.
 

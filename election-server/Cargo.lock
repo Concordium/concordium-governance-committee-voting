@@ -1271,7 +1271,7 @@ dependencies = [
 
 [[package]]
 name = "election-server"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "axum 0.7.4",
