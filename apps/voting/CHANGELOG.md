@@ -1,3 +1,7 @@
+## Unreleased
+
+- Fix an issue with duplicate requests being done on application load
+
 ## 0.2.5
 
 - Fix issue where walletconnect modal would not connect properly.

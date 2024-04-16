@@ -1,4 +1,4 @@
-import { atom } from 'jotai';
+import { atom, createStore } from 'jotai';
 import { atomFamily, atomWithReset } from 'jotai/utils';
 import {
     AccountAddress,
@@ -113,16 +113,15 @@ async function getCandidate(url: ChecksumUrl, index: number): Promise<IndexedCan
 const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
 
 /**
- * Ensures an election config is fetched if the primitive atom holds no value.
+ * Holds the configuration of the election contract. A reference to this should always be kept in the application root
+ * to avoid having to fetch the configuration more than once.
  */
-const ensureElectionConfigAtom = atomEffect((get, set) => {
-    if (get(electionConfigBaseAtom) !== undefined) {
-        return;
-    }
-
-    void Promise.all([getElectionConfig(), getGuardiansState()]).then(async ([config, guardians]) => {
-        if (config === undefined || guardians === undefined) {
-            return undefined;
+export const electionConfigAtom = atom(
+    (get) => get(electionConfigBaseAtom),
+    async (_, set) => {
+        const config = await getElectionConfig();
+        if (config === undefined) {
+            throw new Error('Failed to get election config');
         }
 
         const electionManifestPromise = getChecksumResource<ElectionManifest>(config.election_manifest);
@@ -135,13 +134,6 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             ...candidatePromises,
         ]);
 
-        const setupDone = guardians.every(
-            ([, g]) =>
-                g.public_key.type === 'Some' &&
-                g.encrypted_share.type === 'Some' &&
-                g.status.type === 'Some' &&
-                g.status.content.type === 'VerificationSuccessful',
-        );
         const mappedConfig: ElectionConfig = {
             start: Timestamp.toDate(config.election_start),
             end: Timestamp.toDate(config.election_end),
@@ -150,21 +142,27 @@ const ensureElectionConfigAtom = atomEffect((get, set) => {
             manifest,
             parameters,
             guardianKeys: config.guardian_keys,
-            setupDone,
+            setupDone: false,
         };
 
         set(electionConfigBaseAtom, mappedConfig);
-    });
-});
 
-/**
- * Holds the configuration of the election contract. A reference to this should always be kept in the application root
- * to avoid having to fetch the configuration more than once.
- */
-export const electionConfigAtom = atom((get) => {
-    get(ensureElectionConfigAtom);
-    return get(electionConfigBaseAtom);
-});
+        const guardians = await getGuardiansState();
+        if (guardians === undefined) {
+            throw new Error('Failed to get election config');
+        }
+
+        const setupDone = guardians.every(
+            ([, g]) =>
+                g.public_key.type === 'Some' &&
+                g.encrypted_share.type === 'Some' &&
+                g.status.type === 'Some' &&
+                g.status.content.type === 'VerificationSuccessful',
+        );
+
+        set(electionConfigBaseAtom, { ...mappedConfig, setupDone });
+    },
+);
 
 /**
  * Exposes a function for opening the wallet connection interface (if available).
@@ -193,9 +191,7 @@ export type AccountWeightState = AccountWeightResponse & {
 };
 
 /**
- * Holds the voting weight for each account
- */
-const votingWeightAtomFamily = atomFamily(
+ * Holds the voting weight for each account */ const votingWeightAtomFamily = atomFamily(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_: AccountAddress.Type) => atom<AccountWeightState | undefined>(undefined),
     (a, b) => a.address === b.address,
@@ -474,3 +470,14 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     const last = results.length > 0 ? results[results.length - 1] : undefined;
     set(localBallotsAtom, { hasMore, lastIndex: last?.id, ballots: [...localFiltered, ...remoteBallots] });
 });
+
+/**
+ * Initializes the global store with data fetched from the backend
+ */
+export function initStore() {
+    const store = createStore();
+
+    void store.set(electionConfigAtom);
+
+    return store;
+}
