@@ -4,18 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Modal, Row, Image, Spinner } from 'react-bootstrap';
 import { Buffer } from 'buffer/index.js';
 
-import { getElectionResult, registerVotes } from '~/shared/election-contract';
+import { registerVotes } from '~/shared/election-contract';
 import {
     IndexedCandidateDetails,
     addSubmittedBallotAtom,
     electionConfigAtom,
     connectionViewAtom,
     activeWalletAtom,
+    electionResultAtom,
 } from '~/shared/store';
 import { ElectionOpenState, useIsElectionOpen } from '~/shared/hooks';
 import { useElectionGuard } from '~/shared/election-guard';
 import CheckIcon from '~/assets/rounded-success.svg?react';
-import { useAsyncMemo } from 'shared/util';
 import { Explain } from 'shared/components';
 
 interface CandidateProps {
@@ -91,7 +91,7 @@ export default function Home() {
     const isElectionOpen = electionState === ElectionOpenState.Open;
     const { getEncryptedBallot } = useElectionGuard();
     const [loading, setLoading] = useState(false);
-    const electionResult = useAsyncMemo(getElectionResult, console.error, []);
+    const electionResult = useAtomValue(electionResultAtom);
     const candidates = useMemo(() => {
         if (electionResult !== undefined && electionConfig?.candidates !== undefined) {
             const res = [...electionConfig.candidates];

@@ -15,7 +15,7 @@ import { ElectionManifest, ElectionParameters } from 'electionguard-bindings';
 import { ResourceVerificationError, expectValue, getChecksumResource, isDefined } from 'shared/util';
 import { ChecksumUrl, GuardianPublicKey } from 'shared/types';
 
-import { getElectionConfig, getGuardiansState } from './election-contract';
+import { ElectionResultResponse, getElectionConfig, getElectionResult, getGuardiansState } from './election-contract';
 import { pollUntil } from './util';
 import { NETWORK } from './constants';
 import {
@@ -471,6 +471,19 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     set(localBallotsAtom, { hasMore, lastIndex: last?.id, ballots: [...localFiltered, ...remoteBallots] });
 });
 
+const electionResultBaseAtom = atom<ElectionResultResponse>(undefined);
+
+/**
+ * Holds the election result from the election contract, if available. Invoke setter to refresh the value from the
+ * contract
+ */
+export const electionResultAtom = atom(
+    (get) => get(electionResultBaseAtom),
+    async (_, set) => {
+        set(electionResultBaseAtom, await getElectionResult());
+    },
+);
+
 /**
  * Initializes the global store with data fetched from the backend
  */
@@ -478,6 +491,7 @@ export function initStore() {
     const store = createStore();
 
     void store.set(electionConfigAtom);
+    void store.set(electionResultAtom);
 
     return store;
 }
