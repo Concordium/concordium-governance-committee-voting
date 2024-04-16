@@ -90,3 +90,5 @@ export async function getElectionResult() {
 
     return parsed.content;
 }
+
+export type ElectionResultResponse = Awaited<ReturnType<typeof getElectionResult>>;
