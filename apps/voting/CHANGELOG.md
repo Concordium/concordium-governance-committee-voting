@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.6
 
 - Fix an issue with duplicate requests being done on application load
 
