@@ -1,6 +1,6 @@
 # This dockerfile is meant to be run from the **root of the repository**.
 
-ARG build_image=node:18-slim
+ARG build_image=node:18.14-slim
 ARG rust_version=1.76
 ARG rust_base_image=rust:${rust_version}-buster
 
@@ -26,12 +26,18 @@ RUN apt-get update && apt-get install curl build-essential -y
 # But we are requiring TLS, and downloading from a trusted domain.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -t wasm32-unknown-unknown -y --no-modify-path --default-toolchain ${rust_version}
 ENV PATH="${PATH}:/root/.cargo/bin"
+RUN cargo install cargo-concordium
 
 # Copy front end files and dependencies
 WORKDIR /build
 COPY ./deps/ ./deps/
+COPY ./contracts/ ./contracts/
 COPY ./election-common/ ./election-common/
 COPY ./apps/ ./apps
+
+WORKDIR /build/contracts/concordium-governance-committee-election
+
+RUN cargo concordium build --schema-embed --out concordium-out/module.wasm.v1
 
 WORKDIR /build/apps/
 # Since the voting dapp depends on most of the workspace we just build it all
