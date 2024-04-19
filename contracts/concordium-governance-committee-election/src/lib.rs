@@ -14,6 +14,31 @@ pub struct ChecksumUrl {
     pub hash: HashSha2256,
 }
 
+/// The parameters the voting weight calculations are based upon.
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct EligibleVotersParameters {
+    /// The block time at which data collection starts
+    start_time: Timestamp,
+    /// The block time at which data collection ends
+    end_time: Timestamp,
+}
+
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct EligibleVoters {
+    parameters: EligibleVotersParameters,
+    data: ChecksumUrl,
+}
+
 #[cfg(feature = "serde")]
 impl serde::Serialize for ChecksumUrl {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -105,9 +130,8 @@ impl GuardianState {
 
 #[derive(Serialize)]
 pub struct RegisteredData {
-    /// The list of eligible voters, represented by a url and a hash of the
-    /// list.
-    pub eligible_voters:      ChecksumUrl,
+    /// The list of eligible voters
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
@@ -178,7 +202,7 @@ impl State {
         ensure!(!election_description.is_empty(), Error::Malformed);
         ensure!(!candidates.is_empty(), Error::Malformed);
         ensure!(!guardians.is_empty(), Error::Malformed);
-        ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
+        ensure!(!eligible_voters.data.url.is_empty(), Error::Malformed);
         ensure!(!delegation_string.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
@@ -232,7 +256,7 @@ pub struct InitParameter {
     pub guardians:            Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      ChecksumUrl,
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
@@ -268,7 +292,7 @@ pub struct ElectionConfig {
     pub guardian_keys:        Vec<Vec<u8>>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      ChecksumUrl,
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
