@@ -56,8 +56,8 @@ export function useElectionGuard(): ElectionGuard {
 
     const getEncryptedBallot: ElectionGuard['getEncryptedBallot'] = useCallback(
         (selection) => {
-            if (config === undefined) {
-                throw new Error('Expected election guard config to be available');
+            if (config?.guardianKeys === undefined) {
+                throw new Error('Expected election guard config and guardian keys to be available');
             }
 
             const context: eg.EncryptedBallotContext = {

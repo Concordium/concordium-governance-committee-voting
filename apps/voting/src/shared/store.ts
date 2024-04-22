@@ -79,7 +79,7 @@ export interface ElectionConfig {
     /** The election parameters, used by election guard */
     parameters: ElectionParameters;
     /** The registered public keys of the election guardians */
-    guardianKeys: GuardianPublicKey[];
+    guardianKeys?: GuardianPublicKey[];
     /** Whether the setup phase has been completed successfully */
     setupDone: boolean;
 }
@@ -119,14 +119,59 @@ const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
 export const electionConfigAtom = atom(
     (get) => get(electionConfigBaseAtom),
     async (_, set) => {
-        const config = await getElectionConfig();
-        if (config === undefined) {
-            throw new Error('Failed to get election config');
+        const hydrate = CONFIG.contractConfig !== undefined;
+        let config: Pick<ElectionConfig, 'start' | 'end' | 'description' | 'setupDone'> & {
+            manifest: ChecksumUrl;
+            parameters: ChecksumUrl;
+            candidates: ChecksumUrl[];
+        };
+        if (hydrate) {
+            config = {
+                start: new Date(CONFIG.contractConfig!.election_start),
+                end: new Date(CONFIG.contractConfig!.election_end),
+                description: CONFIG.contractConfig!.election_description,
+                manifest: CONFIG.contractConfig!.election_manifest,
+                parameters: CONFIG.contractConfig!.election_parameters,
+                candidates: CONFIG.contractConfig!.candidates,
+                setupDone: CONFIG.contractConfig!.guardians_setup_done,
+            };
+        } else {
+            const contractConfig = await getElectionConfig();
+            if (contractConfig === undefined) {
+                throw new Error('Failed to get election config');
+            }
+
+            config = {
+                start: Timestamp.toDate(contractConfig.election_start),
+                end: Timestamp.toDate(contractConfig.election_end),
+                description: contractConfig.election_description,
+                manifest: contractConfig.election_manifest,
+                parameters: contractConfig.election_parameters,
+                candidates: contractConfig.candidates,
+                setupDone: false,
+            };
         }
 
-        const electionManifestPromise = getChecksumResource<ElectionManifest>(config.election_manifest);
-        const electionParametersPromise = getChecksumResource<ElectionParameters>(config.election_parameters);
+        const electionManifestPromise = getChecksumResource<ElectionManifest>(config.manifest);
+        const electionParametersPromise = getChecksumResource<ElectionParameters>(config.parameters);
         const candidatePromises = config.candidates.map(getCandidate);
+
+        // TODO: remove when done testing
+        // const replaceResourceUrl = (url: ChecksumUrl) => ({
+        //     ...url,
+        //     url: `${url.url}`.replace(
+        //         'https://gc-voting-config.testnet.concordium.com/election-config/2024-04-18/',
+        //         '/resources/',
+        //     ),
+        // });
+
+        // const electionManifestPromise = getChecksumResource<ElectionManifest>(
+        //     replaceResourceUrl(config.manifest),
+        // );
+        // const electionParametersPromise = getChecksumResource<ElectionParameters>(
+        //     replaceResourceUrl(config.parameters),
+        // );
+        // const candidatePromises = config.candidates.map(replaceResourceUrl).map(getCandidate);
 
         const [manifest, parameters, ...candidates] = await Promise.all([
             electionManifestPromise,
@@ -135,17 +180,17 @@ export const electionConfigAtom = atom(
         ]);
 
         const mappedConfig: ElectionConfig = {
-            start: Timestamp.toDate(config.election_start),
-            end: Timestamp.toDate(config.election_end),
+            ...config,
             candidates: candidates.filter(isDefined),
-            description: config.election_description,
-            manifest,
-            parameters,
-            guardianKeys: config.guardian_keys,
-            setupDone: false,
+            manifest: manifest,
+            parameters: parameters,
         };
-
         set(electionConfigBaseAtom, mappedConfig);
+
+        const now = new Date();
+        if (hydrate || now < config.start) {
+            return;
+        }
 
         const guardians = await getGuardiansState();
         if (guardians === undefined) {
@@ -159,8 +204,14 @@ export const electionConfigAtom = atom(
                 g.status.type === 'Some' &&
                 g.status.content.type === 'VerificationSuccessful',
         );
+        const guardianKeys = guardians
+            .map(([, g]) => {
+                if (g.public_key.type === 'None') return undefined;
+                return g.public_key.content;
+            })
+            .filter(isDefined);
 
-        set(electionConfigBaseAtom, { ...mappedConfig, setupDone });
+        set(electionConfigBaseAtom, { ...mappedConfig, setupDone, guardianKeys });
     },
 );
 

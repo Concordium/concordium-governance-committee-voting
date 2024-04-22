@@ -11,8 +11,9 @@ use axum_prometheus::{
 };
 use chrono::{DateTime, Utc};
 use clap::Parser;
+use concordium_governance_committee_election::{ChecksumUrl, ElectionConfig};
 use concordium_rust_sdk::{
-    common::types::Amount,
+    common::types::{Amount, Timestamp},
     smart_contracts::common::AccountAddress,
     types::{hashes::TransactionHash, ContractAddress},
 };
@@ -113,17 +114,58 @@ struct AppConfig {
     contract_address:   ContractAddress,
 }
 
-impl AppConfig {
-    /// Creates the JSON object required by the frontend.
-    fn as_frontend_config(&self) -> serde_json::Value {
-        let config = serde_json::json!({
-            "node": self.node_endpoint.uri().to_string(),
-            "network": self.network,
-            "contractAddress": self.contract_address
-        });
-        let config_string =
-            serde_json::to_string(&config).expect("JSON serialization always succeeds");
-        serde_json::json!({ "config": config_string })
+#[derive(serde::Serialize, Debug)]
+struct FrontendElectionConfig {
+    /// A url to the location of the election manifest used by election guard.
+    election_manifest:    ChecksumUrl,
+    /// A url to the location of the election parameters used by election guard.
+    election_parameters:  ChecksumUrl,
+    /// A list of candidates that voters can vote for in the election.
+    candidates:           Vec<ChecksumUrl>,
+    /// A description of the election, e.g. "Concordium GC election, June 2024".
+    election_description: String,
+    /// The start time of the election, marking the time from which votes can be
+    /// registered.
+    election_start:       Timestamp,
+    /// The end time of the election, marking the time at which votes can no
+    /// longer be registered.
+    election_end:         Timestamp,
+    /// Whether the setup process has been successfully completed by all
+    /// guardians.
+    guardians_setup_done: bool,
+}
+
+impl From<ElectionConfig> for FrontendElectionConfig {
+    fn from(value: ElectionConfig) -> Self {
+        Self {
+            election_manifest:    value.election_manifest,
+            election_parameters:  value.election_parameters,
+            candidates:           value.candidates,
+            election_description: value.election_description,
+            election_start:       value.election_start,
+            election_end:         value.election_end,
+            guardians_setup_done: false,
+        }
+    }
+}
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct FrontendConfig {
+    node:             String,
+    network:          concordium_rust_sdk::web3id::did::Network,
+    contract_address: ContractAddress,
+    contract_config:  FrontendElectionConfig,
+}
+
+impl FrontendConfig {
+    fn create(app_config: &AppConfig, contract_config: &ElectionConfig) -> Self {
+        Self {
+            node:             app_config.node_endpoint.uri().to_string(),
+            network:          app_config.network,
+            contract_address: app_config.contract_address,
+            contract_config:  contract_config.clone().into(),
+        }
     }
 }
 
@@ -456,7 +498,14 @@ async fn setup_http(
     // Prevent handlebars from escaping inserted object
     reg.register_escape_fn(no_escape);
 
-    let index_html = reg.render_template(&index_template, &config.as_frontend_config())?;
+    // TODO: implement a cache to handle election config
+    let fe_config = FrontendConfig::create(config, &contract_config);
+    let fe_config_string =
+        serde_json::to_string(&fe_config).expect("JSON serialization always succeeds");
+    let index_html = reg.render_template(
+        &index_template,
+        &serde_json::json!({ "config": fe_config_string }),
+    )?;
     let index_handler = get(|| async { Html(index_html) });
 
     let mut http_api = Router::new()

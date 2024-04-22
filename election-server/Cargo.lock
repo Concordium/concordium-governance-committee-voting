@@ -926,6 +926,7 @@ name = "concordium_governance_committee_election"
 version = "0.1.0"
 dependencies = [
  "concordium-std",
+ "serde",
 ]
 
 [[package]]
