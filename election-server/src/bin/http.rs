@@ -2,7 +2,7 @@ use anyhow::Context;
 use axum::{
     extract::{Path, Query, State},
     http::{Method, StatusCode},
-    response::Html,
+    response::{Html, Redirect},
     routing::get,
     Json, Router,
 };
@@ -25,7 +25,8 @@ use election_server::{
 use futures::FutureExt;
 use handlebars::{no_escape, Handlebars};
 use serde::{Deserialize, Serialize};
-use std::{cmp, collections::HashMap};
+use std::{cmp, collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::ServeDir,
@@ -169,6 +170,23 @@ impl FrontendConfig {
     }
 }
 
+#[derive(Debug)]
+struct FrontendCache {
+    setup:  String,
+    voting: Option<String>,
+    tally:  Option<String>,
+}
+
+impl FrontendCache {
+    fn new(setup: String) -> Self {
+        Self {
+            setup,
+            voting: Option::default(),
+            tally: Option::default(),
+        }
+    }
+}
+
 /// The app state shared across http requests made to the server.
 #[derive(Clone, Debug)]
 struct AppState {
@@ -176,6 +194,9 @@ struct AppState {
     db_pool:         DatabasePool,
     /// The computed initial weights of each eligible voter.
     initial_weights: HashMap<AccountAddress, Amount>,
+    app_config:      AppConfig,
+    frontend_cache:  Arc<Mutex<FrontendCache>>,
+    contract_config: ElectionConfig,
 }
 
 impl AppState {
@@ -351,6 +372,15 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
+// TODO: document
+#[tracing::instrument(skip(state))]
+async fn get_index_html(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
+    // TODO: handle html response for other phases
+    let html = state.frontend_cache.lock().await.setup.clone();
+    // TODO: set caching headers to expire at start of next phase
+    Ok(Html(html))
+}
+
 /// The response format of [`get_account_weight`]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -485,12 +515,6 @@ async fn setup_http(
         initial_weights.insert(account, amount);
     }
 
-    let state = AppState {
-        db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
-            .await
-            .context("Failed to connect to the database")?,
-        initial_weights,
-    };
     // Render index.html with config
     let index_template = std::fs::read_to_string(config.frontend_dir.join("index.html"))
         .context("Frontend was not built.")?;
@@ -498,15 +522,23 @@ async fn setup_http(
     // Prevent handlebars from escaping inserted object
     reg.register_escape_fn(no_escape);
 
-    // TODO: implement a cache to handle election config
     let fe_config = FrontendConfig::create(config, &contract_config);
     let fe_config_string =
         serde_json::to_string(&fe_config).expect("JSON serialization always succeeds");
-    let index_html = reg.render_template(
+    let setup_html = reg.render_template(
         &index_template,
         &serde_json::json!({ "config": fe_config_string }),
     )?;
-    let index_handler = get(|| async { Html(index_html) });
+
+    let state = AppState {
+        db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
+            .await
+            .context("Failed to connect to the database")?,
+        initial_weights,
+        app_config: config.clone(),
+        frontend_cache: Arc::new(Mutex::new(FrontendCache::new(setup_html))),
+        contract_config,
+    };
 
     let mut http_api = Router::new()
         .route(
@@ -519,15 +551,12 @@ async fn setup_http(
         )
         .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
-        .with_state(state);
-
-    // Serve the frontend
-    http_api = http_api
+        // Serve everything frontend-related
         .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
-        .route("/index.html", index_handler.clone())
-        .route("/", index_handler.clone())
          // Fall back to handle route in the frontend of the application served
-        .route("/*path", index_handler);
+        .route("/index.html", get(|| async { Redirect::permanent("/")}))
+        .fallback(get(get_index_html))
+        .with_state(state);
 
     // Add layers
     http_api = http_api
