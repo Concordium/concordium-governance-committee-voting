@@ -492,6 +492,26 @@ async fn get_index_html(
     }
 
     let mut fe_config = FrontendConfig::create(&state.app_config, &state.contract_config);
+    if election_phase == ElectionPhase::Tally {
+        let election_result = get_election_result(&mut state.contract_client)
+            .await
+            .map_err(|e| {
+                tracing::error!("{}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        // If the result is not there yet, get the voting representation
+        if election_result.is_none() {
+            tracing::debug!("No election result found, using voting phase cache");
+            return cache
+                .get(ElectionPhase::Voting)
+                .map(Ok)
+                .unwrap_or(cache.render(ElectionPhase::Voting, &fe_config));
+        }
+
+        fe_config.contract_config.election_result = election_result;
+    }
+
     if election_phase != ElectionPhase::Setup {
         let guardians_state = get_guardians_state(&mut state.contract_client)
             .await
@@ -514,25 +534,6 @@ async fn get_index_html(
 
         fe_config.contract_config.guardians_setup_done = setup_done;
         fe_config.contract_config.guardian_keys = guardian_keys;
-    }
-
-    if election_phase == ElectionPhase::Tally {
-        let election_result = get_election_result(&mut state.contract_client)
-            .await
-            .map_err(|e| {
-                tracing::error!("{}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        // If the result is not there yet, get the voting representation
-        if election_result.is_none() {
-            return cache
-                .get(ElectionPhase::Voting)
-                .map(Ok)
-                .unwrap_or(cache.render(ElectionPhase::Voting, &fe_config));
-        }
-
-        fe_config.contract_config.election_result = election_result;
     }
 
     cache.render(election_phase, &fe_config)
