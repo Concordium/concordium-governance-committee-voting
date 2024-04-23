@@ -1,7 +1,7 @@
 //! A tool for the election coordinator to gather data from the chain, and to
 //! coordinate finalization of the election.
 
-use anyhow::Context;
+use anyhow::{ensure, Context};
 use clap::Parser;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
@@ -22,7 +22,6 @@ use concordium_rust_sdk::{
     v2::{self as sdk, BlockIdentifier},
 };
 use concordium_std::schema::SchemaType;
-use contract::{ChecksumUrl, GuardiansState};
 use eg::{
     ballot::BallotEncrypted,
     election_manifest::{ContestIndex, ElectionManifest},
@@ -44,6 +43,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
     fmt::Debug,
+    io::Write,
     str::FromStr,
 };
 
@@ -60,7 +60,7 @@ struct Args {
     )]
     node_endpoint: concordium_rust_sdk::v2::Endpoint,
     #[command(subcommand)]
-    command: Command,
+    command:       Command,
 }
 
 /// Describes the possible locations of a candidate metadata file
@@ -95,57 +95,62 @@ struct NewElectionArgs {
         help = "Path to the file containing the Concordium account keys exported from the wallet. \
                 This will be the admin account of the election."
     )]
-    admin: std::path::PathBuf,
+    admin:                std::path::PathBuf,
     #[clap(
         long = "module",
         help = "Path of the Concordium smart contract module."
     )]
-    module: std::path::PathBuf,
+    module:               std::path::PathBuf,
     #[arg(
         long = "base-url",
         help = "Base url where the election data is accessible. This is recorded in the contract."
     )]
-    base_url: url::Url,
+    base_url:             url::Url,
     #[arg(
         long = "election-start",
         help = "The start time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_start: chrono::DateTime<chrono::Utc>,
+    election_start:       chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "election-end",
         help = "The end time of the election. The format is ISO-8601, e.g. 2024-01-23T12:13:14Z."
     )]
-    election_end: chrono::DateTime<chrono::Utc>,
+    election_end:         chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "decryption-deadline",
         help = "The deadline for guardians to register decryption shares. The format is ISO-8601, \
                 e.g. 2024-01-23T12:13:14Z."
     )]
-    decryption_deadline: chrono::DateTime<chrono::Utc>,
+    decryption_deadline:  chrono::DateTime<chrono::Utc>,
     #[arg(
         long = "delegation-string",
         help = "The string to identify vote delegations."
     )]
-    delegation_string: String,
+    delegation_string:    String,
     #[arg(long = "guardian", help = "The account addresses of guardians..")]
-    guardians: Vec<AccountAddress>,
+    guardians:            Vec<AccountAddress>,
     #[arg(
         long = "threshold",
         help = "Threshold for the number of guardians needed."
     )]
-    threshold: u32,
+    threshold:            u32,
     #[arg(
         long = "candidate",
         help = "The URL to candidates metadata. The order matters."
     )]
-    candidates: Vec<CandidateLocation>,
+    candidates:           Vec<CandidateLocation>,
     #[clap(long = "out", help = "Path where files produced are written to")]
-    out: std::path::PathBuf,
+    out:                  std::path::PathBuf,
     #[clap(
         long = "voters-file",
         help = "Path to the file with a list of eligible accounts with their weights."
     )]
-    voters_file: std::path::PathBuf,
+    voters_file:          std::path::PathBuf,
+    #[clap(
+        long = "voters-params-file",
+        help = "Path to the file containing the parameters used to generate the `voters-file`."
+    )]
+    voters_params_file:   std::path::PathBuf,
     #[clap(
         long = "description",
         help = "A descriptive title of the election. This is ideally short as it is used in \
@@ -172,19 +177,19 @@ enum Command {
                     delegators for that account. This is different from the final weights file \
                     which contains only the summary."
         )]
-        out: Option<std::path::PathBuf>,
+        out:             Option<std::path::PathBuf>,
         #[arg(
             long = "contract",
             help = "Address of the election contract in the format <index, subindex>."
         )]
-        contract: ContractAddress,
+        contract:        ContractAddress,
         #[arg(long = "initial-weights", help = "The CSV file with initial weights.")]
         initial_weights: std::path::PathBuf,
         #[arg(
             long = "final-weights",
             help = "Location where to write the final weights."
         )]
-        final_weights: std::path::PathBuf,
+        final_weights:   std::path::PathBuf,
     },
     /// Tally all the votes.
     #[command(name = "tally")]
@@ -196,7 +201,7 @@ enum Command {
             long = "contract",
             help = "Address of the election contract in the format <index, subindex>"
         )]
-        contract: ContractAddress,
+        contract:    ContractAddress,
         #[arg(
             long = "admin-keys",
             help = "Location of the keys used to register election results in the contract."
@@ -209,17 +214,17 @@ enum Command {
             long = "contract",
             help = "Address of the election contract in the format <index, subindex>"
         )]
-        contract: ContractAddress,
+        contract:            ContractAddress,
         #[arg(
             long = "admin-keys",
             help = "Location of the keys used to register election results in the contract."
         )]
-        wallet_path: std::path::PathBuf,
+        wallet_path:         std::path::PathBuf,
         #[arg(
             long = "guardian",
             help = "The account addresses of guardians to be excluded."
         )]
-        guardians: Vec<AccountAddress>,
+        guardians:           Vec<AccountAddress>,
         #[arg(
             long = "decryption-deadline",
             help = "The new deadline for guardians to register decryption shares. The format is \
@@ -240,12 +245,12 @@ struct TallyArgs {
         long = "final-weights",
         help = "Location of the file with final weights of accounts."
     )]
-    final_weights: std::path::PathBuf,
+    final_weights:  std::path::PathBuf,
     #[arg(
         long = "admin-keys",
         help = "Location of the keys used to register election results in the contract."
     )]
-    keys: Option<std::path::PathBuf>,
+    keys:           Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -261,9 +266,9 @@ struct InitialWeightsArgs {
         help = "The end time of the collection. This is also inclusive. The format is ISO-8601, \
                 e.g. 2024-01-23T12:13:14Z."
     )]
-    end: chrono::DateTime<chrono::Utc>,
+    end:   chrono::DateTime<chrono::Utc>,
     #[arg(long = "out", help = "Directory to output data into.")]
-    out: Option<std::path::PathBuf>,
+    out:   std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -372,13 +377,13 @@ async fn range_setup(
 struct DelegationRow {
     hash: TransactionHash,
     from: AccountAddress,
-    to: AccountAddress,
+    to:   AccountAddress,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct FinalWeightRow {
-    account: AccountAddress,
-    amount: Amount,
+    account:    AccountAddress,
+    amount:     Amount,
     /// ';' separated list of accounts that delegated.
     delegators: String,
 }
@@ -458,7 +463,7 @@ async fn handle_final_weights(
             out_handle.serialize(DelegationRow {
                 hash: *hash,
                 from: *from.as_ref(),
-                to: *to,
+                to:   *to,
             })?;
         }
         out_handle.flush()?;
@@ -518,7 +523,11 @@ async fn handle_decrypt(
         contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
 
     let mut guardians_state = contract_client
-        .view::<_, GuardiansState, ViewError>("viewGuardiansState", &(), BlockIdentifier::LastFinal)
+        .view::<_, contract::GuardiansState, ViewError>(
+            "viewGuardiansState",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
         .await?;
     let election_data = get_election_data(&mut contract_client).await?;
     let mut decryption_shares = Vec::new();
@@ -768,7 +777,11 @@ async fn handle_reset(
         .context("Failed to dry run")?;
 
     let guardians_state = contract_client
-        .view::<_, GuardiansState, ViewError>("viewGuardiansState", &(), BlockIdentifier::LastFinal)
+        .view::<_, contract::GuardiansState, ViewError>(
+            "viewGuardiansState",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
         .await?;
 
     let guardians_state_filtered = guardians_state
@@ -809,14 +822,14 @@ async fn handle_reset(
 
 /// Election data retrieved from the contract and processed.
 struct ElectionData {
-    manifest: ElectionManifest,
-    parameters: ElectionParameters,
+    manifest:             ElectionManifest,
+    parameters:           ElectionParameters,
     guardian_public_keys: Vec<GuardianPublicKey>,
-    candidates: Vec<ChecksumUrl>,
-    start: chrono::DateTime<chrono::Utc>,
-    end: chrono::DateTime<chrono::Utc>,
+    candidates:           Vec<contract::ChecksumUrl>,
+    start:                chrono::DateTime<chrono::Utc>,
+    end:                  chrono::DateTime<chrono::Utc>,
     /// String that is used to detect delegations.
-    delegation_string: String,
+    delegation_string:    String,
 }
 
 impl ElectionData {
@@ -1072,6 +1085,8 @@ async fn handle_initial_weights(
     endpoint: sdk::Endpoint,
     accds: InitialWeightsArgs,
 ) -> anyhow::Result<()> {
+    ensure!(accds.out.is_dir(), "out argument must point to a directory");
+
     let mut client = sdk::Client::new(endpoint.clone())
         .await
         .context("Unable to connect.")?;
@@ -1159,11 +1174,9 @@ async fn handle_initial_weights(
     cancel_handle.abort();
     bar.finish_and_clear();
 
-    let mut out_handle: csv::Writer<Box<dyn std::io::Write>> = if let Some(file) = accds.out {
-        csv::Writer::from_writer(Box::new(std::fs::File::create(file)?))
-    } else {
-        csv::Writer::from_writer(Box::new(std::io::stdout().lock()))
-    };
+    let mut weights_out = csv::Writer::from_writer(Box::new(std::fs::File::create(
+        accds.out.join("initial-weights.csv"),
+    )?));
     anyhow::ensure!(
         account_addresses.len() == account_balances.len(),
         "Expecting addresses match account balances. This is a bug."
@@ -1192,12 +1205,23 @@ async fn handle_initial_weights(
                 .signed_duration_since(first_block.block_slot_time)
                 .num_milliseconds() as u128);
         let amount = Amount::from_micro_ccd(amount as u64);
-        out_handle.serialize(WeightRow {
+        weights_out.serialize(WeightRow {
             account: address,
             amount,
         })?;
     }
-    out_handle.flush()?;
+    weights_out.flush()?;
+
+    let mut params_out = std::fs::File::create(accds.out.join("initial-weights-params.json"))
+        .context("Failed to create weight params file")?;
+    let params = contract::EligibleVotersParameters {
+        start_time: Timestamp::from_timestamp_millis(accds.start.timestamp_millis() as u64),
+        end_time:   Timestamp::from_timestamp_millis(accds.end.timestamp_millis() as u64),
+    };
+    params_out
+        .write(&serde_json::to_vec(&params).expect("Serialization of params will not fail"))
+        .context("Failed to write weight parameters to file")?;
+
     Ok(())
 }
 
@@ -1307,16 +1331,16 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
 
     let manifest_hash = {
         let contest = eg::election_manifest::Contest {
-            label: "Governance committee member".into(),
+            label:           "Governance committee member".into(),
             selection_limit: options.len(),
-            options: options.try_into()?,
+            options:         options.try_into()?,
         };
 
         let manifest = eg::election_manifest::ElectionManifest {
-            label: "Governance commitee election 2024 election manifest".into(),
-            contests: [contest].try_into()?,
+            label:         "Governance commitee election 2024 election manifest".into(),
+            contests:      [contest].try_into()?,
             ballot_styles: [eg::ballot_style::BallotStyle {
-                label: "Governance committee vote".into(),
+                label:    "Governance committee vote".into(),
                 contests: [ContestIndex::from_one_based_index_const(1).unwrap()].into(),
             }]
             .try_into()?,
@@ -1340,7 +1364,7 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         );
 
         let parameters = eg::election_parameters::ElectionParameters {
-            fixed_parameters: eg::standard_parameters::STANDARD_PARAMETERS.clone(),
+            fixed_parameters:   eg::standard_parameters::STANDARD_PARAMETERS.clone(),
             varying_parameters: eg::varying_parameters::VaryingParameters {
                 n,
                 k,
@@ -1371,21 +1395,29 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         .to_str()
         .context("voters-file path is not valid unicode")?
         .to_string();
+    let voters_params_file = std::fs::File::open(app.voters_params_file)
+        .context("Failed to open `voters-params-file`.")?;
+    let voters_params: contract::EligibleVotersParameters =
+        serde_json::from_reader(&voters_params_file)
+            .context("Failed to deserialize voters params")?;
 
     let init_param = contract::InitParameter {
         admin_account: wallet.address,
         candidates,
         guardians: app.guardians,
-        eligible_voters: contract::ChecksumUrl {
-            url: make_url(eligible_voters_filename)?,
-            hash: eligible_voters_hash,
+        eligible_voters: contract::EligibleVoters {
+            parameters: voters_params,
+            data:       contract::ChecksumUrl {
+                url:  make_url(eligible_voters_filename)?,
+                hash: eligible_voters_hash,
+            },
         },
         election_manifest: contract::ChecksumUrl {
-            url: make_url("election-manifest.json".to_string())?,
+            url:  make_url("election-manifest.json".to_string())?,
             hash: manifest_hash,
         },
         election_parameters: contract::ChecksumUrl {
-            url: make_url("election-parameters.json".to_string())?,
+            url:  make_url("election-parameters.json".to_string())?,
             hash: parameters_hash,
         },
         election_description: app.election_description,

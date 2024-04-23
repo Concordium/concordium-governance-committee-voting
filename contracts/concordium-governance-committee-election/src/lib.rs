@@ -18,16 +18,17 @@ pub struct ChecksumUrl {
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Serialize),
+    derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "camelCase")
 )]
 pub struct EligibleVotersParameters {
     /// The block time at which data collection starts
-    start_time: Timestamp,
+    pub start_time: Timestamp,
     /// The block time at which data collection ends
-    end_time: Timestamp,
+    pub end_time:   Timestamp,
 }
 
+/// Contains the voters data and the parameters used to generate the data.
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 #[cfg_attr(
     feature = "serde",
@@ -35,8 +36,11 @@ pub struct EligibleVotersParameters {
     serde(rename_all = "camelCase")
 )]
 pub struct EligibleVoters {
-    parameters: EligibleVotersParameters,
-    data: ChecksumUrl,
+    /// The parameters used to compute the voters data. This can be used to
+    /// verify the data matches the expected output.
+    pub parameters: EligibleVotersParameters,
+    /// The voters data.
+    pub data:       ChecksumUrl,
 }
 
 #[cfg(feature = "serde")]
