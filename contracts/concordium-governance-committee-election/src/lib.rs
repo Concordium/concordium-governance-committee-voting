@@ -293,7 +293,7 @@ pub struct ElectionConfig {
     /// A list of candidates that voters can vote for in the election.
     pub candidates:           Vec<ChecksumUrl>,
     /// The list of guardians for the election.
-    pub guardian_keys:        Vec<Vec<u8>>,
+    pub guardian_accounts:    Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
     pub eligible_voters:      EligibleVoters,
@@ -320,11 +320,7 @@ impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
         let registered_data = value.registered_data.get();
         let candidates = value.candidates.iter().map(|c| c.clone()).collect();
-        let guardian_keys = value
-            .guardians
-            .iter()
-            .filter_map(|(_, guardian_state)| guardian_state.public_key.clone())
-            .collect();
+        let guardian_keys = value.guardians.iter().map(|(ga, _)| *ga).collect();
 
         Self {
             admin_account: *value.admin_account.get(),
@@ -336,7 +332,7 @@ impl From<&State> for ElectionConfig {
             election_manifest: registered_data.election_manifest.clone(),
             election_parameters: registered_data.election_parameters.clone(),
             candidates,
-            guardian_keys,
+            guardian_accounts: guardian_keys,
             delegation_string: value.delegation_string.clone(),
         }
     }
