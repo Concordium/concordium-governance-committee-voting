@@ -1233,13 +1233,14 @@ async fn generate_decryption_proofs(
         .as_ref()
         .context("Could not find encrypted tally in app state")?;
 
-    // Find all decryption shares for all guardians. If the shares registered by a
+    // Find all decryption shares for all included guardians. If the shares registered by a
     // specific guardian cannot be decoded, return
     // `Error::InvalidDecryptionShare`. If the shares are missing, exclude them from
     // the shares used.
     let decryption_shares: Vec<_> = contract_data
         .guardians
         .iter()
+        .filter(|(_, guardian_state)| !guardian_state.excluded)
         .filter_map(|(_, guardian_state)| guardian_state.decryption_share.as_ref())
         .map(|bytes| {
             decode::<GuardianDecryption>(bytes).map_err(|_| {

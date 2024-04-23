@@ -35,18 +35,10 @@ export async function getElectionConfig(
     contract: ElectionContract.Type,
 ): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
     const res = await ElectionContract.dryRunViewConfig(contract, Parameter.empty());
-
-    const config = await invokeWorker<ElectionContract.ReturnValueViewConfig | undefined>({
+    return invokeWorker<ElectionContract.ReturnValueViewConfig | undefined>({
         tag: ElectionContractWorkerTag.ParseConfig,
         message: res,
     });
-    if (config !== undefined) {
-        // All number values are parsed as bigints. These are byte arrays, and are expected to be passed as numbers to
-        // election guard.
-        config.guardian_keys = config.guardian_keys.map((key) => key.map((byte) => Number(byte)));
-    }
-
-    return config;
 }
 
 /**
@@ -58,10 +50,28 @@ export async function getGuardiansState(
     contract: ElectionContract.Type,
 ): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
     const res = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
-    return invokeWorker<ElectionContract.ReturnValueViewGuardiansState | undefined>({
+    const gs = await invokeWorker<ElectionContract.ReturnValueViewGuardiansState | undefined>({
         tag: ElectionContractWorkerTag.ParseGuardians,
         message: res,
     });
+
+    // ensure byte arrays are represented as number[], as generated clients return bigints for all integers
+    gs?.forEach(([, gs]) => {
+        if (gs.public_key.type === 'Some') {
+            gs.public_key.content = gs.public_key.content.map(Number);
+        }
+        if (gs.encrypted_share.type === 'Some') {
+            gs.encrypted_share.content = gs.encrypted_share.content.map(Number);
+        }
+        if (gs.decryption_share.type === 'Some') {
+            gs.decryption_share.content = gs.decryption_share.content.map(Number);
+        }
+        if (gs.decryption_share_proof.type === 'Some') {
+            gs.decryption_share_proof.content = gs.decryption_share_proof.content.map(Number);
+        }
+    });
+
+    return gs;
 }
 
 /**

@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # A Concordium V1 smart contract
+
 pub use concordium_std::HashSha2256;
 use concordium_std::*;
 
@@ -645,20 +646,17 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
         Error::IncorrectElectionPhase
     );
 
-    let (guardians, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
+    let (to_exclude, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
 
     ensure!(now < deadline, Error::Malformed);
     host.state.decryption_deadline = deadline;
 
-    for guardian in guardians {
-        if let Some(mut g) = host.state.guardians.get_mut(&guardian) {
-            g.excluded = true;
+    for (account, mut guardian_state) in host.state.guardians.iter_mut() {
+        if to_exclude.contains(&account) {
+            guardian_state.excluded = true;
         }
-    }
-
-    for mut guardian in host.state.guardians.iter_mut() {
-        guardian.1.decryption_share = None;
-        guardian.1.decryption_share_proof = None;
+        guardian_state.decryption_share = None;
+        guardian_state.decryption_share_proof = None;
     }
 
     Ok(())
