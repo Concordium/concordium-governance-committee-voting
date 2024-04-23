@@ -485,7 +485,7 @@ async fn get_index_html(
     State(mut state): State<FrontendState>,
 ) -> Result<Html<String>, StatusCode> {
     let mut cache = state.frontend_cache.lock().await;
-    let election_phase = state.get_election_phase();
+    let mut election_phase = state.get_election_phase();
     if let Some(html) = cache.get(election_phase) {
         tracing::debug!(r#"Cache hit for election phase "{:?}""#, election_phase);
         return Ok(html.clone());
@@ -503,13 +503,13 @@ async fn get_index_html(
         // If the result is not there yet, get the voting representation
         if election_result.is_none() {
             tracing::debug!("No election result found, using voting phase cache");
-            return cache
-                .get(ElectionPhase::Voting)
-                .map(Ok)
-                .unwrap_or(cache.render(ElectionPhase::Voting, &fe_config));
+            election_phase = ElectionPhase::Voting;
+            if let Some(html) = cache.get(election_phase) {
+                return Ok(html);
+            }
+        } else {
+            fe_config.contract_config.election_result = election_result;
         }
-
-        fe_config.contract_config.election_result = election_result;
     }
 
     if election_phase != ElectionPhase::Setup {
