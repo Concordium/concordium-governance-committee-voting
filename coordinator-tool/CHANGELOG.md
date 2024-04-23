@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Add `description` argument to `new-election`
+- Update election contract version
 
 ## 0.2.4
 

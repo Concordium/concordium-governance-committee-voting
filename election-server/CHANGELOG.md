@@ -1,3 +1,7 @@
+## Unreleased
+
+- Update election contract version
+
 ## 0.2.5
 
 - Adds an HTML response cache for voting dapp renders for each election phase.
