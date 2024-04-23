@@ -433,7 +433,7 @@ async fn setup_http(
     let mut contract_client = verify_contract(client, config.contract_address).await?;
     let contract_config = get_election_config(&mut contract_client).await?;
     let initial_weights = HttpClient::try_create(config.request_timeout_ms)?
-        .get_resource_checked(&contract_config.eligible_voters)
+        .get_resource_checked(&contract_config.eligible_voters.data)
         .await?;
 
     let reader = csv::Reader::from_reader(std::io::Cursor::new(initial_weights));
