@@ -25,7 +25,7 @@ function App() {
     const open = electionConfig !== undefined && (
         <div className={clsx(openState === ElectionOpenState.Open ? 'text-success' : 'text-muted')}>
             {openState === ElectionOpenState.NotStarted && `Opening at ${showDate(electionConfig.start)}`}
-            {openState === ElectionOpenState.SetupError && 'Voting window to be determined'}
+            {openState === ElectionOpenState.SetupIncomplete && 'Voting window to be determined'}
             {openState === ElectionOpenState.Open && `Open until ${showDate(electionConfig.end)}`}
             {openState === ElectionOpenState.Concluded && `Closed at ${showDate(electionConfig.end)}`}
         </div>

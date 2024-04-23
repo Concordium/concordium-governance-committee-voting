@@ -78,6 +78,9 @@ export interface ElectionConfig {
     manifest: ElectionManifest;
     /** The election parameters, used by election guard */
     parameters: ElectionParameters;
+}
+
+export interface GuardiansState {
     /** The registered public keys of the election guardians */
     guardianKeys?: GuardianPublicKey[];
     /** Whether the setup phase has been completed successfully */
@@ -120,20 +123,19 @@ export const electionConfigAtom = atom(
     (get) => get(electionConfigBaseAtom),
     async (_, set) => {
         const hydrate = CONFIG.contractConfig !== undefined;
-        let config: Pick<ElectionConfig, 'start' | 'end' | 'description' | 'setupDone'> & {
+        let preliminaryConfig: Pick<ElectionConfig, 'start' | 'end' | 'description'> & {
             manifest: ChecksumUrl;
             parameters: ChecksumUrl;
             candidates: ChecksumUrl[];
         };
         if (hydrate) {
-            config = {
+            preliminaryConfig = {
                 start: new Date(CONFIG.contractConfig!.election_start),
                 end: new Date(CONFIG.contractConfig!.election_end),
                 description: CONFIG.contractConfig!.election_description,
                 manifest: CONFIG.contractConfig!.election_manifest,
                 parameters: CONFIG.contractConfig!.election_parameters,
                 candidates: CONFIG.contractConfig!.candidates,
-                setupDone: CONFIG.contractConfig!.guardians_setup_done,
             };
         } else {
             const contractConfig = await getElectionConfig();
@@ -141,77 +143,94 @@ export const electionConfigAtom = atom(
                 throw new Error('Failed to get election config');
             }
 
-            config = {
+            preliminaryConfig = {
                 start: Timestamp.toDate(contractConfig.election_start),
                 end: Timestamp.toDate(contractConfig.election_end),
                 description: contractConfig.election_description,
                 manifest: contractConfig.election_manifest,
                 parameters: contractConfig.election_parameters,
                 candidates: contractConfig.candidates,
-                setupDone: false,
             };
         }
 
-        const electionManifestPromise = getChecksumResource<ElectionManifest>(config.manifest);
-        const electionParametersPromise = getChecksumResource<ElectionParameters>(config.parameters);
-        const candidatePromises = config.candidates.map(getCandidate);
-
-        // TODO: remove when done testing
-        // const replaceResourceUrl = (url: ChecksumUrl) => ({
-        //     ...url,
-        //     url: `${url.url}`.replace(
-        //         'https://gc-voting-config.testnet.concordium.com/election-config/2024-04-18/',
-        //         '/resources/',
-        //     ),
-        // });
-
-        // const electionManifestPromise = getChecksumResource<ElectionManifest>(
-        //     replaceResourceUrl(config.manifest),
-        // );
-        // const electionParametersPromise = getChecksumResource<ElectionParameters>(
-        //     replaceResourceUrl(config.parameters),
-        // );
-        // const candidatePromises = config.candidates.map(replaceResourceUrl).map(getCandidate);
-
+        const electionManifestPromise = getChecksumResource<ElectionManifest>(preliminaryConfig.manifest);
+        const electionParametersPromise = getChecksumResource<ElectionParameters>(preliminaryConfig.parameters);
+        const candidatePromises = preliminaryConfig.candidates.map(getCandidate);
         const [manifest, parameters, ...candidates] = await Promise.all([
             electionManifestPromise,
             electionParametersPromise,
             ...candidatePromises,
         ]);
 
-        const mappedConfig: ElectionConfig = {
-            ...config,
+        const config: ElectionConfig = {
+            ...preliminaryConfig,
             candidates: candidates.filter(isDefined),
             manifest: manifest,
             parameters: parameters,
         };
-        set(electionConfigBaseAtom, mappedConfig);
+        set(electionConfigBaseAtom, config);
+    },
+);
 
-        const now = new Date();
-        if (hydrate || now < config.start) {
-            return;
+/**
+ * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
+ */
+const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
+
+/**
+ * Holds the configuration of the election contract. A reference to this should always be kept in the application root
+ * to avoid having to fetch the configuration more than once.
+ */
+export const guardiansStateAtom = atom(
+    (get) => get(guardiansStateBaseAtom),
+    async (_, set) => {
+        const hydrate = CONFIG.contractConfig !== undefined;
+        let config: GuardiansState;
+        if (hydrate) {
+            config = {
+                guardianKeys: CONFIG.contractConfig!.guardian_keys,
+                setupDone: CONFIG.contractConfig!.guardians_setup_done,
+            };
+        } else {
+            const guardians = await getGuardiansState();
+            if (guardians === undefined) {
+                throw new Error('Failed to get election config');
+            }
+
+            const setupDone = guardians.every(
+                ([, g]) =>
+                    g.public_key.type === 'Some' &&
+                    g.encrypted_share.type === 'Some' &&
+                    g.status.type === 'Some' &&
+                    g.status.content.type === 'VerificationSuccessful',
+            );
+            const guardianKeys = guardians
+                .map(([, g]) => {
+                    if (g.public_key.type === 'None') return undefined;
+                    return g.public_key.content;
+                })
+                .filter(isDefined);
+            config = {
+                guardianKeys,
+                setupDone,
+            };
         }
 
-        const guardians = await getGuardiansState();
-        if (guardians === undefined) {
-            throw new Error('Failed to get election config');
-        }
+        set(guardiansStateBaseAtom, config);
+    },
+);
 
-        const setupDone = guardians.every(
-            ([, g]) =>
-                g.public_key.type === 'Some' &&
-                g.encrypted_share.type === 'Some' &&
-                g.status.type === 'Some' &&
-                g.status.content.type === 'VerificationSuccessful',
-        );
-        const guardianKeys = guardians
-            .map(([, g]) => {
-                if (g.public_key.type === 'None') return undefined;
-                return g.public_key.content;
-            })
-            .filter(isDefined);
+const electionResultBaseAtom = atom<ElectionResultResponse>(undefined);
 
-        set(electionConfigBaseAtom, { ...mappedConfig, setupDone, guardianKeys });
+/**
+ * Holds the election result from the election contract, if available. Invoke setter to refresh the value from the
+ * contract
+ */
+export const electionResultAtom = atom(
+    (get) => get(electionResultBaseAtom),
+    async (_, set) => {
+        const result = CONFIG.contractConfig?.election_result ?? (await getElectionResult());
+        set(electionResultBaseAtom, result);
     },
 );
 
@@ -522,19 +541,6 @@ export const loadMoreSubmittedBallotsAtom = atom(null, async (get, set) => {
     set(localBallotsAtom, { hasMore, lastIndex: last?.id, ballots: [...localFiltered, ...remoteBallots] });
 });
 
-const electionResultBaseAtom = atom<ElectionResultResponse>(undefined);
-
-/**
- * Holds the election result from the election contract, if available. Invoke setter to refresh the value from the
- * contract
- */
-export const electionResultAtom = atom(
-    (get) => get(electionResultBaseAtom),
-    async (_, set) => {
-        set(electionResultBaseAtom, await getElectionResult());
-    },
-);
-
 /**
  * Initializes the global store with data fetched from the backend
  */
@@ -542,7 +548,20 @@ export function initStore() {
     const store = createStore();
 
     void store.set(electionConfigAtom);
-    void store.set(electionResultAtom);
+    const unsub = store.sub(electionConfigAtom, () => {
+        const electionConfig = store.get(electionConfigAtom);
+        if (electionConfig === undefined) return;
+
+        const now = new Date();
+        if (electionConfig.start <= now) {
+            void store.set(guardiansStateAtom);
+        }
+        if (electionConfig.end < now) {
+            void store.set(electionResultAtom);
+        }
+
+        unsub();
+    });
 
     return store;
 }

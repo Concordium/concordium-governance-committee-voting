@@ -26,6 +26,14 @@ type ChecksumUrl = {
     hash: string;
 };
 
+type CandidateResult = {
+    candidate: {
+        url: string;
+        hash: SDK.HexString;
+    };
+    cummulative_votes: number | bigint;
+};
+
 type FrontendElectionConfig = {
     election_manifest: ChecksumUrl;
     election_parameters: ChecksumUrl;
@@ -34,6 +42,8 @@ type FrontendElectionConfig = {
     election_start: number;
     election_end: number;
     guardians_setup_done: boolean;
+    guardian_keys: number[][];
+    election_result?: CandidateResult[];
 };
 
 /**
