@@ -1,17 +1,18 @@
 import { useAtomValue } from 'jotai';
 import { useMemo } from 'react';
-import { electionConfigAtom } from './store';
+import { electionConfigAtom, guardiansStateAtom } from './store';
 import { useNow } from 'shared/util';
 
 export const enum ElectionOpenState {
     NotStarted,
-    SetupError,
+    SetupIncomplete,
     Open,
     Concluded,
 }
 
 export function useIsElectionOpen(): ElectionOpenState | undefined {
     const electionConfig = useAtomValue(electionConfigAtom);
+    const guardians = useAtomValue(guardiansStateAtom);
     const now = useNow(1);
 
     const isElectionOpen = useMemo(() => {
@@ -22,14 +23,14 @@ export function useIsElectionOpen(): ElectionOpenState | undefined {
         if (electionConfig.start > now) {
             return ElectionOpenState.NotStarted;
         }
-        if (!electionConfig.setupDone) {
-            return ElectionOpenState.SetupError;
+        if (!guardians?.setupDone) {
+            return ElectionOpenState.SetupIncomplete;
         }
         if (electionConfig.end < now) {
             return ElectionOpenState.Concluded;
         }
         return ElectionOpenState.Open;
-    }, [electionConfig, now]);
+    }, [electionConfig, now, guardians]);
 
     return isElectionOpen;
 }

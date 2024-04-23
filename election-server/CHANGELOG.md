@@ -1,3 +1,8 @@
+## 0.2.5
+
+- Adds an HTML response cache for voting dapp renders for each election phase.
+- Expands the configuration passed to the frontend with contract state corresponding to the active election phase
+
 ## 0.2.4
 
 - Remove election configuration files from server, as these are expected to be hosted statically elsewhere.

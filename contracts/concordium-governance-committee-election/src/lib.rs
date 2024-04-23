@@ -676,6 +676,7 @@ fn view_config(_ctx: &ReceiveContext, host: &Host<State>) -> ReceiveResult<Elect
 
 /// Describes the election result for a single candidate.
 #[derive(Serialize, SchemaType, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CandidateResult {
     pub candidate:         ChecksumUrl,
     pub cummulative_votes: CandidateWeightedVotes,

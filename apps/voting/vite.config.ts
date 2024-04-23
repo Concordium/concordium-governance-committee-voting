@@ -34,7 +34,7 @@ function validateURL(envField: string, allowUnset = true): void {
     }
 }
 
-function getConfig(): Config {
+function getConfig(): FrontendConfig {
     // Validate network
     if (![undefined, 'mainnet', 'testnet'].includes(process.env.CCD_ELECTION_NETWORK)) {
         throw new Error(
