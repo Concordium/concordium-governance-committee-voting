@@ -1,5 +1,7 @@
 use anyhow::Context;
-use concordium_governance_committee_election::ElectionConfig;
+use concordium_governance_committee_election::{
+    ElectionConfig, GuardiansState, ViewElectionResultQueryResponse,
+};
 use concordium_rust_sdk::{
     contract_client::{ContractClient, ViewError},
     smart_contracts::common as contracts_common,
@@ -12,6 +14,8 @@ use tonic::transport::ClientTlsConfig;
 
 pub const REGISTER_VOTES_RECEIVE: &str = "election.registerVotes";
 pub const CONFIG_VIEW: &str = "viewConfig";
+pub const GUARDIANS_VIEW: &str = "viewGuardiansState";
+pub const RESULT_VIEW: &str = "viewElectionResult";
 
 /// Describes an election ballot submission
 #[derive(Serialize, Debug)]
@@ -37,6 +41,7 @@ pub struct VotingWeightDelegation {
     pub transaction_hash: TransactionHash,
 }
 
+#[derive(Debug)]
 pub enum ElectionContractMarker {}
 pub type ElectionContract = ContractClient<ElectionContractMarker>;
 
@@ -99,4 +104,26 @@ pub async fn get_election_config(client: &mut ElectionContract) -> anyhow::Resul
         .view::<_, ElectionConfig, ViewError>(CONFIG_VIEW, &(), BlockIdentifier::LastFinal)
         .await?;
     Ok(election_config)
+}
+
+/// Gets the [`GuardiansState`] from the contract.
+pub async fn get_guardians_state(client: &mut ElectionContract) -> anyhow::Result<GuardiansState> {
+    let guardians_state = client
+        .view::<_, GuardiansState, ViewError>(GUARDIANS_VIEW, &(), BlockIdentifier::LastFinal)
+        .await?;
+    Ok(guardians_state)
+}
+
+/// Gets the [`ElectionResult`] from the contract.
+pub async fn get_election_result(
+    client: &mut ElectionContract,
+) -> anyhow::Result<ViewElectionResultQueryResponse> {
+    let election_result = client
+        .view::<_, ViewElectionResultQueryResponse, ViewError>(
+            RESULT_VIEW,
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
+    Ok(election_result)
 }
