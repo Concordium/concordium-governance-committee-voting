@@ -1,7 +1,6 @@
 /* eslint-disable import/no-duplicates */
 import { Parameter } from '@concordium/web-sdk/types';
 import * as ElectionContract from '../../__generated__/election-contract/module_election';
-// eslint-disable-next-line import/default
 import ElectionContractWorker from './worker?worker';
 import { ElectionContractWorkerMessage, ElectionContractWorkerTag, WorkerResponse } from './worker';
 
@@ -37,7 +36,10 @@ export async function getElectionConfig(
 ): Promise<ElectionContract.ReturnValueViewConfig | undefined> {
     const res = await ElectionContract.dryRunViewConfig(contract, Parameter.empty());
 
-    const config = await invokeWorker<ElectionContract.ReturnValueViewConfig | undefined>({ tag: ElectionContractWorkerTag.ParseConfig, message: res });
+    const config = await invokeWorker<ElectionContract.ReturnValueViewConfig | undefined>({
+        tag: ElectionContractWorkerTag.ParseConfig,
+        message: res,
+    });
     if (config !== undefined) {
         // All number values are parsed as bigints. These are byte arrays, and are expected to be passed as numbers to
         // election guard.
@@ -56,7 +58,10 @@ export async function getGuardiansState(
     contract: ElectionContract.Type,
 ): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
     const res = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
-    return invokeWorker<ElectionContract.ReturnValueViewGuardiansState | undefined>({ tag: ElectionContractWorkerTag.ParseGuardians, message: res })
+    return invokeWorker<ElectionContract.ReturnValueViewGuardiansState | undefined>({
+        tag: ElectionContractWorkerTag.ParseGuardians,
+        message: res,
+    });
 }
 
 /**
@@ -64,11 +69,12 @@ export async function getGuardiansState(
  * @param contract - The election contract instance to query
  * @returns A promise resolving with the election result or undefined
  */
-export async function getElectionResult(
-    contract: ElectionContract.Type,
-) {
+export async function getElectionResult(contract: ElectionContract.Type) {
     const res = await ElectionContract.dryRunViewElectionResult(contract, Parameter.empty());
-    const parsed = await invokeWorker<ElectionContract.ReturnValueViewElectionResult | undefined>({ tag: ElectionContractWorkerTag.ParseElectionResult, message: res })
+    const parsed = await invokeWorker<ElectionContract.ReturnValueViewElectionResult | undefined>({
+        tag: ElectionContractWorkerTag.ParseElectionResult,
+        message: res,
+    });
 
     if (parsed?.type !== 'Some') {
         return undefined;
