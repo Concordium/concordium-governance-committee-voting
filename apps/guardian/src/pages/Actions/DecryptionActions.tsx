@@ -156,7 +156,7 @@ const GenerateDecryptionProof = makeActionableStep(
 
 export function DecryptionActions() {
     const electionStep = useAtomValue(electionStepAtom);
-    const guardians = useAtomValue(guardiansStateAtom).guardians?.filter(([,g]) => !g.excluded);
+    const guardians = useAtomValue(guardiansStateAtom).guardians?.filter(([, g]) => !g.excluded);
     const electionConfig = useAtomValue(electionConfigAtom);
 
     if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined || electionConfig === undefined) {

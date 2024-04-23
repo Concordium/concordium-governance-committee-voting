@@ -854,6 +854,13 @@ async fn get_election_data(
             BlockIdentifier::LastFinal,
         )
         .await?;
+    let guardians = contract_client
+        .view::<_, contract::GuardiansState, contract_client::ViewError>(
+            "viewGuardiansState",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
 
     let start = config.election_start.try_into()?;
     let end = config.election_end.try_into()?;
@@ -867,10 +874,17 @@ async fn get_election_data(
         .get_json_resource_checked(&config.election_parameters)
         .await?;
 
-    let mut guardian_public_keys = config
-        .guardian_keys
+    let mut guardian_public_keys = guardians
         .iter()
-        .map(|bytes| decode::<GuardianPublicKey>(bytes))
+        .map(|(ga, gs)| {
+            let bytes = gs
+                .public_key
+                .clone()
+                .with_context(|| format!("No public key found for guardian {ga}"))?;
+            let key: GuardianPublicKey = decode(&bytes)
+                .with_context(|| format!("Failed to decode public key for guardian {ga}"))?;
+            anyhow::Ok(key)
+        })
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
 

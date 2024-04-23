@@ -21,8 +21,8 @@ use election_common::{decode, HttpClient};
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
-        create_client, get_election_config, verify_contract, BallotSubmission, ElectionContract,
-        VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
+        create_client, get_election_config, get_guardians_state, verify_contract, BallotSubmission,
+        ElectionContract, VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
     },
 };
 use futures::{future, TryStreamExt};
@@ -631,10 +631,18 @@ async fn main() -> anyhow::Result<()> {
     // election guardians should have registered their keys needed for ballot
     // verification at this point.
     let contract_config = get_election_config(&mut contract_client).await?;
-    let guardian_public_keys = contract_config
-        .guardian_keys
+    let guardians = get_guardians_state(&mut contract_client).await?;
+    let guardian_public_keys = guardians
         .iter()
-        .map(|bytes| decode::<GuardianPublicKey>(bytes))
+        .map(|(ga, gs)| {
+            let bytes = gs
+                .public_key
+                .clone()
+                .with_context(|| format!("No public key found for guardian {ga}"))?;
+            let key: GuardianPublicKey = decode(&bytes)
+                .with_context(|| format!("Failed to decode public key for guardian {ga}"))?;
+            anyhow::Ok(key)
+        })
         .collect::<Result<Vec<GuardianPublicKey>, _>>()
         .context("Could not deserialize guardian public key")?;
     let verification_context =
