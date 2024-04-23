@@ -11,7 +11,9 @@ use axum_prometheus::{
 };
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use concordium_governance_committee_election::{ChecksumUrl, ElectionConfig};
+use concordium_governance_committee_election::{
+    ChecksumUrl, ElectionConfig, GuardianStatus, ViewElectionResultQueryResponse,
+};
 use concordium_rust_sdk::{
     common::types::{Amount, Timestamp},
     smart_contracts::common::AccountAddress,
@@ -20,7 +22,10 @@ use concordium_rust_sdk::{
 use election_common::{get_scaling_factor, HttpClient, WeightRow};
 use election_server::{
     db::{DatabasePool, StoredBallotSubmission, StoredDelegation},
-    util::{create_client, get_election_config, verify_contract},
+    util::{
+        create_client, get_election_config, get_election_result, get_guardians_state,
+        verify_contract, ElectionContract,
+    },
 };
 use futures::FutureExt;
 use handlebars::{no_escape, Handlebars};
@@ -115,6 +120,8 @@ struct AppConfig {
     contract_address:   ContractAddress,
 }
 
+/// The necessary configuration from the election contract from the perspective
+/// of the frontend application
 #[derive(serde::Serialize, Debug)]
 struct FrontendElectionConfig {
     /// A url to the location of the election manifest used by election guard.
@@ -134,6 +141,10 @@ struct FrontendElectionConfig {
     /// Whether the setup process has been successfully completed by all
     /// guardians.
     guardians_setup_done: bool,
+    /// The public keys of all guardians
+    guardian_keys:        Option<Vec<Vec<u8>>>,
+    /// The election result
+    election_result:      ViewElectionResultQueryResponse,
 }
 
 impl From<ElectionConfig> for FrontendElectionConfig {
@@ -146,16 +157,23 @@ impl From<ElectionConfig> for FrontendElectionConfig {
             election_start:       value.election_start,
             election_end:         value.election_end,
             guardians_setup_done: false,
+            guardian_keys:        Default::default(),
+            election_result:      Default::default(),
         }
     }
 }
 
+/// The configuration expected in the frontend application
 #[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct FrontendConfig {
+    /// The node used to communicate with the chain
     node:             String,
+    /// The network used in the application
     network:          concordium_rust_sdk::web3id::did::Network,
+    /// The contract address of the election contract
     contract_address: ContractAddress,
+    /// The necessary configuration from the election contract
     contract_config:  FrontendElectionConfig,
 }
 
@@ -170,36 +188,123 @@ impl FrontendConfig {
     }
 }
 
+/// A cache for [`Html`] responses for corresponding [`ElectionPhase`]s
 #[derive(Debug)]
 struct FrontendCache {
-    setup:  String,
-    voting: Option<String>,
-    tally:  Option<String>,
+    /// The template used to generate a response
+    html_template: String,
+    /// Cache for [`ElectionPhase::Setup`]
+    setup_html:    Option<Html<String>>,
+    /// Cache for [`ElectionPhase::Voting`]
+    voting_html:   Option<Html<String>>,
+    /// Cache for [`ElectionPhase::Tally`]
+    tally_html:    Option<Html<String>>,
 }
 
 impl FrontendCache {
-    fn new(setup: String) -> Self {
+    /// Construct a new cache
+    fn new(html_template: String) -> Self {
         Self {
-            setup,
-            voting: Option::default(),
-            tally: Option::default(),
+            html_template,
+            setup_html: Default::default(),
+            voting_html: Default::default(),
+            tally_html: Default::default(),
         }
+    }
+
+    /// Get the item corresponding to the passed [`ElectionPhase`]
+    fn get(&self, election_phase: ElectionPhase) -> Option<Html<String>> {
+        match election_phase {
+            ElectionPhase::Setup => self.setup_html.clone(),
+            ElectionPhase::Voting => self.voting_html.clone(),
+            ElectionPhase::Tally => self.tally_html.clone(),
+        }
+    }
+
+    /// Render a response corresponding to the passed [`ElectionPhase`]. The
+    /// response produced is stored in the cache for subsequent use.
+    fn render(
+        &mut self,
+        election_phase: ElectionPhase,
+        fe_config: &FrontendConfig,
+    ) -> Result<Html<String>, StatusCode> {
+        let mut hbs = Handlebars::new();
+        // Prevent handlebars from escaping inserted object
+        hbs.register_escape_fn(no_escape);
+        let fe_config_string =
+            serde_json::to_string(&fe_config).expect("JSON serialization always succeeds");
+        let html = hbs
+            .render_template(
+                &self.html_template,
+                &serde_json::json!({ "config": fe_config_string }),
+            )
+            .map(Html)
+            .map_err(|e| {
+                tracing::error!("Failed to render template: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        match election_phase {
+            ElectionPhase::Setup => {
+                self.setup_html = Some(html.clone());
+            }
+            ElectionPhase::Voting => {
+                self.voting_html = Some(html.clone());
+            }
+            ElectionPhase::Tally => {
+                self.tally_html = Some(html.clone());
+            }
+        };
+
+        Ok(html)
     }
 }
 
-/// The app state shared across http requests made to the server.
+/// The different phases of the election
+#[derive(PartialEq, Clone, Copy, Debug)]
+enum ElectionPhase {
+    Setup,
+    Voting,
+    Tally,
+}
+
+/// The frontend state shared across app requests made to the server.
 #[derive(Clone, Debug)]
-struct AppState {
+struct FrontendState {
+    /// The application config, required to generated the [`FrontendConfig`]
+    /// used.
+    app_config:      AppConfig,
+    /// A cache holding a possible response per [`ElectionPhase`].
+    frontend_cache:  Arc<Mutex<FrontendCache>>,
+    /// The election config from the election contract
+    contract_config: ElectionConfig,
+    /// A contract client for the election contract
+    contract_client: ElectionContract,
+}
+
+impl FrontendState {
+    fn get_election_phase(&self) -> ElectionPhase {
+        let now = chrono::offset::Utc::now().timestamp_millis() as u64;
+        if now < self.contract_config.election_start.millis {
+            return ElectionPhase::Setup;
+        }
+        if now < self.contract_config.election_end.millis {
+            return ElectionPhase::Voting;
+        }
+        ElectionPhase::Tally
+    }
+}
+
+/// The api state shared across api requests made to the server.
+#[derive(Clone, Debug)]
+struct ApiState {
     /// The DB connection pool from.
     db_pool:         DatabasePool,
     /// The computed initial weights of each eligible voter.
     initial_weights: HashMap<AccountAddress, Amount>,
-    app_config:      AppConfig,
-    frontend_cache:  Arc<Mutex<FrontendCache>>,
-    contract_config: ElectionConfig,
 }
 
-impl AppState {
+impl ApiState {
     /// Gets the initial weight computed for the `account`.
     fn get_account_initial_weight(&self, account: &AccountAddress) -> u64 {
         let amount = self
@@ -247,7 +352,7 @@ struct PaginationResponse<T> {
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_ballot_submissions_by_account(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(account_address): Path<AccountAddress>,
     Query(query_params): Query<PaginatedQueryParams>,
 ) -> Result<Json<PaginationResponse<StoredBallotSubmission>>, StatusCode> {
@@ -313,7 +418,7 @@ impl DelegationResponseRow {
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_delegations_by_account(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(account_address): Path<AccountAddress>,
     Query(query_params): Query<PaginatedQueryParams>,
 ) -> Result<Json<PaginationResponse<DelegationResponseRow>>, StatusCode> {
@@ -354,7 +459,7 @@ async fn get_delegations_by_account(
 /// [`StatusCode`] signaling error if database connection or lookup fails.
 #[tracing::instrument(skip(state))]
 async fn get_ballot_submission_by_transaction(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(transaction_hash): Path<TransactionHash>,
 ) -> Result<Json<Option<StoredBallotSubmission>>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
@@ -372,13 +477,65 @@ async fn get_ballot_submission_by_transaction(
     Ok(Json(result))
 }
 
-// TODO: document
+/// Renders the frontend application from the [`FrontendCache`]. If the response
+/// is not already in the cache for the calculated [`ElectionPhase`], a new
+/// response is produced and cached for subsequent requests to use.
 #[tracing::instrument(skip(state))]
-async fn get_index_html(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
-    // TODO: handle html response for other phases
-    let html = state.frontend_cache.lock().await.setup.clone();
-    // TODO: set caching headers to expire at start of next phase
-    Ok(Html(html))
+async fn get_index_html(
+    State(mut state): State<FrontendState>,
+) -> Result<Html<String>, StatusCode> {
+    let mut cache = state.frontend_cache.lock().await;
+    let election_phase = state.get_election_phase();
+    if let Some(html) = cache.get(election_phase) {
+        tracing::debug!(r#"Cache hit for election phase "{:?}""#, election_phase);
+        return Ok(html.clone());
+    }
+
+    let mut fe_config = FrontendConfig::create(&state.app_config, &state.contract_config);
+    if election_phase != ElectionPhase::Setup {
+        let guardians_state = get_guardians_state(&mut state.contract_client)
+            .await
+            .map_err(|e| {
+                tracing::error!("{}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        let setup_done = guardians_state.iter().all(|(_, g)| {
+            g.public_key.is_some()
+                && g.encrypted_share.is_some()
+                && g.status
+                    .clone()
+                    .map(|s| matches!(s, GuardianStatus::VerificationSuccessful))
+                    .unwrap_or(false)
+        });
+        let guardian_keys = guardians_state
+            .iter()
+            .map(|(_, g)| g.public_key.clone())
+            .collect();
+
+        fe_config.contract_config.guardians_setup_done = setup_done;
+        fe_config.contract_config.guardian_keys = guardian_keys;
+    }
+
+    if election_phase == ElectionPhase::Tally {
+        let election_result = get_election_result(&mut state.contract_client)
+            .await
+            .map_err(|e| {
+                tracing::error!("{}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        // If the result is not there yet, get the voting representation
+        if election_result.is_none() {
+            return cache
+                .get(ElectionPhase::Voting)
+                .map(Ok)
+                .unwrap_or(cache.render(ElectionPhase::Voting, &fe_config));
+        }
+
+        fe_config.contract_config.election_result = election_result;
+    }
+
+    cache.render(election_phase, &fe_config)
 }
 
 /// The response format of [`get_account_weight`]
@@ -400,7 +557,7 @@ const NUM_DELEGATIONS_FROM: usize = 3;
 /// Get the voting weight of an account address.
 #[tracing::instrument(skip(state))]
 async fn get_account_weight(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(account): Path<AccountAddress>,
 ) -> Result<Json<AccountWeightResponse>, StatusCode> {
     let db = state.db_pool.get().await.map_err(|e| {
@@ -515,29 +672,20 @@ async fn setup_http(
         initial_weights.insert(account, amount);
     }
 
-    // Render index.html with config
     let index_template = std::fs::read_to_string(config.frontend_dir.join("index.html"))
         .context("Frontend was not built.")?;
-    let mut reg = Handlebars::new();
-    // Prevent handlebars from escaping inserted object
-    reg.register_escape_fn(no_escape);
-
-    let fe_config = FrontendConfig::create(config, &contract_config);
-    let fe_config_string =
-        serde_json::to_string(&fe_config).expect("JSON serialization always succeeds");
-    let setup_html = reg.render_template(
-        &index_template,
-        &serde_json::json!({ "config": fe_config_string }),
-    )?;
-
-    let state = AppState {
+    let api_state = ApiState {
         db_pool: DatabasePool::create(config.db_connection.clone(), config.pool_size, true)
             .await
             .context("Failed to connect to the database")?,
         initial_weights,
+    };
+
+    let fe_state = FrontendState {
         app_config: config.clone(),
-        frontend_cache: Arc::new(Mutex::new(FrontendCache::new(setup_html))),
+        frontend_cache: Arc::new(Mutex::new(FrontendCache::new(index_template))),
         contract_config,
+        contract_client,
     };
 
     let mut http_api = Router::new()
@@ -551,12 +699,13 @@ async fn setup_http(
         )
         .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
+        .with_state(api_state)
         // Serve everything frontend-related
         .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
          // Fall back to handle route in the frontend of the application served
         .route("/index.html", get(|| async { Redirect::permanent("/")}))
         .fallback(get(get_index_html))
-        .with_state(state);
+        .with_state(fe_state);
 
     // Add layers
     http_api = http_api
