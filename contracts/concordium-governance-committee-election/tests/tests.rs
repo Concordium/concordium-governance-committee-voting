@@ -44,9 +44,15 @@ fn test_init_errors() {
     let election_start = now.try_into().expect("Valid datetime");
     let election_end = future_1d.try_into().expect("Valid datetime");
     let decryption_deadline = future_2d.try_into().expect("Valid datetime");
-    let eligible_voters = ChecksumUrl {
-        url:  "http://some.election/voters".to_string(),
-        hash: HashSha2256([0u8; 32]),
+    let eligible_voters = EligibleVoters {
+        data:       ChecksumUrl {
+            url:  "http://some.election/voters".to_string(),
+            hash: HashSha2256([0u8; 32]),
+        },
+        parameters: EligibleVotersParameters {
+            start_time: Timestamp::from_timestamp_millis(0),
+            end_time:   Timestamp::from_timestamp_millis(0),
+        },
     };
     let election_manifest = ChecksumUrl {
         url:  "http://some.election/manifest".to_string(),
@@ -130,7 +136,7 @@ fn test_init_errors() {
 
     // Empty `eligible_voters` url
     let mut init_param = get_init_param();
-    init_param.eligible_voters.url = "".to_string();
+    init_param.eligible_voters.data.url = "".to_string();
     initialize(&module_ref, &init_param, &mut chain)
         .expect_err("Must have non-empty eligible_voters url");
 }
@@ -157,9 +163,15 @@ fn test_init_config() {
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
     let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
-    let eligible_voters = ChecksumUrl {
-        url:  "http://some.election/voters".to_string(),
-        hash: HashSha2256([0u8; 32]),
+    let eligible_voters = EligibleVoters {
+        data:       ChecksumUrl {
+            url:  "http://some.election/voters".to_string(),
+            hash: HashSha2256([0u8; 32]),
+        },
+        parameters: EligibleVotersParameters {
+            start_time: Timestamp::from_timestamp_millis(0),
+            end_time:   Timestamp::from_timestamp_millis(0),
+        },
     };
     let election_manifest = ChecksumUrl {
         url:  "http://some.election/manifest".to_string(),
@@ -1009,9 +1021,15 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         .checked_add_days(chrono::Days::new(1))
         .unwrap();
     let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
-    let eligible_voters = ChecksumUrl {
-        url:  "http://some.election/voters".to_string(),
-        hash: HashSha2256([0u8; 32]),
+    let eligible_voters = EligibleVoters {
+        data:       ChecksumUrl {
+            url:  "http://some.election/voters".to_string(),
+            hash: HashSha2256([0u8; 32]),
+        },
+        parameters: EligibleVotersParameters {
+            start_time: Timestamp::from_timestamp_millis(0),
+            end_time:   Timestamp::from_timestamp_millis(0),
+        },
     };
     let election_manifest = ChecksumUrl {
         url:  "http://some.election/manifest".to_string(),

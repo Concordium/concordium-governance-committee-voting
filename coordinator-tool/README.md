@@ -16,7 +16,12 @@ The tool has the following subcommands
 - `initial-weights` is the command used to gather the average amount of CCD on
   an account in the given period. The intention is that this command is used to
   produce the initial weights of each account prior to the election starting.
-  The output of this command is a CSV file used in the `final-weights` command.
+  This command has two subcommands:
+  - `generate` will write the computed weights and the parameters used to generate
+    these into separate files in the specified `out` directory.
+    The  CSV file containing the weights will be used in the `final-weights` command.
+  - `verify` verifies the weights registered in the contract by comparing the hash
+    of the computed weights with the checksum registered in the contract.
 
 - `new-election` is the command to create the necessary files and the contract
   for a new election. In particular it will
@@ -71,16 +76,42 @@ This will produce a single binary `election-coordinator` in `target/release` dir
 ### Get the list of initial weights
 
 ```console
-election-coordinator --node http://localhost:20001 initial-weights  --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z --out initial-weights.csv
+election-coordinator --node http://localhost:20001 initial-weights generate --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z --out .
 ```
 
-The weights are stored in the `initial-weights.csv` file.
+The weights are stored in the `initial-weights.csv` file, and the corresponding parameters
+used to generate them in `initial-weights-params.json`.
 
+#### Verify computation of initial weights for election
+
+```console
+election-coordinator --node http://localhost:20001 initial-weights verify --contract "<8830,0>"
+```
+
+The weights are calculated based on the parameters registered in the contract, and the result is then compared with the
+checksum registered in the contract.
 
 ### Create a new election instance
 
 ```
-election-coordinator new-election --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 --description 'Concordium GC election 2024' --threshold 1 --admin ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --election-start '2024-02-01T00:00:00Z' --election-end '2024-02-07T00:00:00Z' --decryption-deadline '2024-02-08T00:00:00Z' --delegation-string 'This is how you delegate' --out ./election-out  --voters-file initial-weights.csv --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --candidate candidates/candidate1.json' --candidate 'http://localhost:7000/candidate2.json' --node 'https://grpc.testnet.concordium.com:20000' --base-url https://gcvoting.testnet.concordium.com`
+election-coordinator new-election \
+  --module ../contracts/concordium-governance-committee-election/concordium-out/module.wasm.v1 
+  --description 'Concordium GC election 2024' \
+  --threshold 1 \
+  --admin 2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export \
+  --election-start '2024-02-01T00:00:00Z' \
+  --election-end '2024-02-07T00:00:00Z' \
+  --decryption-deadline '2024-02-08T00:00:00Z' \
+  --delegation-string 'This is how you delegate' \
+  --out ./election-out  \
+  --voters-file initial-weights.csv \
+  --voters-params-file initial-weights-params.json \
+  --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G \
+  --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D \
+  --candidate candidates/candidate1.json' \
+  --candidate 'http://localhost:7000/candidate2.json' \
+  --node 'https://grpc.testnet.concordium.com:20000' \
+  --base-url https://gcvoting.testnet.concordium.com`
 ```
 
 The options are the following
@@ -93,6 +124,7 @@ The options are the following
 - `--decryption-deadline` is the time guardians must register their decryptions before
 - `--delegation-string` is the string that will be used to determine vote delegations
 - `--voters-file` is intended to be the `initial-weights.csv` file for the election
+- `--voters-params-file` is intended to be the `initial-weights-params.json` file containing the parameters used to compute the `initial-weights`
 - `--guardian` (repeated) is guardian account addresses. At least one is needed.
 - `--candidate` (repeated) is a URL or a path to a candidate. The order here matters, since that will be the order
   of selections in the election. The link should be to the candidate metadata. The hash of the metadata will be
@@ -120,7 +152,7 @@ To take the output of the previous command (`initial-weights.csv`) and compute f
 ### Tally the votes and register the encrypted tally in the contract
 
 ```
-election-coordinator --node http://localhost:20001 tally --contract '<7795,0>' --final-weights final-weights.csv --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
+election-coordinator --node http://localhost:20001 tally --contract '<7795,0>' --final-weights final-weights.csv --admin-keys 2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
 ```
 
 The same command without the `--admin-keys` will tally the votes and check that the tally matches what is registered in the contract.
@@ -128,7 +160,7 @@ The same command without the `--admin-keys` will tally the votes and check that 
 ### Decrypt the final result
 
 ```console
-election-coordinator  --node http://localhost:20001 final-result --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
+election-coordinator  --node http://localhost:20001 final-result --contract '<7795,0>' --admin-keys 2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export
 ```
 
 This will look up all the decryption shares provided by the guardians, check that they are valid, and if there are enough of the valid ones it will decrypt the final result and publish it in the contract.
@@ -138,7 +170,7 @@ If the `admin-keys` are not provided the command will do everything else as with
 ### Reset the finalization
 
 ```console
-election-coordinator --node http://localhost:20001 reset --contract '<7795,0>' --admin-keys ../test-scripts/keys/2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --decryption-deadline 2024-03-23T12:13:14Z
+election-coordinator --node http://localhost:20001 reset --contract '<7795,0>' --admin-keys 2yJxX711aDXtit7zMu7PHqUMbtwQ8zm7emaikg24uyZtvLTysj.export --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D --decryption-deadline 2024-03-23T12:13:14Z
 ```
 
 This will reset the finalization phase, meaning that all posted guardian decryptions and proofs will be removed in the contract state. Furthermore, the provided guardians will be excluded from posting

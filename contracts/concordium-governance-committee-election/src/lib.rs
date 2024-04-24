@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //! # A Concordium V1 smart contract
+
 pub use concordium_std::HashSha2256;
 use concordium_std::*;
 
@@ -12,6 +13,35 @@ pub struct ChecksumUrl {
     pub url:  String,
     /// The hash of the data found at `url`.
     pub hash: HashSha2256,
+}
+
+/// The parameters the voting weight calculations are based upon.
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct EligibleVotersParameters {
+    /// The block time at which data collection starts
+    pub start_time: Timestamp,
+    /// The block time at which data collection ends
+    pub end_time:   Timestamp,
+}
+
+/// Contains the voters data and the parameters used to generate the data.
+#[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct EligibleVoters {
+    /// The parameters used to compute the voters data. This can be used to
+    /// verify the data matches the expected output.
+    pub parameters: EligibleVotersParameters,
+    /// The voters data.
+    pub data:       ChecksumUrl,
 }
 
 #[cfg(feature = "serde")]
@@ -105,9 +135,8 @@ impl GuardianState {
 
 #[derive(Serialize)]
 pub struct RegisteredData {
-    /// The list of eligible voters, represented by a url and a hash of the
-    /// list.
-    pub eligible_voters:      ChecksumUrl,
+    /// The list of eligible voters
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
@@ -178,7 +207,7 @@ impl State {
         ensure!(!election_description.is_empty(), Error::Malformed);
         ensure!(!candidates.is_empty(), Error::Malformed);
         ensure!(!guardians.is_empty(), Error::Malformed);
-        ensure!(!eligible_voters.url.is_empty(), Error::Malformed);
+        ensure!(!eligible_voters.data.url.is_empty(), Error::Malformed);
         ensure!(!delegation_string.is_empty(), Error::Malformed);
 
         let mut guardians_map = state_builder.new_map();
@@ -232,7 +261,7 @@ pub struct InitParameter {
     pub guardians:            Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      ChecksumUrl,
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
@@ -265,10 +294,10 @@ pub struct ElectionConfig {
     /// A list of candidates that voters can vote for in the election.
     pub candidates:           Vec<ChecksumUrl>,
     /// The list of guardians for the election.
-    pub guardian_keys:        Vec<Vec<u8>>,
+    pub guardian_accounts:    Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      ChecksumUrl,
+    pub eligible_voters:      EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
     pub election_manifest:    ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
@@ -292,11 +321,7 @@ impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
         let registered_data = value.registered_data.get();
         let candidates = value.candidates.iter().map(|c| c.clone()).collect();
-        let guardian_keys = value
-            .guardians
-            .iter()
-            .filter_map(|(_, guardian_state)| guardian_state.public_key.clone())
-            .collect();
+        let guardian_accounts = value.guardians.iter().map(|(ga, _)| *ga).collect();
 
         Self {
             admin_account: *value.admin_account.get(),
@@ -308,7 +333,7 @@ impl From<&State> for ElectionConfig {
             election_manifest: registered_data.election_manifest.clone(),
             election_parameters: registered_data.election_parameters.clone(),
             candidates,
-            guardian_keys,
+            guardian_accounts,
             delegation_string: value.delegation_string.clone(),
         }
     }
@@ -616,25 +641,19 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
         ctx.sender().matches_account(host.state.admin_account.get()),
         Error::Unauthorized
     );
-    ensure!(
-        now > host.state.decryption_deadline,
-        Error::IncorrectElectionPhase
-    );
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
 
-    let (guardians, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
+    let (to_exclude, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
 
     ensure!(now < deadline, Error::Malformed);
     host.state.decryption_deadline = deadline;
 
-    for guardian in guardians {
-        if let Some(mut g) = host.state.guardians.get_mut(&guardian) {
-            g.excluded = true;
+    for (account, mut guardian_state) in host.state.guardians.iter_mut() {
+        if to_exclude.contains(&account) {
+            guardian_state.excluded = true;
         }
-    }
-
-    for mut guardian in host.state.guardians.iter_mut() {
-        guardian.1.decryption_share = None;
-        guardian.1.decryption_share_proof = None;
+        guardian_state.decryption_share = None;
+        guardian_state.decryption_share_proof = None;
     }
 
     Ok(())
