@@ -1,6 +1,6 @@
 ## Unreleased
 
-- Update election contract version
+- Update the referenced election contract version
 
 ## 0.2.5
 

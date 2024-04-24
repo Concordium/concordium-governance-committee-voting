@@ -321,7 +321,7 @@ impl From<&State> for ElectionConfig {
     fn from(value: &State) -> Self {
         let registered_data = value.registered_data.get();
         let candidates = value.candidates.iter().map(|c| c.clone()).collect();
-        let guardian_keys = value.guardians.iter().map(|(ga, _)| *ga).collect();
+        let guardian_accounts = value.guardians.iter().map(|(ga, _)| *ga).collect();
 
         Self {
             admin_account: *value.admin_account.get(),
@@ -333,7 +333,7 @@ impl From<&State> for ElectionConfig {
             election_manifest: registered_data.election_manifest.clone(),
             election_parameters: registered_data.election_parameters.clone(),
             candidates,
-            guardian_accounts: guardian_keys,
+            guardian_accounts,
             delegation_string: value.delegation_string.clone(),
         }
     }

@@ -79,7 +79,8 @@ This will produce a single binary `election-coordinator` in `target/release` dir
 election-coordinator --node http://localhost:20001 initial-weights generate --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z --out .
 ```
 
-The weights are stored in the `initial-weights.csv` file, and the corresponding parameters used to generate them in `initial-weights-params.json`.
+The weights are stored in the `initial-weights.csv` file, and the corresponding parameters
+used to generate them in `initial-weights-params.json`.
 
 #### Verify computation of initial weights for election
 
