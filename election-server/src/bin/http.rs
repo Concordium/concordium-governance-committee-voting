@@ -147,16 +147,18 @@ struct FrontendElectionConfig {
     election_result:      ViewElectionResultQueryResponse,
 }
 
-impl From<ElectionConfig> for FrontendElectionConfig {
-    fn from(value: ElectionConfig) -> Self {
+impl FrontendElectionConfig {
+    /// Create a frontend configuration from an [`ElectionConfig`], setting the
+    /// remaining fields to their default values.
+    fn create(election_config: ElectionConfig) -> Self {
         Self {
-            election_manifest:    value.election_manifest,
-            election_parameters:  value.election_parameters,
-            candidates:           value.candidates,
-            election_description: value.election_description,
-            election_start:       value.election_start,
-            election_end:         value.election_end,
-            guardians_setup_done: false,
+            election_manifest:    election_config.election_manifest,
+            election_parameters:  election_config.election_parameters,
+            candidates:           election_config.candidates,
+            election_description: election_config.election_description,
+            election_start:       election_config.election_start,
+            election_end:         election_config.election_end,
+            guardians_setup_done: Default::default(),
             guardian_keys:        Default::default(),
             election_result:      Default::default(),
         }
@@ -178,12 +180,13 @@ struct FrontendConfig {
 }
 
 impl FrontendConfig {
+    /// Creates a new configuration struct for the frontend application
     fn create(app_config: &AppConfig, contract_config: &ElectionConfig) -> Self {
         Self {
             node:             app_config.node_endpoint.uri().to_string(),
             network:          app_config.network,
             contract_address: app_config.contract_address,
-            contract_config:  contract_config.clone().into(),
+            contract_config:  FrontendElectionConfig::create(contract_config.clone()),
         }
     }
 }
@@ -263,8 +266,14 @@ impl FrontendCache {
 /// The different phases of the election
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum ElectionPhase {
+    /// The voting window of the election is not yet active. Guardians perform
+    /// key generation.
     Setup,
+    /// The voting window of the election is active. Voters can submit election
+    /// ballots.
     Voting,
+    /// The voting window of the election has passed. The election result is
+    /// computed and published.
     Tally,
 }
 

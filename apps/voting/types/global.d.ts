@@ -29,7 +29,7 @@ type ChecksumUrl = {
 type CandidateResult = {
     candidate: {
         url: string;
-        hash: SDK.HexString;
+        hash: string;
     };
     cummulative_votes: number | bigint;
 };
