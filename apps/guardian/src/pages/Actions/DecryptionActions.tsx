@@ -191,7 +191,7 @@ export function DecryptionActions() {
                 <h3>The decryption was not completed by a sufficient amount of guardians</h3>
             )}
             {step === TallyStep.GenerateDecryptionProof && <GenerateDecryptionProof />}
-            {step === TallyStep.AwaitPeerShares && (
+            {step === TallyStep.AwaitPeerProofs && (
                 <AwaitPeers
                     predicate={(g) => g.hasDecryptionProof}
                     guardians={guardians.filter(([, gs]) => gs.hasDecryptionShare)}

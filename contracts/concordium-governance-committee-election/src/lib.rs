@@ -641,10 +641,7 @@ fn reset_finalization_phase(ctx: &ReceiveContext, host: &mut Host<State>) -> Res
         ctx.sender().matches_account(host.state.admin_account.get()),
         Error::Unauthorized
     );
-    ensure!(
-        now > host.state.decryption_deadline,
-        Error::IncorrectElectionPhase
-    );
+    ensure!(now > host.state.election_end, Error::IncorrectElectionPhase);
 
     let (to_exclude, deadline): ResetFinalizationParameter = ctx.parameter_cursor().get()?;
 
