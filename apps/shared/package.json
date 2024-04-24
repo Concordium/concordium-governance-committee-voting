@@ -14,6 +14,7 @@
     },
     "exports": {
         "./election-contract/schema": "./__generated__/election-contract/election_schema.json",
+        "./election-contract": "./src/election-contract/index.ts",
         "./components": "./src/components.tsx",
         "./*": "./src/*.ts"
     },
@@ -32,6 +33,7 @@
         "glob": "^10.3.10",
         "prettier": "^3.0.3",
         "tsx": "^4.1.3",
-        "typescript": "^5.2.2"
+        "typescript": "^5.2.2",
+        "vite": "^5.2.10"
     }
 }

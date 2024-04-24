@@ -926,6 +926,7 @@ name = "concordium_governance_committee_election"
 version = "0.1.0"
 dependencies = [
  "concordium-std",
+ "serde",
 ]
 
 [[package]]
@@ -1271,7 +1272,7 @@ dependencies = [
 
 [[package]]
 name = "election-server"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "axum 0.7.4",

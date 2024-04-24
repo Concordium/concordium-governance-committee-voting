@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import type * as eg from 'electionguard-bindings';
-import { electionConfigAtom } from '../store';
+import { electionConfigAtom, guardiansStateAtom } from '../store';
 // vite constructs a default export.
 // eslint-disable-next-line import/default
 import ElectionGuardWorker from './worker?worker';
@@ -53,21 +53,22 @@ export interface ElectionGuard {
  */
 export function useElectionGuard(): ElectionGuard {
     const config = useAtomValue(electionConfigAtom);
+    const guardians = useAtomValue(guardiansStateAtom);
 
     const getEncryptedBallot: ElectionGuard['getEncryptedBallot'] = useCallback(
         (selection) => {
-            if (config === undefined) {
-                throw new Error('Expected election guard config to be available');
+            if (guardians?.guardianKeys === undefined || config === undefined) {
+                throw new Error('Expected election guard config and guardian keys to be available');
             }
 
             const context: eg.EncryptedBallotContext = {
                 election_manifest: config.manifest,
                 election_parameters: config.parameters,
-                guardian_public_keys: config.guardianKeys,
+                guardian_public_keys: guardians.guardianKeys,
             };
             return getEncryptedBallotWorker(selection, context, DEVICE_NAME);
         },
-        [config],
+        [config, guardians],
     );
 
     return useMemo<ElectionGuard>(() => ({ getEncryptedBallot }), [getEncryptedBallot]);

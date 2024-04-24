@@ -11,7 +11,6 @@ import {
     Energy,
     AccountAddress,
     TransactionHash,
-    Parameter,
 } from '@concordium/web-sdk';
 import { TypedSmartContractParameters, WalletConnection } from '@concordium/wallet-connectors';
 
@@ -71,9 +70,8 @@ export function getElectionConfig(): Promise<ElectionContract.ReturnValueViewCon
  * Gets the current state of all guardians
  * @returns A promise resolving with the corresponding {@linkcode ElectionContract.ReturnValueViewGuardiansState}
  */
-export async function getGuardiansState(): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
-    const res = await ElectionContract.dryRunViewGuardiansState(contract, Parameter.empty());
-    return ElectionContract.parseReturnValueViewGuardiansState(res);
+export function getGuardiansState(): Promise<ElectionContract.ReturnValueViewGuardiansState | undefined> {
+    return ElectionContract.getGuardiansState(contract);
 }
 
 /**
@@ -81,14 +79,7 @@ export async function getGuardiansState(): Promise<ElectionContract.ReturnValueV
  * @returns A promise resolving with the corresponding list of candidate results
  */
 export async function getElectionResult() {
-    const res = await ElectionContract.dryRunViewElectionResult(contract, Parameter.empty());
-    const parsed = ElectionContract.parseReturnValueViewElectionResult(res);
-
-    if (parsed?.type !== 'Some') {
-        return undefined;
-    }
-
-    return parsed.content;
+    return ElectionContract.getElectionResult(contract);
 }
 
 export type ElectionResultResponse = Awaited<ReturnType<typeof getElectionResult>>;
