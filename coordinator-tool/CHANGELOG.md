@@ -2,6 +2,7 @@
 
 - Add `description` argument to `new-election`
 - Update election contract version
+- Update `initial-weights` to either `generate` or `verify` weight data through corresponding subcommands
 
 ## 0.2.4
 

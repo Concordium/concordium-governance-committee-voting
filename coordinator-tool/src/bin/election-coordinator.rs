@@ -160,14 +160,30 @@ struct NewElectionArgs {
 }
 
 #[derive(Debug, clap::Subcommand)]
+enum InitialWeights {
+    /// Verify the weights registered in the contract
+    #[command(name = "verify")]
+    Verify {
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>."
+        )]
+        contract: ContractAddress,
+    },
+    /// Generate initial weights from parameters
+    #[command(name = "generate")]
+    Generate(InitialWeightsArgs),
+}
+
+#[derive(Debug, clap::Subcommand)]
 enum Command {
     /// Create a new smart contract instance, together with election parameters.
     #[command(name = "new-election")]
     NewElection(Box<NewElectionArgs>),
     /// For each account compute the average amount of CCD held
     /// during the period.
-    #[command(name = "initial-weights")]
-    InitialWeights(InitialWeightsArgs),
+    #[command(name = "initial-weights", subcommand)]
+    InitialWeights(InitialWeights),
     /// Look for delegations of the vote during the election period.
     #[command(name = "final-weights")]
     FinalWeights {
@@ -290,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
     .timeout(std::time::Duration::from_secs(10));
 
     match app.command {
-        Command::InitialWeights(accds) => handle_initial_weights(endpoint, accds).await,
+        Command::InitialWeights(value) => handle_initial_weights(endpoint, value).await,
         Command::FinalWeights {
             out,
             contract,
@@ -1097,14 +1113,40 @@ async fn handle_tally(
 /// Handle collection of initial weights.
 async fn handle_initial_weights(
     endpoint: sdk::Endpoint,
-    accds: InitialWeightsArgs,
+    args: InitialWeights,
 ) -> anyhow::Result<()> {
-    ensure!(accds.out.is_dir(), "out argument must point to a directory");
+    if let InitialWeights::Generate(accds) = &args {
+        ensure!(accds.out.is_dir(), "out argument must point to a directory");
+    }
 
     let mut client = sdk::Client::new(endpoint.clone())
         .await
         .context("Unable to connect.")?;
-    let (first_block, last_block) = range_setup(&mut client, accds.start, accds.end).await?;
+
+    let (start, end, registered_weights_hash) = match &args {
+        InitialWeights::Generate(gen) => (gen.start, gen.end, None),
+        InitialWeights::Verify { contract } => {
+            let mut contract_client = contract_client::ContractClient::<ElectionContract>::create(
+                client.clone(),
+                *contract,
+            )
+            .await?;
+            let config = contract_client
+                .view::<_, contract::ElectionConfig, contract_client::ViewError>(
+                    "viewConfig",
+                    &(),
+                    BlockIdentifier::LastFinal,
+                )
+                .await?;
+
+            let start = config.eligible_voters.parameters.start_time.try_into()?;
+            let end = config.eligible_voters.parameters.end_time.try_into()?;
+            let hash = config.eligible_voters.data.hash;
+            (start, end, Some(hash))
+        }
+    };
+
+    let (first_block, last_block) = range_setup(&mut client, start, end).await?;
     let initial_block_ident: BlockIdentifier = first_block.block_height.into();
     let initial_account_number = client
         .get_account_list(initial_block_ident)
@@ -1142,7 +1184,7 @@ async fn handle_initial_weights(
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
     while let Some((block, normal, specials)) = receiver.recv().await {
-        if block.block_slot_time > accds.end {
+        if block.block_slot_time > end {
             drop(receiver);
             eprintln!("Done indexing");
             break;
@@ -1188,49 +1230,75 @@ async fn handle_initial_weights(
     cancel_handle.abort();
     bar.finish_and_clear();
 
-    let mut weights_out = csv::Writer::from_writer(Box::new(std::fs::File::create(
-        accds.out.join("initial-weights.csv"),
-    )?));
     anyhow::ensure!(
         account_addresses.len() == account_balances.len(),
         "Expecting addresses match account balances. This is a bug."
     );
-    for (balances, address) in account_balances.into_iter().zip(account_addresses) {
-        let Some((&first, rest)) = balances.split_first() else {
-            anyhow::bail!("A bug, there should always be at least one reading.");
-        };
-        let mut last_time = first.0;
-        let mut weighted_sum = u128::from(first.1.micro_ccd);
-        let mut last_balance = weighted_sum;
-        for &(dt, balance) in rest {
-            weighted_sum +=
-                (dt.signed_duration_since(last_time).num_milliseconds() as u128) * last_balance;
-            last_time = dt;
-            last_balance = u128::from(balance.micro_ccd);
-        }
-        weighted_sum += (last_block
-            .block_slot_time
-            .signed_duration_since(last_time)
-            .num_milliseconds() as u128)
-            * last_balance;
-        let amount = weighted_sum
-            / (last_block
-                .block_slot_time
-                .signed_duration_since(first_block.block_slot_time)
-                .num_milliseconds() as u128);
-        let amount = Amount::from_micro_ccd(amount as u64);
-        weights_out.serialize(WeightRow {
-            account: address,
-            amount,
-        })?;
-    }
-    weights_out.flush()?;
 
-    let mut params_out = std::fs::File::create(accds.out.join("initial-weights-params.json"))
+    let mut data = vec![];
+    {
+        let mut weights = csv::Writer::from_writer(&mut data);
+        for (balances, address) in account_balances.into_iter().zip(account_addresses) {
+            let Some((&first, rest)) = balances.split_first() else {
+                anyhow::bail!("A bug, there should always be at least one reading.");
+            };
+            let mut last_time = first.0;
+            let mut weighted_sum = u128::from(first.1.micro_ccd);
+            let mut last_balance = weighted_sum;
+            for &(dt, balance) in rest {
+                weighted_sum +=
+                    (dt.signed_duration_since(last_time).num_milliseconds() as u128) * last_balance;
+                last_time = dt;
+                last_balance = u128::from(balance.micro_ccd);
+            }
+            weighted_sum += (last_block
+                .block_slot_time
+                .signed_duration_since(last_time)
+                .num_milliseconds() as u128)
+                * last_balance;
+            let amount = weighted_sum
+                / (last_block
+                    .block_slot_time
+                    .signed_duration_since(first_block.block_slot_time)
+                    .num_milliseconds() as u128);
+            let amount = Amount::from_micro_ccd(amount as u64);
+            weights.serialize(WeightRow {
+                account: address,
+                amount,
+            })?;
+        }
+        weights.flush()?;
+    }
+
+    if let Some(registered_weights_hash) = registered_weights_hash {
+        let hash = contract::HashSha2256(sha2::Sha256::digest(&data).into());
+        ensure!(
+            hash == registered_weights_hash,
+            "The checksum registered in the contract does not match the computed hash: registered \
+             {}, computed {}",
+            &registered_weights_hash,
+            &hash
+        );
+        println!("Succesfully verified the weights registered in the contract.");
+        return Ok(());
+    }
+
+    let InitialWeights::Generate(args) = &args else {
+        // the "verify" subcommand will always have `Some(..) = registered_weights`
+        unreachable!();
+    };
+
+    let mut weights_out = std::fs::File::create(args.out.join("initial-weights.csv"))
+        .context("Failed to create weights file")?;
+    weights_out
+        .write(&data)
+        .context("Failed to write initial weights to file")?;
+
+    let mut params_out = std::fs::File::create(args.out.join("initial-weights-params.json"))
         .context("Failed to create weight params file")?;
     let params = contract::EligibleVotersParameters {
-        start_time: Timestamp::from_timestamp_millis(accds.start.timestamp_millis() as u64),
-        end_time:   Timestamp::from_timestamp_millis(accds.end.timestamp_millis() as u64),
+        start_time: Timestamp::from_timestamp_millis(args.start.timestamp_millis() as u64),
+        end_time:   Timestamp::from_timestamp_millis(args.end.timestamp_millis() as u64),
     };
     params_out
         .write(&serde_json::to_vec(&params).expect("Serialization of params will not fail"))
