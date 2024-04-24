@@ -3,6 +3,7 @@ import { Parameter } from '@concordium/web-sdk/types';
 import * as ElectionContract from '../../__generated__/election-contract/module_election';
 import ElectionContractWorker from './worker?worker';
 import { ElectionContractWorkerMessage, ElectionContractWorkerTag, WorkerResponse } from './worker';
+import { ChecksumUrl } from '../types';
 
 const worker = new ElectionContractWorker();
 
@@ -65,11 +66,21 @@ export async function getGuardiansState(
 }
 
 /**
+ * A result for a single candidate
+ */
+export type CandidateResult = {
+    /** The URL to the candidate data */
+    candidate: ChecksumUrl;
+    /** The cummulative votes for the candidate */
+    cummulative_votes: number | bigint;
+};
+
+/**
  * Gets the election result (if available). This parses the contract response in a background worker.
  * @param contract - The election contract instance to query
  * @returns A promise resolving with the election result or undefined
  */
-export async function getElectionResult(contract: ElectionContract.Type) {
+export async function getElectionResult(contract: ElectionContract.Type): Promise<CandidateResult[] | undefined> {
     const res = await ElectionContract.dryRunViewElectionResult(contract, Parameter.empty());
     const parsed = await invokeWorker<ElectionContract.ReturnValueViewElectionResult | undefined>({
         tag: ElectionContractWorkerTag.ParseElectionResult,

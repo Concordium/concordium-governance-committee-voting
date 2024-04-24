@@ -138,13 +138,13 @@ export type ElectionConfig = {
  * - `BackendErrorType.Http`
  */
 export async function connect(): Promise<ElectionConfig> {
-    const response = await invokeWrapped<any>('connect');
-    const guardianThreshold = response.electionParameters.varying_parameters.k;
+    const { contractConfig, electionParameters } = await invokeWrapped<any>('connect');
+    const guardianThreshold = electionParameters.varying_parameters.k;
     const mapped: ElectionConfig = {
-        ...response.contractConfig,
-        electionStart: new Date(response.electionStart),
-        electionEnd: new Date(response.electionEnd),
-        decryptionDeadline: new Date(response.decryptionDeadline),
+        ...contractConfig,
+        electionStart: new Date(contractConfig.electionStart),
+        electionEnd: new Date(contractConfig.electionEnd),
+        decryptionDeadline: new Date(contractConfig.decryptionDeadline),
         guardianThreshold,
     };
     return mapped;

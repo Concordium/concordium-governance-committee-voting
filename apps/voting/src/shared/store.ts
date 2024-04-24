@@ -116,8 +116,7 @@ async function getCandidate(url: ChecksumUrl, index: number): Promise<IndexedCan
 const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
 
 /**
- * Holds the configuration of the election contract. A reference to this should always be kept in the application root
- * to avoid having to fetch the configuration more than once.
+ * Holds the configuration of the election contract.
  */
 export const electionConfigAtom = atom(
     (get) => get(electionConfigBaseAtom),
@@ -173,13 +172,12 @@ export const electionConfigAtom = atom(
 );
 
 /**
- * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
+ * Primitive atom for holding the {@linkcode GuardiansState} of the election contract
  */
 const guardiansStateBaseAtom = atom<GuardiansState | undefined>(undefined);
 
 /**
- * Holds the configuration of the election contract. A reference to this should always be kept in the application root
- * to avoid having to fetch the configuration more than once.
+ * Holds the state of all guardians from the election contract.
  */
 export const guardiansStateAtom = atom(
     (get) => get(guardiansStateBaseAtom),
@@ -194,7 +192,7 @@ export const guardiansStateAtom = atom(
         } else {
             const guardians = await getGuardiansState();
             if (guardians === undefined) {
-                throw new Error('Failed to get election config');
+                throw new Error('Failed to get guardians state');
             }
 
             const setupDone = guardians.every(
