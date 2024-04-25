@@ -21,7 +21,9 @@ The tool has the following subcommands
     these into separate files in the specified `out` directory.
     The  CSV file containing the weights will be used in the `final-weights` command.
   - `verify` verifies the weights registered in the contract by comparing the hash
-    of the computed weights with the checksum registered in the contract.
+    of the computed weights with the checksum registered in the contract. The computed
+    values are written into files in the specified `out` directory. These can be used
+    to generate the final weights required to verify the encrypted tally.
 
 - `new-election` is the command to create the necessary files and the contract
   for a new election. In particular it will

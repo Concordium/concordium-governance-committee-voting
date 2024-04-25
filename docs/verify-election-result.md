@@ -11,11 +11,11 @@ used to scale the ballots submitted by voting accounts. As such, it is critical 
 To verify the weight computation, run the following command with the election coordinator tool
 
 ```bash
-election-coordinator initial-weights --out initial-weights-data verify --node "https://grpc.testnet.concordium.com:20000" --contract "<8836,0>" 
+election-coordinator initial-weights --out output-dir verify --node "https://grpc.testnet.concordium.com:20000" --contract "<8836,0>" 
 ```
 
 Where:
-- `initial-weights-data` is replaced with path to the directory to output the files containing the weights computation and corresponding
+- `output-dir` is replaced with path to the directory to output the files containing the weights computation and corresponding
   parameters into
 - `"<8836,0>"` is replaced with the contract address of the target election contract.
 - `"https://grpc.testnet.concordium.com:20000"` is replaced with a node on the target network.
@@ -34,13 +34,13 @@ decryption share along with a proof of correct decryption in the election contra
 To compute the final weights of the election, execute the following command:
 
 ```bash
-election-coordinator final-weights final-weights --contract "<8836,0>" --initial-weights initial-weights.csv --final-weights final-weights.csv
+election-coordinator final-weights --contract "<8836,0>" --initial-weights output-dir/initial-weights.csv --final-weights output-dir/final-weights.csv
 ```
 
 Where:
 - `"<8836,0>"` is replaced with the contract address of the target election contract.
-- `initial-weights.csv` is replaced by the location of the file containing the initial weights on your machine.
-- `final-weights.csv` is replaced by a location on your machine where the final weights should be written.
+- `output-dir/initial-weights.csv` is replaced by the location of the file containing the initial weights on your machine (from the previous step).
+- `output-dir/final-weights.csv` is replaced by a location on your machine where the final weights should be written.
 
 This file can be reviewed to ensure the expected delegations have been correctly included.
 
@@ -49,12 +49,12 @@ This file can be reviewed to ensure the expected delegations have been correctly
 To compute the election tally, execute the following command:
 
 ```bash
-election-coordinator tally --contract "<8836,0>" --final-weights final-weights.csv
+election-coordinator tally --contract "<8836,0>" --final-weights output-dir/final-weights.csv
 ```
 
 Where:
 - `"<8836,0>"` is replaced with the contract address of the target election contract.
-- `final-weights.csv` is replaced by the location of the file containing the final weights on your machine (from the previous step).
+- `output-dir/final-weights.csv` is replaced by the location of the file containing the final weights on your machine (from the previous step).
 
 ## Verify correct decryption of election tally
 

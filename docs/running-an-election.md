@@ -20,9 +20,10 @@ The complete documentation for the `election-coordinator` tool can be found [her
 
 ```sh
 election-coordinator --node http://localhost:20001 initial-weights \
-  --start 2024-01-01T00:00:00Z \
-  --end 2024-01-03T00:00:00Z \
-  --out initial-weights.csv
+  --out initial-weights.csv \
+  generate
+    --start 2024-01-01T00:00:00Z \
+    --end 2024-01-03T00:00:00Z \
 ```
 
 > **Note**: As the bottleneck for this command is querying the node, it's good to use a local node for this to avoid latency being too big of a factor with regards to the time needed to complete this.
@@ -41,6 +42,7 @@ election-coordinator new-election \
   --delegation-string 'delegatevote2024' \
   --out election-config \
   --voters-file initial-weights.csv \
+  --voters-params-file initial-weights-params.json \
   --guardian 31bTNa42u1zZWag2bknEy7VraeJUozXsJMN1DFjQp7E5YR6a3G \
   --guardian 4PF6BH8bKvM48b8KNYdvGW6Sv3B2nqVRiMnWTj9cvaNHJQeX3D \
   --guardian 3ybJ66spZ2xdWF3avgxQb2meouYa7mpvMWNPmUnczU8FoF8cGB \
