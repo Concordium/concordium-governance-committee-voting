@@ -1,4 +1,4 @@
-## Unreleased
+## 1.0.0
 
 - Update the referenced election contract version
 

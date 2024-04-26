@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "concordium_governance_committee_election"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "concordium-std",
 ]
