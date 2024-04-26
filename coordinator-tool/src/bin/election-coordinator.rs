@@ -182,8 +182,13 @@ enum Command {
     NewElection(Box<NewElectionArgs>),
     /// For each account compute the average amount of CCD held
     /// during the period.
-    #[command(name = "initial-weights", subcommand)]
-    InitialWeights(InitialWeights),
+    #[command(name = "initial-weights")]
+    InitialWeights {
+        #[arg(long = "out", help = "Directory to output data into.")]
+        out:     std::path::PathBuf,
+        #[command(subcommand)]
+        command: InitialWeights,
+    },
     /// Look for delegations of the vote during the election period.
     #[command(name = "final-weights")]
     FinalWeights {
@@ -283,8 +288,6 @@ struct InitialWeightsArgs {
                 e.g. 2024-01-23T12:13:14Z."
     )]
     end:   chrono::DateTime<chrono::Utc>,
-    #[arg(long = "out", help = "Directory to output data into.")]
-    out:   std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -306,7 +309,9 @@ async fn main() -> anyhow::Result<()> {
     .timeout(std::time::Duration::from_secs(10));
 
     match app.command {
-        Command::InitialWeights(value) => handle_initial_weights(endpoint, value).await,
+        Command::InitialWeights { out, command } => {
+            handle_initial_weights(endpoint, command, out).await
+        }
         Command::FinalWeights {
             out,
             contract,
@@ -1058,8 +1063,7 @@ async fn handle_tally(
     let wrong_tally = if let Some(registered_tally) = current_tally {
         if registered_tally == serialized_tally {
             eprintln!(
-                "The computed encrypted tally is already registered in the contract. There is \
-                 nothing to do."
+                "The computed encrypted tally matches the tally already registered in the contract"
             );
             return Ok(());
         }
@@ -1114,10 +1118,9 @@ async fn handle_tally(
 async fn handle_initial_weights(
     endpoint: sdk::Endpoint,
     args: InitialWeights,
+    out: std::path::PathBuf,
 ) -> anyhow::Result<()> {
-    if let InitialWeights::Generate(accds) = &args {
-        ensure!(accds.out.is_dir(), "out argument must point to a directory");
-    }
+    ensure!(out.is_dir(), "out argument must point to a directory");
 
     let mut client = sdk::Client::new(endpoint.clone())
         .await
@@ -1270,6 +1273,23 @@ async fn handle_initial_weights(
         weights.flush()?;
     }
 
+    let mut weights_out = std::fs::File::create(out.join("initial-weights.csv"))
+        .context("Failed to create weights file")?;
+    weights_out
+        .write(&data)
+        .context("Failed to write initial weights to file")?;
+
+    let mut params_out = std::fs::File::create(out.join("initial-weights-params.json"))
+        .context("Failed to create weight params file")?;
+    let params = contract::EligibleVotersParameters {
+        start_time: Timestamp::from_timestamp_millis(start.timestamp_millis() as u64),
+        end_time:   Timestamp::from_timestamp_millis(end.timestamp_millis() as u64),
+    };
+    params_out
+        .write(&serde_json::to_vec(&params).expect("Serialization of params will not fail"))
+        .context("Failed to write weight parameters to file")?;
+
+    // Only runs if the `verify` subcommand is run.
     if let Some(registered_weights_hash) = registered_weights_hash {
         let hash = contract::HashSha2256(sha2::Sha256::digest(&data).into());
         ensure!(
@@ -1280,29 +1300,7 @@ async fn handle_initial_weights(
             &hash
         );
         println!("Succesfully verified the weights registered in the contract.");
-        return Ok(());
     }
-
-    let InitialWeights::Generate(args) = &args else {
-        // the "verify" subcommand will always have `Some(..) = registered_weights`
-        unreachable!();
-    };
-
-    let mut weights_out = std::fs::File::create(args.out.join("initial-weights.csv"))
-        .context("Failed to create weights file")?;
-    weights_out
-        .write(&data)
-        .context("Failed to write initial weights to file")?;
-
-    let mut params_out = std::fs::File::create(args.out.join("initial-weights-params.json"))
-        .context("Failed to create weight params file")?;
-    let params = contract::EligibleVotersParameters {
-        start_time: Timestamp::from_timestamp_millis(args.start.timestamp_millis() as u64),
-        end_time:   Timestamp::from_timestamp_millis(args.end.timestamp_millis() as u64),
-    };
-    params_out
-        .write(&serde_json::to_vec(&params).expect("Serialization of params will not fail"))
-        .context("Failed to write weight parameters to file")?;
 
     Ok(())
 }

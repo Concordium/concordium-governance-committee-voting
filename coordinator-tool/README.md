@@ -21,7 +21,9 @@ The tool has the following subcommands
     these into separate files in the specified `out` directory.
     The  CSV file containing the weights will be used in the `final-weights` command.
   - `verify` verifies the weights registered in the contract by comparing the hash
-    of the computed weights with the checksum registered in the contract.
+    of the computed weights with the checksum registered in the contract. The computed
+    values are written into files in the specified `out` directory. These can be used
+    to generate the final weights required to verify the encrypted tally.
 
 - `new-election` is the command to create the necessary files and the contract
   for a new election. In particular it will
@@ -76,7 +78,7 @@ This will produce a single binary `election-coordinator` in `target/release` dir
 ### Get the list of initial weights
 
 ```console
-election-coordinator --node http://localhost:20001 initial-weights generate --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z --out .
+election-coordinator --node http://localhost:20001 initial-weights --out . generate --start 2024-01-01T00:00:00Z --end 2024-01-03T00:00:00Z
 ```
 
 The weights are stored in the `initial-weights.csv` file, and the corresponding parameters
@@ -85,7 +87,7 @@ used to generate them in `initial-weights-params.json`.
 #### Verify computation of initial weights for election
 
 ```console
-election-coordinator --node http://localhost:20001 initial-weights verify --contract "<8830,0>"
+election-coordinator --node http://localhost:20001 initial-weights --out . verify --contract "<8836,0>"
 ```
 
 The weights are calculated based on the parameters registered in the contract, and the result is then compared with the
