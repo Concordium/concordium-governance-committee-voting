@@ -1,4 +1,4 @@
-## Unreleased
+## 1.0.0
 
 - Improve dialogue on guardian action modal
 - Improve error message when requests to get remote resources fail.
