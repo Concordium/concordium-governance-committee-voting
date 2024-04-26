@@ -3,7 +3,7 @@ use clap::Parser as _;
 use concordium_governance_committee_election as contract;
 use concordium_rust_sdk::{
     base::transactions::{self, send},
-    common::types::TransactionTime,
+    common::types::{Timestamp, TransactionTime},
     contract_client::{self, ContractTransactionMetadata, ViewError},
     smart_contracts::common::Amount,
     types::{
@@ -154,14 +154,7 @@ async fn main() -> anyhow::Result<()> {
         );
         (admin, guardian_keys)
     };
-
-    let (params_out, ccd_out) = {
-        let params_out = args.out.join("static").join("electionguard");
-        let ccd_out = args.out.join("static").join("concordium");
-        std::fs::create_dir_all(&params_out)?;
-        std::fs::create_dir_all(&ccd_out)?;
-        (params_out, ccd_out)
-    };
+    std::fs::create_dir_all(&args.out)?;
 
     let url = &args.base_url;
     let make_url = move |path: &str| -> String {
@@ -171,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let candidates: Vec<ChecksumUrl> = {
-        let candidates_out = ccd_out.join("candidates");
+        let candidates_out = args.out.join("candidates");
         std::fs::create_dir_all(&candidates_out)?;
         (0..args.num_options)
             .map(|c| {
@@ -183,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
                 });
                 let candidate_details_bytes = serde_json::to_vec_pretty(&candidate_details)?;
                 std::fs::write(path, &candidate_details_bytes)?;
-                let web_path = format!("static/concordium/candidates/{c}.json",);
+                let web_path = format!("candidates/{c}.json",);
                 Ok::<_, anyhow::Error>(ChecksumUrl {
                     url:  make_url(&web_path),
                     hash: contract::HashSha2256(
@@ -218,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let manifest_json = serde_json::to_vec_pretty(&manifest)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&manifest_json).into();
-        std::fs::write(params_out.join("election-manifest.json"), manifest_json)?;
+        std::fs::write(args.out.join("election-manifest.json"), manifest_json)?;
         (manifest, digest)
     };
 
@@ -243,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let parameters_json = serde_json::to_vec_pretty(&parameters)?;
         let digest: [u8; 32] = sha2::Sha256::digest(&parameters_json).into();
-        std::fs::write(params_out.join("election-parameters.json"), parameters_json)?;
+        std::fs::write(args.out.join("election-parameters.json"), parameters_json)?;
         (parameters, digest)
     };
 
@@ -308,7 +301,7 @@ async fn main() -> anyhow::Result<()> {
                 .get_account_list(BlockIdentifier::LastFinal)
                 .await?
                 .response;
-            let voters_path = ccd_out.join("eligible-voters.csv");
+            let voters_path = args.out.join("initial-weights.csv");
             let mut writer =
                 csv::Writer::from_writer(HashedWriter::new(std::fs::File::create(&voters_path)?));
 
@@ -322,9 +315,15 @@ async fn main() -> anyhow::Result<()> {
             let hash = writer.into_inner()?.finish()?;
             contract::HashSha2256(hash)
         };
-        let eligible_voters = contract::ChecksumUrl {
-            url:  make_url("static/concordium/eligible-voters.csv"),
-            hash: eligible_voters_hash,
+        let eligible_voters = contract::EligibleVoters {
+            parameters: contract::EligibleVotersParameters {
+                start_time: Timestamp::from_timestamp_millis(0),
+                end_time:   Timestamp::from_timestamp_millis(0),
+            },
+            data:       contract::ChecksumUrl {
+                url:  make_url("initial-weights.csv"),
+                hash: eligible_voters_hash,
+            },
         };
         let init_param = contract::InitParameter {
             admin_account: admin.address,
@@ -332,11 +331,11 @@ async fn main() -> anyhow::Result<()> {
             guardians: guardians.iter().map(|g| g.address).collect(),
             eligible_voters,
             election_manifest: contract::ChecksumUrl {
-                url:  make_url("static/electionguard/election-manifest.json"),
+                url:  make_url("election-manifest.json"),
                 hash: contract::HashSha2256(manifest_digest),
             },
             election_parameters: contract::ChecksumUrl {
-                url:  make_url("static/electionguard/election-parameters.json"),
+                url:  make_url("election-parameters.json"),
                 hash: contract::HashSha2256(parameters_digest),
             },
             election_description: "Test election".into(),
@@ -400,7 +399,7 @@ async fn main() -> anyhow::Result<()> {
             );
             let public_key = key.make_public_key();
             std::fs::write(
-                ccd_out.join(format!("guardian-{g}.json")),
+                args.out.join(format!("guardian-{g}.json")),
                 serde_json::to_string_pretty(&key)?,
             )
             .context("Unable to write guardian keys.")?;

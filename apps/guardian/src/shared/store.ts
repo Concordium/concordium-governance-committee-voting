@@ -161,7 +161,7 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
             const includedGuardians = guardians.filter((g) => !g.excluded);
             const step = (() => {
                 if (includedGuardians.every((g) => g.hasDecryptionShare && g.hasDecryptionProof)) return TallyStep.Done;
-                if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.AwaitPeerShares;
+                if (guardian.hasDecryptionShare && guardian.hasDecryptionProof) return TallyStep.AwaitPeerProofs;
                 if (
                     electionConfig.decryptionDeadline < now &&
                     includedGuardians.filter((g) => g.hasDecryptionShare).length < electionConfig.guardianThreshold

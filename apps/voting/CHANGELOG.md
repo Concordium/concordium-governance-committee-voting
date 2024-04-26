@@ -1,3 +1,7 @@
+## 1.0.0
+
+- Updates contract client based on changes to election contract
+
 ## 0.2.7
 
 - Hydrates the contract state kept in the frontend with state transferred from the backend.

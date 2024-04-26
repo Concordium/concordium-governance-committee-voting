@@ -156,7 +156,7 @@ const GenerateDecryptionProof = makeActionableStep(
 
 export function DecryptionActions() {
     const electionStep = useAtomValue(electionStepAtom);
-    const { guardians } = useAtomValue(guardiansStateAtom);
+    const guardians = useAtomValue(guardiansStateAtom).guardians?.filter(([, g]) => !g.excluded);
     const electionConfig = useAtomValue(electionConfigAtom);
 
     if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined || electionConfig === undefined) {
@@ -173,7 +173,7 @@ export function DecryptionActions() {
             {step === TallyStep.GenerateDecryptionShare && <GenerateDecryptionShare />}
             {step === TallyStep.AwaitPeerShares && (
                 <AwaitPeers
-                    guardians={guardians.filter(([, gs]) => !gs.excluded)}
+                    guardians={guardians}
                     predicate={(g) => g.hasDecryptionShare}
                     note={
                         <>
@@ -191,7 +191,7 @@ export function DecryptionActions() {
                 <h3>The decryption was not completed by a sufficient amount of guardians</h3>
             )}
             {step === TallyStep.GenerateDecryptionProof && <GenerateDecryptionProof />}
-            {step === TallyStep.AwaitPeerShares && (
+            {step === TallyStep.AwaitPeerProofs && (
                 <AwaitPeers
                     predicate={(g) => g.hasDecryptionProof}
                     guardians={guardians.filter(([, gs]) => gs.hasDecryptionShare)}
