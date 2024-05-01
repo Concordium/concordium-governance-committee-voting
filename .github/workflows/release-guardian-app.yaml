@@ -30,12 +30,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-22.04, windows-latest]
+        settings:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin' # for Arm based macs (M1 and above).
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin' # for Intel based macs.
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.settings.platform }}
     steps:
       - name: Support longpaths on Windows
-        if: matrix.platform == 'windows-latest'
+        if: matrix.settings.platform == 'windows-latest'
         run: git config --system core.longpaths true
       - uses: actions/checkout@v4
         with:
@@ -46,6 +54,8 @@ jobs:
           node-version: 20
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -60,7 +70,7 @@ jobs:
         with:
           projectPath: 'apps/guardian'
           tauriScript: 'yarn tauri'
-          args: '--config ./tauri-temp.conf.json'
+          args: '--config ./tauri-temp.conf.json ${{matrix.settings.args}}'
           tagName: release/guardian-app/v__VERSION__-${{ github.event.inputs.network }}-${{ github.event.inputs.contract }} # the action automatically replaces \_\_VERSION\_\_ with the app version
           releaseName: ${{ format('Guardian App v__VERSION__ for {0} ({1})', github.event.inputs.contract, github.event.inputs.network) }}
           releaseBody: 'See attached assets.'
