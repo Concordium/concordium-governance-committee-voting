@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.settings.platform }}
     steps:
       - name: Support longpaths on Windows
-        if: matrix.platform == 'windows-latest'
+        if: matrix.settings.platform == 'windows-latest'
         run: git config --system core.longpaths true
       - uses: actions/checkout@v4
         with:
