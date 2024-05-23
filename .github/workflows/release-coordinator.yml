@@ -10,27 +10,41 @@ on:
 
 jobs:
   build:
-    name: build ${{ matrix.platform }}
+    name: build ${{ matrix.settings.platform }}
     strategy:
       fail-fast: true
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.platform }}
+        settings:
+          - platform: 'macos-latest'
+            bin: 'macos-arm'
+            args: '--target aarch64-apple-darwin' # for Arm based macs (M1 and above).
+          - platform: 'macos-latest'
+            bin: 'macos-intel'
+            args: '--target x86_64-apple-darwin' # for Intel based macs.
+          - platform: 'ubuntu-22.04'
+            bin: 'ubuntu'
+            args: ''
+          - platform: 'windows-latest'
+            bin: 'windows'
+            args: ''
+    runs-on: ${{ matrix.settings.platform }}
     steps:
       - name: Support longpaths on Windows
-        if: matrix.platform == 'windows-latest'
+        if: matrix.settings.platform == 'windows-latest'
         run: git config --system core.longpaths true
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@1.76
+        with:
+          targets: ${{ matrix.settings.bin == 'macos-arm' && 'aarch64-apple-darwin' || 'matrix.settings.bin == 'macos-intel' && 'x86_64-apple-darwin'' || ''}}
       - name: Build election-coordinator binary
-        run: cargo build --release --manifest-path coordinator-tool/Cargo.toml
+        run: cargo build --release --manifest-path coordinator-tool/Cargo.toml ${{ matrix.settings.args }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.platform }}
+          name: binary-${{ matrix.settings.bin }}
           path: |
             coordinator-tool/target/release/election-coordinator
             coordinator-tool/target/release/election-coordinator.exe
@@ -43,9 +57,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
       - run: |
-          mv binary-macos-latest/election-coordinator election-coordinator-darwin-amd64
-          mv binary-windows-latest/election-coordinator.exe election-coordinator-windows-amd64.exe
-          mv binary-ubuntu-latest/election-coordinator election-coordinator-linux-amd64
+          mv binary-macos-arm/election-coordinator election-coordinator-darwin-aarch64
+          mv binary-macos-intel/election-coordinator election-coordinator-darwin-amd64
+          mv binary-windows/election-coordinator.exe election-coordinator-windows-amd64.exe
+          mv binary-ubuntu/election-coordinator election-coordinator-linux-amd64
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
