@@ -614,6 +614,42 @@ async fn get_account_weight(
     Ok(Json(response))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VotersResponse {
+    weight:    u64,
+    delegated: Option<AccountAddress>,
+    counted:   bool,
+}
+
+async fn get_voters(
+    State(state): State<ApiState>,
+) -> Result<Json<HashMap<AccountAddress, VotersResponse>>, StatusCode> {
+    let db = state.db_pool.get().await.map_err(|e| {
+        tracing::error!("Could not get db connection from pool: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let votes = db.get_all().await.map_err(|e| {
+        tracing::error!("Failed to get delegations: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let res: HashMap<_, _> = votes
+        .into_iter()
+        .map(|(acc, (delegated, counted))| {
+            let weight = state.get_account_initial_weight(&acc);
+            let res = VotersResponse {
+                weight,
+                delegated,
+                counted,
+            };
+            (acc, res)
+        })
+        .collect();
+
+    Ok(Json(res))
+}
+
 type PrometheusLayer = GenericMetricLayer<'static, PrometheusHandle, axum_prometheus::Handle>;
 
 /// Configures the prometheus server (if enabled through [`AppConfig`]). Returns
@@ -707,6 +743,7 @@ async fn setup_http(
             "/api/submissions/:account",
             get(get_ballot_submissions_by_account),
         )
+        .route("/api/voter_stats", get(get_voters))
         .route("/api/delegations/:account", get(get_delegations_by_account))
         .route("/api/weight/:account", get(get_account_weight))
         .with_state(api_state)

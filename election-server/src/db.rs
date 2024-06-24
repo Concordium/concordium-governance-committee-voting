@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use concordium_rust_sdk::{
@@ -318,6 +320,53 @@ impl Database {
         let rows = self.client.query(&get_delegations, &params).await?;
 
         rows.into_iter().map(StoredDelegation::try_from).collect()
+    }
+
+    pub async fn get_all(
+        &self,
+    ) -> anyhow::Result<HashMap<AccountAddress, (Option<AccountAddress>, bool)>> {
+        let get_ballot_submissions = self
+            .client
+            .prepare_cached("SELECT account FROM ballots WHERE verified IS TRUE")
+            .await?;
+        let get_delegations = self
+            .client
+            .prepare_cached("SELECT from_account, to_account FROM delegations")
+            .await?;
+
+        let ballots = self.client.query(&get_ballot_submissions, &[]).await?;
+        let mut votes = ballots
+            .iter()
+            .map(|x| {
+                let account: &[u8] = x.try_get(0)?;
+                let account: [u8; ACCOUNT_ADDRESS_SIZE] = account
+                    .try_into()
+                    .map_err(|_| DatabaseError::TypeConversion)?;
+                anyhow::Ok((AccountAddress(account), (None, true)))
+            })
+            .collect::<Result<HashMap<AccountAddress, (Option<AccountAddress>, bool)>, _>>()?;
+
+        let delegations = self.client.query(&get_delegations, &[]).await?;
+        delegations.iter().try_for_each(|x| {
+            let from: &[u8] = x.try_get(0)?;
+            let from: [u8; ACCOUNT_ADDRESS_SIZE] =
+                from.try_into().map_err(|_| DatabaseError::TypeConversion)?;
+
+            let to: &[u8] = x.try_get(1)?;
+            let to: [u8; ACCOUNT_ADDRESS_SIZE] =
+                to.try_into().map_err(|_| DatabaseError::TypeConversion)?;
+
+            votes.insert(
+                AccountAddress(from),
+                (
+                    Some(AccountAddress(to)),
+                    votes.contains_key(&AccountAddress(to)),
+                ),
+            );
+            anyhow::Ok(())
+        })?;
+
+        anyhow::Ok(votes)
     }
 }
 
