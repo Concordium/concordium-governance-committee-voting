@@ -1,3 +1,7 @@
+## Unreleased
+
+- Bumped rust-sdk dependency to 5.0
+
 ## 1.0.0
 
 - Update the referenced election contract version

@@ -1,3 +1,7 @@
+## Unreleased
+
+- Bumped rust-sdk dependency to 5.0
+
 ## 1.0.0
 
 - Improve dialogue on guardian action modal

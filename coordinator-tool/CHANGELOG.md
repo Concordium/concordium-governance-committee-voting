@@ -1,3 +1,7 @@
+## Unreleased
+
+- Bumped rust-sdk dependency to 5.0
+
 ## 1.0.0
 
 - Add `description` argument to `new-election`
