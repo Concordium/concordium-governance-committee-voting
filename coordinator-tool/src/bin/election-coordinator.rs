@@ -344,11 +344,14 @@ async fn main() -> anyhow::Result<()> {
 
 /// Figure out which blocks to use as start and end blocks given the time range.
 /// The return blocks are the first block no earlier than the start time, and
-/// the last block no (strictly) later than the provided end time.
+/// the last block no (strictly) later than the provided end time. If
+/// `use_payday_blocks` is true, the start block will be the first payday block
+/// after the start time.
 async fn range_setup(
     client: &mut sdk::Client,
     start: chrono::DateTime<chrono::Utc>,
     end: chrono::DateTime<chrono::Utc>,
+    use_payday_blocks: bool,
 ) -> anyhow::Result<(BlockInfo, BlockInfo)> {
     anyhow::ensure!(
         start < end,
@@ -362,9 +365,24 @@ async fn range_setup(
         end <= info.block_slot_time,
         "End time not before the last finalized block."
     );
-    let first_block = client
-        .find_first_finalized_block_no_earlier_than(.., start)
-        .await?;
+    let first_block = if use_payday_blocks {
+        client
+            .find_at_lowest_height(.., move |mut client, height| async move {
+                let info = client.get_block_info(&height).await?.response;
+                if info.block_slot_time >= start
+                    && client.is_payday_block(info.block_height).await?.response
+                {
+                    Ok(Some(info))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await?
+    } else {
+        client
+            .find_first_finalized_block_no_earlier_than(.., start)
+            .await?
+    };
 
     let last_block = {
         let last_block = client
@@ -428,7 +446,7 @@ async fn handle_final_weights(
         .context("Unable to get election data.")?;
 
     let (first_block, last_block) =
-        range_setup(&mut contract_client.client, config.start, config.end).await?;
+        range_setup(&mut contract_client.client, config.start, config.end, false).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -945,7 +963,8 @@ async fn handle_tally(
     let start = election_data.start;
     let end = election_data.end;
 
-    let (first_block, last_block) = range_setup(&mut contract_client.client, start, end).await?;
+    let (first_block, last_block) =
+        range_setup(&mut contract_client.client, start, end, false).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -1126,6 +1145,8 @@ async fn handle_initial_weights(
         .await
         .context("Unable to connect.")?;
 
+    // Get the parameters needed to run the weight generation and possible
+    // verification.
     let (start, end, registered_weights_hash) = match &args {
         InitialWeights::Generate(gen) => (gen.start, gen.end, None),
         InitialWeights::Verify { contract } => {
@@ -1149,23 +1170,26 @@ async fn handle_initial_weights(
         }
     };
 
-    let (first_block, last_block) = range_setup(&mut client, start, end).await?;
-    let initial_block_ident: BlockIdentifier = first_block.block_height.into();
+    // Variables used to hold the weight calculation data.
+    let (first_payday_block, last_block) = range_setup(&mut client, start, end, true).await?;
+    let initial_block_ident: BlockIdentifier = first_payday_block.block_height.into();
     let initial_account_number = client
         .get_account_list(initial_block_ident)
         .await?
         .response
         .try_fold(0u64, |acc, _| async move { Ok(acc + 1) })
         .await?;
-    let mut account_balances = vec![Vec::new(); initial_account_number as usize];
     let mut account_addresses = Vec::with_capacity(initial_account_number as usize);
+    let mut account_balances = vec![Vec::new(); initial_account_number as usize]; // Account balance for each payday block.
+
+    // Get initial account balances
     let bar = ProgressBar::new(initial_account_number).with_style(ProgressStyle::with_template(
         "{spinner} {msg} {wide_bar} {pos}/{len}",
     )?);
 
     eprintln!(
         "Getting initial account balances in block {}.",
-        first_block.block_hash
+        first_payday_block.block_hash
     );
     for (ai, balances) in account_balances.iter_mut().enumerate() {
         let info = client
@@ -1174,18 +1198,27 @@ async fn handle_initial_weights(
         account_addresses.push(info.response.account_address);
         bar.set_message(info.response.account_address.to_string());
         bar.inc(1);
-        balances.push((first_block.block_slot_time, info.response.account_amount));
+        balances.push((
+            first_payday_block.block_slot_time,
+            info.response.account_amount,
+        ));
     }
     bar.finish_and_clear();
     drop(bar);
-    let bar = ProgressBar::new(last_block.block_height.height - first_block.block_height.height)
-        .with_style(ProgressStyle::with_template(
-            "{spinner} {msg} {wide_bar} {pos}/{len}",
-        )?);
 
-    let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
+    // Get the balance of each account for each payday block
+    let bar =
+        ProgressBar::new(last_block.block_height.height - first_payday_block.block_height.height)
+            .with_style(ProgressStyle::with_template(
+                "{spinner} {msg} {wide_bar} {pos}/{len}",
+            )?);
+
+    let traverse_config =
+        indexer::TraverseConfig::new_single(endpoint, first_payday_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
+    let mut affected = BTreeSet::new();
+
     while let Some((block, normal, specials)) = receiver.recv().await {
         if block.block_slot_time > end {
             drop(receiver);
@@ -1194,7 +1227,8 @@ async fn handle_initial_weights(
         }
         bar.set_message(block.block_slot_time.to_string());
         bar.inc(1);
-        let mut affected = BTreeSet::new();
+
+        // First collect the affected addresses within the payday
         for tx in normal {
             for addr in tx.affected_addresses() {
                 affected.insert(AccountAddressEq::from(addr));
@@ -1205,31 +1239,47 @@ async fn handle_initial_weights(
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
-        let block_ident = BlockIdentifier::from(block.block_height);
-        for acc in affected {
+
+        if !client.is_payday_block(block.block_height).await?.response {
+            continue;
+        }
+
+        // Then for all the affected accounts, add their balances for the payday
+        let payday_block_ident = BlockIdentifier::from(block.block_height);
+        for acc in &affected {
             let info = client
-                .get_account_info(&AccountAddress::from(acc).into(), block_ident)
-                .await?;
-            let index = info.response.account_index.index as usize;
+                .get_account_info(&AccountAddress::from(*acc).into(), payday_block_ident)
+                .await?
+                .response;
+            let index = info.account_index.index as usize;
+
             if let Some(elem) = account_balances.get_mut(index) {
-                elem.push((block.block_slot_time, info.response.account_amount));
+                elem.push((block.block_slot_time, info.account_amount));
             } else {
                 // Newly created accounts have balance 0 at the start of the period.
                 for idx in account_balances.len()..index {
-                    account_balances.push(vec![(first_block.block_slot_time, Amount::zero())]);
+                    account_balances
+                        .push(vec![(first_payday_block.block_slot_time, Amount::zero())]);
                     let idx_acc = client
-                        .get_account_info(&AccountIndex::from(idx as u64).into(), block_ident)
+                        .get_account_info(
+                            &AccountIndex::from(idx as u64).into(),
+                            payday_block_ident,
+                        )
                         .await?;
                     account_addresses.push(idx_acc.response.account_address);
                 }
                 account_balances.push(vec![
-                    (first_block.block_slot_time, Amount::zero()),
-                    (block.block_slot_time, info.response.account_amount),
+                    (first_payday_block.block_slot_time, Amount::zero()),
+                    (block.block_slot_time, info.account_amount),
                 ]);
-                account_addresses.push(info.response.account_address);
+                account_addresses.push(info.account_address);
             }
         }
+
+        // Reset the affected accounts for the subsequent payday.
+        affected = BTreeSet::new();
     }
+
     cancel_handle.abort();
     bar.finish_and_clear();
 
@@ -1238,6 +1288,7 @@ async fn handle_initial_weights(
         "Expecting addresses match account balances. This is a bug."
     );
 
+    // Calculate the average weight for each account.
     let mut data = vec![];
     {
         let mut weights = csv::Writer::from_writer(&mut data);
@@ -1262,7 +1313,7 @@ async fn handle_initial_weights(
             let amount = weighted_sum
                 / (last_block
                     .block_slot_time
-                    .signed_duration_since(first_block.block_slot_time)
+                    .signed_duration_since(first_payday_block.block_slot_time)
                     .num_milliseconds() as u128);
             let amount = Amount::from_micro_ccd(amount as u64);
             weights.serialize(WeightRow {
