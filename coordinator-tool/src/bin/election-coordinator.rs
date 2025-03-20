@@ -17,7 +17,7 @@ use concordium_rust_sdk::{
         queries::BlockInfo,
         smart_contracts::{OwnedContractName, WasmModule},
         AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
-        BlockItemSummaryDetails, ContractAddress, WalletAccount,
+        BlockItemSummaryDetails, ContractAddress, SpecialTransactionOutcome, WalletAccount,
     },
     v2::{self as sdk, BlockIdentifier},
 };
@@ -365,6 +365,7 @@ async fn range_setup(
         end <= info.block_slot_time,
         "End time not before the last finalized block."
     );
+    // FIXME: this does not work yet
     let first_block = if use_payday_blocks {
         client
             .find_at_lowest_height(.., move |mut client, height| async move {
@@ -1234,14 +1235,25 @@ async fn handle_initial_weights(
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
-        for special in specials {
+        for special in &specials {
             for addr in special.affected_addresses() {
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
 
-        if !client.is_payday_block(block.block_height).await?.response {
-            continue;
+        // Check if the block is a payday block by going through the special transaction
+        // events. If not, then skip the block.
+        for special in &specials {
+            let has_payday_event = matches!(
+                special,
+                SpecialTransactionOutcome::PaydayPoolReward { .. }
+                    | SpecialTransactionOutcome::PaydayAccountReward { .. }
+                    | SpecialTransactionOutcome::PaydayFoundationReward { .. }
+            );
+
+            if !has_payday_event {
+                continue;
+            };
         }
 
         // Then for all the affected accounts, add their balances for the payday
