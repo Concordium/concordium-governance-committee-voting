@@ -365,25 +365,24 @@ async fn range_setup(
         end <= info.block_slot_time,
         "End time not before the last finalized block."
     );
-    // FIXME: this does not work yet
-    let first_block = if use_payday_blocks {
-        client
-            .find_at_lowest_height(.., move |mut client, height| async move {
-                let info = client.get_block_info(&height).await?.response;
-                if info.block_slot_time >= start
-                    && client.is_payday_block(info.block_height).await?.response
-                {
-                    Ok(Some(info))
-                } else {
-                    Ok(None)
-                }
-            })
-            .await?
-    } else {
-        client
-            .find_first_finalized_block_no_earlier_than(.., start)
-            .await?
-    };
+
+    let mut first_block = client
+        .find_first_finalized_block_no_earlier_than(.., start)
+        .await?;
+    if use_payday_blocks {
+        // Find the first occuring payday block after the start time
+        eprintln!("Searching for first payday block from {}", start);
+
+        let mut blocks = client
+            .get_finalized_blocks_from(first_block.block_height)
+            .await?;
+        while let Some(bi) = blocks.next().await {
+            if client.is_payday_block(bi.height).await?.response {
+                first_block = client.get_block_info(bi.height).await?.response;
+                break;
+            }
+        }
+    }
 
     let last_block = {
         let last_block = client
