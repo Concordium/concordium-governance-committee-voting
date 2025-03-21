@@ -35,7 +35,7 @@ use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
     GuardianDecryptionProof, HttpClient, WeightRow,
 };
-use futures::{TryFutureExt, TryStreamExt};
+use futures::{future::join_all, TryFutureExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
@@ -1236,15 +1236,38 @@ async fn handle_initial_weights(
         "Getting initial account balances in block {}.",
         first_block.block_hash
     );
-    for (ai, balances) in account_balances.iter_mut().enumerate() {
-        let info = client
-            .get_account_info(&AccountIndex::from(ai as u64).into(), initial_block_ident)
-            .await?;
-        account_addresses.push(info.response.account_address);
-        bar.set_message(info.response.account_address.to_string());
-        bar.inc(1);
-        balances.push((first_block.block_slot_time, info.response.account_amount));
+
+    // Create parallel tasks to process in parallel
+    let tasks = account_balances
+        .iter_mut()
+        .enumerate()
+        .map(|(ai, _)| {
+            let mut client = client.clone();
+            let bar = bar.clone();
+
+            tokio::spawn(async move {
+                let info = client
+                    .get_account_info(&AccountIndex::from(ai as u64).into(), initial_block_ident)
+                    .await?;
+
+                bar.set_message(info.response.account_address.to_string());
+                bar.inc(1);
+
+                Ok::<_, anyhow::Error>((
+                    ai,
+                    info.response.account_address,
+                    info.response.account_amount,
+                ))
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for result in join_all(tasks).await {
+        let (ai, address, amount) = result??; // Handle both JoinError and inner Error
+        account_addresses.push(address);
+        account_balances[ai].push((first_block.block_slot_time, amount));
     }
+
     bar.finish_and_clear();
     drop(bar);
     eprintln!("initial account balances: {:.2?}", start_time.elapsed());
@@ -1261,7 +1284,7 @@ async fn handle_initial_weights(
     let mut affected = BTreeSet::new();
 
     while let Some((block, normal, specials)) = receiver.recv().await {
-        if block.block_slot_time > end {
+        if block.block_height > last_block.block_height {
             drop(receiver);
             eprintln!("Done indexing");
             break;
