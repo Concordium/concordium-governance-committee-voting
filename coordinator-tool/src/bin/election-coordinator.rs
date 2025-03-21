@@ -17,9 +17,9 @@ use concordium_rust_sdk::{
         queries::BlockInfo,
         smart_contracts::{OwnedContractName, WasmModule},
         AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
-        BlockItemSummaryDetails, ContractAddress, SpecialTransactionOutcome, WalletAccount,
+        BlockItemSummaryDetails, ContractAddress, Epoch, SpecialTransactionOutcome, WalletAccount,
     },
-    v2::{self as sdk, BlockIdentifier},
+    v2::{self as sdk, BlockIdentifier, EpochIdentifier, SpecifiedEpoch},
 };
 use concordium_std::schema::SchemaType;
 use eg::{
@@ -35,7 +35,7 @@ use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
     GuardianDecryptionProof, HttpClient, WeightRow,
 };
-use futures::TryStreamExt;
+use futures::{TryFutureExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
@@ -342,6 +342,53 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Find a payday block starting at the given block. The block is found by
+/// moving through epochs until a payday block is found. If `search_backwards`
+/// is true then the block searched for is the last payday block before the
+/// given block, otherwise it is the first payday block after the given block.
+///
+/// # Arguments
+/// * `client` - The SDK client to use for querying the chain
+/// * `block` - The block to start searching from
+/// * `search_backwards` - Whether to search backwards or forwards from the
+///   start block
+///
+/// # Returns
+/// The first payday block found in the specified direction
+///
+/// # Errors
+/// Returns an error if communication with the node fails
+async fn find_payday_block(
+    client: &mut sdk::Client,
+    block: BlockInfo,
+    search_backwards: bool,
+) -> anyhow::Result<BlockInfo> {
+    let mut block = block;
+    let mut epoch = Epoch {
+        epoch: block.epoch.expect("Has protocol version 6 or above").epoch
+            + if search_backwards { 0 } else { 1 },
+    };
+
+    while !client.is_payday_block(block.block_height).await?.response {
+        epoch = Epoch {
+            epoch: if search_backwards {
+                epoch.epoch.saturating_sub(1)
+            } else {
+                epoch.epoch + 1
+            },
+        };
+        let epoch = SpecifiedEpoch {
+            epoch,
+            genesis_index: block.genesis_index,
+        };
+
+        let block_height = client.get_first_block_epoch(epoch).await?;
+        block = client.get_block_info(block_height).await?.response;
+    }
+
+    Ok(block)
+}
+
 /// Figure out which blocks to use as start and end blocks given the time range.
 /// The return blocks are the first block no earlier than the start time, and
 /// the last block no (strictly) later than the provided end time. If
@@ -369,22 +416,7 @@ async fn range_setup(
     let mut first_block = client
         .find_first_finalized_block_no_earlier_than(.., start)
         .await?;
-    if use_payday_blocks {
-        // Find the first occuring payday block after the start time
-        eprintln!("Searching for first payday block from {}", start);
-
-        let mut blocks = client
-            .get_finalized_blocks_from(first_block.block_height)
-            .await?;
-        while let Some(bi) = blocks.next().await {
-            if client.is_payday_block(bi.height).await?.response {
-                first_block = client.get_block_info(bi.height).await?.response;
-                break;
-            }
-        }
-    }
-
-    let last_block = {
+    let mut last_block = {
         let last_block = client
             .find_first_finalized_block_no_earlier_than(.., end)
             .await?;
@@ -402,6 +434,15 @@ async fn range_setup(
             last_block
         }
     };
+
+    if use_payday_blocks {
+        // Find the first and last payday blocks within the bounds
+        eprintln!("Searching for payday block bounds");
+
+        first_block = find_payday_block(client, first_block, false).await?;
+        last_block = find_payday_block(client, last_block, true).await?;
+    }
+
     eprintln!(
         "Indexing from block {} at {} until block {} at {}.",
         first_block.block_hash,
@@ -1141,6 +1182,9 @@ async fn handle_initial_weights(
 ) -> anyhow::Result<()> {
     ensure!(out.is_dir(), "out argument must point to a directory");
 
+    // Get the balance of each account for each payday block
+    let start_time = std::time::Instant::now();
+
     let mut client = sdk::Client::new(endpoint.clone())
         .await
         .context("Unable to connect.")?;
@@ -1171,8 +1215,9 @@ async fn handle_initial_weights(
     };
 
     // Variables used to hold the weight calculation data.
-    let (first_payday_block, last_block) = range_setup(&mut client, start, end, true).await?;
-    let initial_block_ident: BlockIdentifier = first_payday_block.block_height.into();
+    let (first_block, last_block) = range_setup(&mut client, start, end, true).await?;
+    eprintln!("block range: {:.2?}", start_time.elapsed());
+    let initial_block_ident: BlockIdentifier = first_block.block_height.into();
     let initial_account_number = client
         .get_account_list(initial_block_ident)
         .await?
@@ -1189,7 +1234,7 @@ async fn handle_initial_weights(
 
     eprintln!(
         "Getting initial account balances in block {}.",
-        first_payday_block.block_hash
+        first_block.block_hash
     );
     for (ai, balances) in account_balances.iter_mut().enumerate() {
         let info = client
@@ -1198,23 +1243,19 @@ async fn handle_initial_weights(
         account_addresses.push(info.response.account_address);
         bar.set_message(info.response.account_address.to_string());
         bar.inc(1);
-        balances.push((
-            first_payday_block.block_slot_time,
-            info.response.account_amount,
-        ));
+        balances.push((first_block.block_slot_time, info.response.account_amount));
     }
     bar.finish_and_clear();
     drop(bar);
+    eprintln!("initial account balances: {:.2?}", start_time.elapsed());
 
     // Get the balance of each account for each payday block
-    let bar =
-        ProgressBar::new(last_block.block_height.height - first_payday_block.block_height.height)
-            .with_style(ProgressStyle::with_template(
-                "{spinner} {msg} {wide_bar} {pos}/{len}",
-            )?);
+    let bar = ProgressBar::new(last_block.block_height.height - first_block.block_height.height)
+        .with_style(ProgressStyle::with_template(
+            "{spinner} {msg} {wide_bar} {pos}/{len}",
+        )?);
 
-    let traverse_config =
-        indexer::TraverseConfig::new_single(endpoint, first_payday_block.block_height);
+    let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
     let mut affected = BTreeSet::new();
@@ -1269,8 +1310,7 @@ async fn handle_initial_weights(
             } else {
                 // Newly created accounts have balance 0 at the start of the period.
                 for idx in account_balances.len()..index {
-                    account_balances
-                        .push(vec![(first_payday_block.block_slot_time, Amount::zero())]);
+                    account_balances.push(vec![(first_block.block_slot_time, Amount::zero())]);
                     let idx_acc = client
                         .get_account_info(
                             &AccountIndex::from(idx as u64).into(),
@@ -1280,7 +1320,7 @@ async fn handle_initial_weights(
                     account_addresses.push(idx_acc.response.account_address);
                 }
                 account_balances.push(vec![
-                    (first_payday_block.block_slot_time, Amount::zero()),
+                    (first_block.block_slot_time, Amount::zero()),
                     (block.block_slot_time, info.account_amount),
                 ]);
                 account_addresses.push(info.account_address);
@@ -1298,6 +1338,8 @@ async fn handle_initial_weights(
         account_addresses.len() == account_balances.len(),
         "Expecting addresses match account balances. This is a bug."
     );
+
+    eprintln!("indexed account balances: {:.2?}", start_time.elapsed());
 
     // Calculate the average weight for each account.
     let mut data = vec![];
@@ -1324,7 +1366,7 @@ async fn handle_initial_weights(
             let amount = weighted_sum
                 / (last_block
                     .block_slot_time
-                    .signed_duration_since(first_payday_block.block_slot_time)
+                    .signed_duration_since(first_block.block_slot_time)
                     .num_milliseconds() as u128);
             let amount = Amount::from_micro_ccd(amount as u64);
             weights.serialize(WeightRow {
@@ -1334,6 +1376,8 @@ async fn handle_initial_weights(
         }
         weights.flush()?;
     }
+
+    eprintln!("processed account weights: {:.2?}", start_time.elapsed());
 
     let mut weights_out = std::fs::File::create(out.join("initial-weights.csv"))
         .context("Failed to create weights file")?;
