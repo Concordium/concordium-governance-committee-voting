@@ -1237,15 +1237,14 @@ async fn handle_initial_weights(
         first_block.block_hash
     );
 
-    // Create parallel tasks to process in parallel
-    let tasks = account_balances
+    let tasks: Vec<_> = account_balances
         .iter_mut()
         .enumerate()
         .map(|(ai, _)| {
             let mut client = client.clone();
             let bar = bar.clone();
 
-            tokio::spawn(async move {
+            async move {
                 let info = client
                     .get_account_info(&AccountIndex::from(ai as u64).into(), initial_block_ident)
                     .await?;
@@ -1258,12 +1257,11 @@ async fn handle_initial_weights(
                     info.response.account_address,
                     info.response.account_amount,
                 ))
-            })
+            }
         })
-        .collect::<Vec<_>>();
-
+        .collect();
     for result in join_all(tasks).await {
-        let (ai, address, amount) = result??; // Handle both JoinError and inner Error
+        let (ai, address, amount) = result?;
         account_addresses.push(address);
         account_balances[ai].push((first_block.block_slot_time, amount));
     }
@@ -1321,32 +1319,52 @@ async fn handle_initial_weights(
 
         // Then for all the affected accounts, add their balances for the payday
         let payday_block_ident = BlockIdentifier::from(block.block_height);
-        for acc in &affected {
-            let info = client
-                .get_account_info(&AccountAddress::from(*acc).into(), payday_block_ident)
-                .await?
-                .response;
-            let index = info.account_index.index as usize;
+        let tasks = affected.iter().map(|acc| {
+            let mut client = client.clone();
+            async move {
+                let info = client
+                    .get_account_info(&AccountAddress::from(*acc).into(), payday_block_ident)
+                    .await?
+                    .response;
+                let index = info.account_index.index as usize;
+
+                Ok::<_, anyhow::Error>((index, info.account_address, info.account_amount))
+            }
+        });
+        for result in join_all(tasks).await {
+            let (index, account_address, account_amount) = result?;
 
             if let Some(elem) = account_balances.get_mut(index) {
-                elem.push((block.block_slot_time, info.account_amount));
+                elem.push((block.block_slot_time, account_amount));
             } else {
-                // Newly created accounts have balance 0 at the start of the period.
-                for idx in account_balances.len()..index {
+                // Find all new accounts created between the last recorded account in
+                // `account_addresses` and the account identified by `index`.
+                let tasks = (account_addresses.len()..index).map(|idx| {
+                    let mut client = client.clone();
+                    async move {
+                        let idx_acc = client
+                            .get_account_info(
+                                &AccountIndex::from(idx as u64).into(),
+                                &payday_block_ident,
+                            )
+                            .await?;
+                        Ok::<_, anyhow::Error>(idx_acc.response.account_address)
+                    }
+                });
+
+                // Record the new accounts
+                for result in join_all(tasks).await {
+                    let account_address = result?;
+                    account_addresses.push(account_address);
+                    // Newly created accounts have balance 0 at the start of the period.
                     account_balances.push(vec![(first_block.block_slot_time, Amount::zero())]);
-                    let idx_acc = client
-                        .get_account_info(
-                            &AccountIndex::from(idx as u64).into(),
-                            payday_block_ident,
-                        )
-                        .await?;
-                    account_addresses.push(idx_acc.response.account_address);
                 }
+                // Finally, record the data for the account identified by `index`
+                account_addresses.push(account_address);
                 account_balances.push(vec![
                     (first_block.block_slot_time, Amount::zero()),
-                    (block.block_slot_time, info.account_amount),
+                    (block.block_slot_time, account_amount),
                 ]);
-                account_addresses.push(info.account_address);
             }
         }
 
