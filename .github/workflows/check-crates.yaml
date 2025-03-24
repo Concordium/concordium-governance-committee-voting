@@ -39,10 +39,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: add legacy deb repository # see https://github.com/tauri-apps/tauri/issues/9662
+        uses: myci-actions/add-deb-repo@11
+        with:
+          repo: deb http://archive.ubuntu.com/ubuntu jammy main universe
+          repo-name: ubuntu-legacy
+
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           # Needed to support tauri
-          packages: libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          packages: libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
           version: 1.0
 
       - name: Run cargo clippy
