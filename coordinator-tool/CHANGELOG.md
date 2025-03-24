@@ -1,11 +1,12 @@
 ## Unreleased
 
-- Bumped rust-sdk dependency to 5.0
+- Bumped rust-sdk dependency to 6.0
+- Change initial weights calculation to only look at account balances for paydays
 
 ## 1.0.0
 
 - Add `description` argument to `new-election`
-- Register parameters used to generate `initial-weights` in the election contract 
+- Register parameters used to generate `initial-weights` in the election contract
 - Update `initial-weights` to either `generate` or `verify` weight data through corresponding subcommands
 
 ## 0.2.4
