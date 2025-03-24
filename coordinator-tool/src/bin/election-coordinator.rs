@@ -19,7 +19,7 @@ use concordium_rust_sdk::{
         AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
         BlockItemSummaryDetails, ContractAddress, Epoch, SpecialTransactionOutcome, WalletAccount,
     },
-    v2::{self as sdk, BlockIdentifier, EpochIdentifier, SpecifiedEpoch},
+    v2::{self as sdk, BlockIdentifier, SpecifiedEpoch},
 };
 use concordium_std::schema::SchemaType;
 use eg::{
@@ -35,7 +35,7 @@ use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
     GuardianDecryptionProof, HttpClient, WeightRow,
 };
-use futures::{future::join_all, TryFutureExt, TryStreamExt};
+use futures::{future::join_all, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
@@ -79,11 +79,9 @@ impl FromStr for CandidateLocation {
         if let Ok(url) = url::Url::from_str(s) {
             return Ok(Self::Remote(url));
         }
-        if let Ok(path) = std::path::PathBuf::from_str(s) {
-            return Ok(Self::Disk(path));
-        }
-
-        Err(anyhow::anyhow!("Failed to parse {s} as either url or path"))
+        let path =
+            std::path::PathBuf::from_str(s).context("Failed to parse {s} as either url or path")?;
+        Ok(Self::Disk(path))
     }
 }
 
