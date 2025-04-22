@@ -15,19 +15,16 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
 # console_error_panic_hook = { version = "0.1", optional = true }
-eg = { path = "../../deps/electionguard-rust/src/eg" }
-util = { path = "../../deps/electionguard-rust/src/util" }
-election-common = { path = "../../election-common", default-features = false }
+eg = { workspace = true }
+util = { workspace = true }
+election-common = { workspace = true }
+serde = { workspace = true }
+rand = { workspace = true }
+
 getrandom = { version = "0.2", features = ["js"] } # This is only required to enable js feature in "eg"
-serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 tsify = "0.4"
-rand = "0.8"
 js-sys = "0.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
-
-[profile.release]
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"

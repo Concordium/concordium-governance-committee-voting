@@ -6,16 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
+concordium_governance_committee_election = { workspace = true }
+eg = { workspace = true }
+reqwest = { workspace = true, optional = true}
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
 concordium_base = "7.0"
-concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election" }
-eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
-reqwest = { version = "0.12", optional = true}
 rmp-serde = "1.1"
-serde = "1.0"
-serde_json = "1.0"
-sha2 = "0.10"
 
 [features]
-default = ["http"]
 http = ["dep:reqwest"]
