@@ -327,20 +327,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@concordium/wallet-connectors@npm:^0.6.1":
-  version: 0.6.1
-  resolution: "@concordium/wallet-connectors@npm:0.6.1"
+"@concordium/wallet-connectors@npm:0.6.0-alpha.6":
+  version: 0.6.0-alpha.6
+  resolution: "@concordium/wallet-connectors@npm:0.6.0-alpha.6"
   dependencies:
     "@concordium/browser-wallet-api-helpers": "npm:^3.0.0"
-    "@protobuf-ts/grpcweb-transport": "npm:^2.9.4"
     "@walletconnect/modal": "npm:^2.6.2"
     "@walletconnect/modal-core": "npm:^2.6.2"
     "@walletconnect/sign-client": "npm:^2.1.4"
-    buffer: "npm:^6.0.3"
   peerDependencies:
-    "@concordium/web-sdk": ">= 7"
-    "@walletconnect/types": ^2.13.1
-  checksum: fc266e6b0d1535d88c1741d146eb27fe61168fca852830f919286590ca51e5b26536f2baf6f40454db7a703401cfdf14b31aafd0907c2d30319c137a940ec969
+    "@concordium/web-sdk": 7.x
+  checksum: c2b5e44270125885adc168cb24f0699b104587ada3df9843557ff478626a42a89d7402357adcb2c96d720676c968aa90dec837e9eef49d8e0a17c1dabc013f41
   languageName: node
   linkType: hard
 
@@ -1393,16 +1390,6 @@ __metadata:
   linkType: hard
 
 "@protobuf-ts/grpcweb-transport@npm:^2.9.1":
-  version: 2.9.1
-  resolution: "@protobuf-ts/grpcweb-transport@npm:2.9.1"
-  dependencies:
-    "@protobuf-ts/runtime": "npm:^2.9.1"
-    "@protobuf-ts/runtime-rpc": "npm:^2.9.1"
-  checksum: e4bd9c0c086fc28a772a2d04b14ebf7a8da79d3db90c14b2d47a082f3e0e695a514dae2abccafa68ee753a0269baeec2b175be2bfa1839f6d81ce22728588f9b
-  languageName: node
-  linkType: hard
-
-"@protobuf-ts/grpcweb-transport@npm:^2.9.4":
   version: 2.9.6
   resolution: "@protobuf-ts/grpcweb-transport@npm:2.9.6"
   dependencies:
@@ -1412,16 +1399,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@protobuf-ts/runtime-rpc@npm:^2.8.2, @protobuf-ts/runtime-rpc@npm:^2.9.1":
-  version: 2.9.1
-  resolution: "@protobuf-ts/runtime-rpc@npm:2.9.1"
-  dependencies:
-    "@protobuf-ts/runtime": "npm:^2.9.1"
-  checksum: 45cd105d717742678b1ce5e72d74e1a7ba4faee35e90faf79063d557fb69fc8a2d1bf776c6f36a2159bb72e89e719d8aac2a5f5320deb3123bd7d354f584d63c
-  languageName: node
-  linkType: hard
-
-"@protobuf-ts/runtime-rpc@npm:^2.9.6":
+"@protobuf-ts/runtime-rpc@npm:^2.8.2, @protobuf-ts/runtime-rpc@npm:^2.9.1, @protobuf-ts/runtime-rpc@npm:^2.9.6":
   version: 2.9.6
   resolution: "@protobuf-ts/runtime-rpc@npm:2.9.6"
   dependencies:
@@ -8376,7 +8354,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "voting@workspace:voting"
   dependencies:
-    "@concordium/wallet-connectors": "npm:^0.6.1"
+    "@concordium/wallet-connectors": "npm:0.6.0-alpha.6"
     "@concordium/web-sdk": "npm:^9.1.0"
     "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
     "@swc-jotai/react-refresh": "npm:^0.1.0"
