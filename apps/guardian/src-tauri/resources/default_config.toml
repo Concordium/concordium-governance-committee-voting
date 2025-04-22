@@ -1,0 +1,6 @@
+network = "mainnet" # "mainnet" or "testnet"
+node = "auto"       # Automatically figure out a node to connect to. Otherwise takes a url to a node v2 grpc endpoint, e.g. "https://grpc.testnet.concordium.com:20000"
+
+[contract] # Must point to an election contract to use as the integration point for the application.
+index = -1   # The index of the contract to use.
+subindex = 0 # The subindex of the contract to use. Currently only 0 is used.
