@@ -1,17 +1,38 @@
-use std::{collections::BTreeMap, path::{Path, PathBuf}, str::FromStr};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::{anyhow, Context};
 use concordium_governance_committee_election::{self as contract, ElectionConfig};
 use concordium_rust_sdk::{
-    common::{encryption::{decrypt, encrypt, EncryptedData, Password}, types::Amount},
+    common::{
+        encryption::{decrypt, encrypt, EncryptedData, Password},
+        types::Amount,
+    },
     id::types::AccountAddress,
     types::{Energy, WalletAccount},
     v2::{self, BlockIdentifier},
 };
 use eg::{
-    election_parameters::ElectionParameters, election_record::PreVotingData, fixed_parameters::FixedParameters, guardian::GuardianIndex, guardian_public_key::GuardianPublicKey, guardian_secret_key::GuardianSecretKey, guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare, ShareEncryptionResult}, joint_election_public_key::Ciphertext, verifiable_decryption::{CombinedDecryptionShare, DecryptionProof, DecryptionProofStateShare, DecryptionShare, DecryptionShareResult}
+    election_parameters::ElectionParameters,
+    election_record::PreVotingData,
+    fixed_parameters::FixedParameters,
+    guardian::GuardianIndex,
+    guardian_public_key::GuardianPublicKey,
+    guardian_secret_key::GuardianSecretKey,
+    guardian_share::{GuardianEncryptedShare, GuardianSecretKeyShare, ShareEncryptionResult},
+    joint_election_public_key::Ciphertext,
+    verifiable_decryption::{
+        CombinedDecryptionShare, DecryptionProof, DecryptionProofStateShare, DecryptionShare,
+        DecryptionShareResult,
+    },
 };
-use election_common::{decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof, GuardianDecryptionProofState};
+use election_common::{
+    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
+    GuardianDecryptionProofState,
+};
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
@@ -19,7 +40,12 @@ use tauri::{AppHandle, Window};
 use util::csprng::Csprng;
 
 use crate::{
-    config::{AppConfig, ElectionGuardConfig}, shared::Error, state::{ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState, GuardianData}
+    config::{AppConfig, ElectionGuardConfig},
+    shared::Error,
+    state::{
+        ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState,
+        GuardianData,
+    },
 };
 
 /// The file name of the encrypted wallet account.
@@ -197,8 +223,7 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: serde::Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static,
-{
+    R: DeserializeOwned + Sync + Send + 'static, {
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
@@ -382,8 +407,7 @@ impl ValidatedProposal {
 impl Serialize for ValidatedProposal {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         let mut proposal = serializer.serialize_struct("ValidatedProposal", 2)?;
         proposal.serialize_field("type", <&str>::from(self))?;
         proposal.serialize_field("ccdCost", &self.ccd_cost())?;
@@ -434,9 +458,7 @@ pub async fn register_guardian_shares_flow(
             &election_parameters,
             &contract_data.guardians,
             secret_key,
-        )
-
-        {
+        ) {
             Ok(shares) => Ok(shares),
             Err(Error::PeerValidation(accounts)) => Err(accounts),
             Err(error) => return Err(error),
@@ -987,29 +1009,29 @@ pub struct GuardianStateResponse {
     /// Whether the guardian has registered its encrypted shares
     has_encrypted_shares: bool,
     /// Whether the guardian has registered a public key
-    has_public_key: bool,
+    has_public_key:       bool,
     /// The guardian index
-    index: u32,
+    index:                u32,
     /// The guardian status registered for the guardian
-    status: Option<contract::GuardianStatus>,
+    status:               Option<contract::GuardianStatus>,
     /// Whether the guardian has registered a decryption share
     has_decryption_share: bool,
     /// Whether the guardian has proof of correct decryption
     has_decryption_proof: bool,
     /// Whether the guardian is excluded from the tally phase
-    excluded: bool,
+    excluded:             bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_shares: value.encrypted_share.is_some(),
-            has_public_key: value.public_key.is_some(),
-            index: value.index,
-            status: value.status.clone(),
+            has_public_key:       value.public_key.is_some(),
+            index:                value.index,
+            status:               value.status.clone(),
             has_decryption_share: value.decryption_share.is_some(),
             has_decryption_proof: value.decryption_share_proof.is_some(),
-            excluded: value.excluded,
+            excluded:             value.excluded,
         }
     }
 }
@@ -1086,7 +1108,7 @@ pub async fn refresh_encrypted_tally(
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
-    contract_config: ElectionConfig,
+    contract_config:     ElectionConfig,
     election_parameters: ElectionParameters,
 }
 

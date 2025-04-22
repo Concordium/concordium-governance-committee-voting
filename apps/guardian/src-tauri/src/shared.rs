@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use concordium_rust_sdk::{
     base::{contracts_common, hashes::BlockHash},
@@ -97,9 +96,7 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
 }
 
 impl From<RejectReason> for Error {
-    fn from(reason: RejectReason) -> Self {
-        Error::QueryFailed(reason)
-    }
+    fn from(reason: RejectReason) -> Self { Error::QueryFailed(reason) }
 }
 
 impl From<ContractUpdateError> for Error {
@@ -115,8 +112,7 @@ impl From<ContractUpdateError> for Error {
 impl serde::Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         let mut error = serializer.serialize_struct("Error", 2)?;
         error.serialize_field("type", <&str>::from(self))?;
         error.serialize_field("message", &self.to_string())?;

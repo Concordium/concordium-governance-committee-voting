@@ -17,9 +17,9 @@ pub struct GuardianData {
     /// The guardian account
     pub account: AccountAddress,
     /// The keys for the `account`
-    pub keys: AccountKeys,
+    pub keys:    AccountKeys,
     /// The guardian index used by election guard
-    pub index: GuardianIndex,
+    pub index:   GuardianIndex,
 }
 
 impl GuardianData {
@@ -50,7 +50,7 @@ pub struct ActiveGuardianState(pub Mutex<Option<ActiveGuardian>>);
 #[derive(Default)]
 pub struct ContractData {
     /// The guardians state registered in the election contract
-    pub guardians: contract::GuardiansState,
+    pub guardians:       contract::GuardiansState,
     /// The encrypted tally registered in the contract
     pub encrypted_tally: Option<EncryptedTally>,
 }
@@ -83,7 +83,5 @@ pub struct ContractDataState(pub Mutex<ContractData>);
 pub struct AppConfigState(pub Mutex<AppConfig>);
 
 impl From<AppConfig> for AppConfigState {
-    fn from(config: AppConfig) -> Self {
-        Self(Mutex::new(config))
-    }
+    fn from(config: AppConfig) -> Self { Self(Mutex::new(config)) }
 }

@@ -23,7 +23,7 @@ pub const CLI_ARG_NODE: &str = "node";
 #[derive(Clone)]
 pub struct ElectionGuardConfig {
     /// The election manifest
-    pub manifest: ElectionManifest,
+    pub manifest:   ElectionManifest,
     /// The election parameters
     pub parameters: ElectionParameters,
 }
@@ -36,7 +36,7 @@ pub type ElectionClient = ContractClient<ElectionContractMarker>;
 #[derive(Clone)]
 pub struct ConnectionConfig {
     /// The http client to use for remote resources
-    pub http: HttpClient,
+    pub http:     HttpClient,
     /// The contract client for querying the contract.
     pub contract: ElectionClient,
 }
@@ -118,15 +118,15 @@ impl ConnectionConfig {
 #[derive(Clone)]
 pub struct AppConfig {
     /// The node endpoint used internally in the application
-    pub node_endpoint: v2::Endpoint,
+    pub node_endpoint:  v2::Endpoint,
     /// The connection to the contract. Best to access this through
     /// [`AppConfig::connection`] as this lazily creates the connection and
     /// caches it.
-    pub connection: Option<ConnectionConfig>,
+    pub connection:     Option<ConnectionConfig>,
     /// The election config registered in the contract. Best to access this
     /// through [`AppConfig::election`] as this lazily loads the
     /// election config and caches it.
-    pub election: Option<ElectionConfig>,
+    pub election:       Option<ElectionConfig>,
     /// The election guard config. Best to access this through
     /// [`AppConfig::election_guard`] as this lazily loads the
     /// election guard config and caches it.
