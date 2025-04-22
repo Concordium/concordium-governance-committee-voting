@@ -12,7 +12,7 @@ name: check crates
 
 env:
   RUST_FMT: nightly-2023-04-01
-  RUST_VERSION: "1.76"
+  RUST_VERSION: "1.81"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
   # The following environment variables need to be set for build to succeed.
   CCD_ELECTION_NODE: ""
