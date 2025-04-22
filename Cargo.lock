@@ -2421,6 +2421,7 @@ dependencies = [
  "tauri-build",
  "thiserror 1.0.69",
  "tokio",
+ "toml_edit 0.22.24",
  "tonic",
  "util",
 ]
