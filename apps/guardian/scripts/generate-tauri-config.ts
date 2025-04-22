@@ -1,6 +1,8 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import 'dotenv/config';
+
 import tauriConfig from '../src-tauri/tauri.conf.json';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

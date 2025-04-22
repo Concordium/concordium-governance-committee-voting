@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::Context;
-use state::{ActiveGuardianState, ContractDataState};
+use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use tauri::{App, Manager};
 
 mod commands;
@@ -27,8 +27,7 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let app_config = AppConfig::try_from(app.get_cli_matches()?)?;
-    app.manage(app_config);
-
+    app.manage(AppConfigState::from(app_config));
     Ok(())
 }
 

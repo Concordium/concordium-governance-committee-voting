@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-concordium_base = { version = "4.0" }
+concordium_base = "7.0"
 concordium_governance_committee_election = { version = "*", path = "../contracts/concordium-governance-committee-election" }
 eg = { version = "*", path = "../deps/electionguard-rust/src/eg" }
 reqwest = { version = "0.12", optional = true}
