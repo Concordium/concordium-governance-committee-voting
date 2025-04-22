@@ -17,7 +17,7 @@
         "fmt-check": "yarn prettier --check"
     },
     "dependencies": {
-        "@concordium/web-sdk": "^7.1.0",
+        "@concordium/web-sdk": "^9.1.0",
         "@tauri-apps/api": "^1.5.2",
         "@tauri-apps/cli": "^1.5.11",
         "buffer": "^6.0.3",
