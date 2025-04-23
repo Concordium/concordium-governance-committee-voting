@@ -6,6 +6,7 @@ use serde::Deserialize;
 // This is isolated in its own module to make it easier to validate the default
 // user configuration (found at `resources/default_config.toml`) at build time.
 
+/// Represents the node configuration for the application.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum NodeConfig {
     /// Node is determined automatically from the network.
@@ -36,11 +37,15 @@ where
     serializer.serialize_str(&s)
 }
 
+/// The default user configuration for the application. This matches [`UserConfig`] but with non-optional fields.
 #[derive(Debug, serde::Deserialize)]
 pub struct DefaultUserConfig {
+    /// The network id.
     pub network: Network,
+    /// Describes the node endpoint to use.
     #[serde(default)]
     pub node: NodeConfig,
+    /// The contract address of the election.
     #[serde(default)]
     pub contract: Option<ContractAddress>,
 }
@@ -54,10 +59,14 @@ impl Default for DefaultUserConfig {
     }
 }
 
+/// The user configuration for the application.
 #[derive(Debug, serde::Serialize)]
 pub struct UserConfig {
+    /// The network id.
     pub network: Option<Network>,
+    /// Describes the node endpoint to use.
     pub node: Option<NodeConfig>,
+    /// The contract address of the election.
     pub contract: Option<ContractAddress>,
 }
 
@@ -122,14 +131,14 @@ impl UserConfig {
             item.as_value_mut()
                 .unwrap()
                 .decor_mut()
-                .set_suffix(r#" # The network id. Must be either "mainnet" or "testnet""#);
+                .set_suffix(r#" # The network id. Must be either "mainnet" or "testnet"."#);
         }
 
         if let Some(item) = document.get_mut("node") {
             item.as_value_mut()
                 .unwrap()
                 .decor_mut()
-                .set_suffix(r#" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network""#);
+                .set_suffix(r#" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network"."#);
         }
 
         if let Some(item) = document.get_mut("contract") {
@@ -181,13 +190,24 @@ mod tests {
         };
 
         let toml_output = user_config.get_toml();
-        let expected = r#"network = "mainnet" # The network id. Must be either "mainnet" or "testnet"
-node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network"
+        let expected = r#"network = "mainnet" # The network id. Must be either "mainnet" or "testnet".
+node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network".
 
 # The contract address of the election. Must be a valid contract address for the network specified in the config.
 [contract]
 index = 1 # The index of the contract. Must be an unsigned integer.
 subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
+
+        assert_eq!(toml_output, expected);
+    }
+
+    #[test]
+    fn test_get_toml_default() {
+        let user_config = UserConfig::default();
+
+        let toml_output = user_config.get_toml();
+        let expected = r#"network = "mainnet" # The network id. Must be either "mainnet" or "testnet".
+node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network"."#;
 
         assert_eq!(toml_output, expected);
     }
