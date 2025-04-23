@@ -9,7 +9,7 @@ use eg::{guardian::GuardianIndex, guardian_public_key::GuardianPublicKey};
 use election_common::{decode, EncryptedTally};
 use tokio::sync::Mutex;
 
-use crate::config::AppConfig;
+use crate::{config::AppConfig, user_config::UserConfig};
 
 /// The data stored for a guardian.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -79,9 +79,8 @@ impl ContractData {
 pub struct ContractDataState(pub Mutex<ContractData>);
 
 /// The application config state
-#[derive(Default)]
-pub struct AppConfigState(pub Mutex<Option<AppConfig>>);
+pub struct AppConfigState(pub Mutex<AppConfig>);
 
-impl From<AppConfig> for AppConfigState {
-    fn from(config: AppConfig) -> Self { Self(Mutex::new(Some(config))) }
+impl From<UserConfig> for AppConfigState {
+    fn from(config: UserConfig) -> Self { Self(Mutex::new(config.into())) }
 }

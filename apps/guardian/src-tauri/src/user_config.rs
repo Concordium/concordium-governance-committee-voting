@@ -91,7 +91,7 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
-    pub const FILE: &'static str = "config.toml";
+    pub const FILENAME: &'static str = "config.toml";
 
     pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
 }
@@ -144,6 +144,15 @@ impl<'de> serde::Deserialize<'de> for PartialUserConfig {
         }
 
         Ok(user_config)
+    }
+}
+
+impl FromStr for PartialUserConfig {
+    type Err = toml_edit::de::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        toml_edit::de::from_str(s)
+
     }
 }
 

@@ -1,73 +1,134 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::LazyLock};
 
 use anyhow::{anyhow, Context};
 use concordium_governance_committee_election::ElectionConfig;
 use concordium_rust_sdk::{
     contract_client::ContractClient,
-    types::ContractAddress,
     v2::{self, BlockIdentifier},
-    web3id::did::Network,
 };
 use eg::{election_manifest::ElectionManifest, election_parameters::ElectionParameters};
-use election_common::HttpClient;
+use election_common::{decode, EncryptedTally, HttpClient};
 use tonic::transport::ClientTlsConfig;
 
 use crate::{
     shared::{Error, GenesisHash, DEFAULT_REQUEST_TIMEOUT_MS},
-    user_config::{PartialUserConfig, UserConfig},
+    user_config::UserConfig,
 };
+
+static TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
+    option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
+        .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
+        .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into())
+});
+
+static HTTP_CLIENT: LazyLock<HttpClient> =
+    LazyLock::new(|| HttpClient::try_create(*TIMEOUT).expect("Failed to create HTTP client"));
 
 /// The necessary election guard configuration to construct election guard
 /// entities.
 #[derive(Clone)]
 pub struct ElectionGuardConfig {
     /// The election manifest
-    pub manifest:   ElectionManifest,
+    pub manifest: ElectionManifest,
     /// The election parameters
     pub parameters: ElectionParameters,
 }
 
 pub struct ElectionContractMarker;
-/// The election contract client
 pub type ElectionClient = ContractClient<ElectionContractMarker>;
-
-/// The contract (and correspondingly node) connection configuration.
+/// The election contract client
 #[derive(Clone)]
-pub struct ConnectionConfig {
-    /// The http client to use for remote resources
-    pub http:     HttpClient,
-    /// The contract client for querying the contract.
-    pub contract: ElectionClient,
+pub struct ElectionContract(ElectionClient);
+
+impl ElectionContract {
+    pub async fn election_config(&mut self) -> Result<ElectionConfig, Error> {
+        let config: ElectionConfig = self
+            .0
+            .view::<_, ElectionConfig, Error>("viewConfig", &(), BlockIdentifier::LastFinal)
+            .await?;
+
+        Ok(config)
+    }
+
+    pub async fn encrypted_tally(&mut self) -> Result<Option<EncryptedTally>, Error> {
+        let tally = self
+            .0
+            .view::<_, Option<Vec<u8>>, Error>(
+                "viewEncryptedTally",
+                &(),
+                BlockIdentifier::LastFinal,
+            )
+            .await?;
+        let Some(tally) = tally else {
+            return Ok(None);
+        };
+
+        let tally: EncryptedTally =
+            decode(&tally).context("Failed to deserialize the encrypted tally")?;
+
+        Ok(Some(tally))
+    }
 }
 
-impl ConnectionConfig {
-    /// Creates a connection to a concordium node and a contract client. This
-    /// function panics if the necessary environment variables are not set.
-    pub async fn try_create_from_env(
-        endpoint: v2::Endpoint,
-        contract_address: ContractAddress,
-        network: Network,
-    ) -> Result<Self, Error> {
-        let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
-            .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
-            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
+pub struct AppConfig {
+    /// The user config loaded from disc
+    config: UserConfig,
+    /// The contract client for querying the contract.
+    contract: Option<ElectionContract>,
+    /// The election config registered in the contract.
+    election: Option<ElectionConfig>,
+    /// The election guard config.
+    election_guard: Option<ElectionGuardConfig>,
+}
 
-        let endpoint = if endpoint
+impl From<UserConfig> for AppConfig {
+    fn from(config: UserConfig) -> Self {
+        Self {
+            config,
+            contract: None,
+            election: None,
+            election_guard: None,
+        }
+    }
+}
+
+impl AppConfig {
+    pub async fn refresh(&mut self, config: UserConfig) -> Result<(), Error> {
+        self.config = config;
+        self.contract = None;
+        self.election = None;
+        self.election_guard = None;
+        Ok(())
+    }
+
+    pub async fn contract(&mut self) -> Result<ElectionContract, Error> {
+        if let Some(contract) = &self.contract {
+            return Ok(contract.clone());
+        }
+
+        let Some(contract_address) = self.config.contract else {
+            return Err(Error::IncompleteConfiguration("contract".to_string()));
+        };
+
+        let node_endpoint = self.config.node();
+        let network = self.config.network;
+
+        let endpoint = if node_endpoint
             .uri()
             .scheme()
             .map_or(false, |x| x == &v2::Scheme::HTTPS)
         {
-            endpoint
+            node_endpoint
                 .tls_config(ClientTlsConfig::new())
                 .context("Unable to construct TLS configuration for Concordium API.")?
         } else {
-            endpoint
+            node_endpoint
         };
 
-        let http = HttpClient::try_create(timeout)?;
-        let timeout = core::time::Duration::from_millis(timeout);
+        let timeout = core::time::Duration::from_millis(*TIMEOUT);
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let mut node = v2::Client::new(endpoint).await?;
+
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
         let expected_genesis_hash = network.genesis_hash();
         if genesis_hash != expected_genesis_hash {
@@ -77,90 +138,40 @@ impl ConnectionConfig {
             )
             .into());
         }
-        let contract = ElectionClient::create(node, contract_address).await?;
 
-        let contract_connection = Self { contract, http };
-        Ok(contract_connection)
+        let contract = ElectionContract(ElectionClient::create(node, contract_address).await?);
+        self.contract = Some(contract.clone());
+        Ok(contract)
     }
 
-    /// Gets the election config from the contract and subsequently the election
-    /// guard config.
-    pub async fn try_get_election_config(
-        &mut self,
-    ) -> Result<(ElectionConfig, ElectionGuardConfig), Error> {
-        let config: ElectionConfig = self
-            .contract
-            .view::<_, ElectionConfig, Error>("viewConfig", &(), BlockIdentifier::LastFinal)
+    pub async fn election(&mut self) -> Result<ElectionConfig, Error> {
+        if let Some(election) = &self.election {
+            return Ok(election.clone());
+        }
+
+        let config: ElectionConfig = self.contract().await?.election_config().await?;
+        self.election = Some(config.clone());
+        Ok(config)
+    }
+
+    pub async fn election_guard(&mut self) -> Result<ElectionGuardConfig, Error> {
+        if let Some(eg_config) = &self.election_guard {
+            return Ok(eg_config.clone());
+        }
+
+        let election = self.election().await?;
+        let manifest: ElectionManifest = HTTP_CLIENT
+            .get_json_resource_checked(&election.election_manifest)
             .await?;
-        let manifest: ElectionManifest = self
-            .http
-            .get_json_resource_checked(&config.election_manifest)
-            .await?;
-        let parameters: ElectionParameters = self
-            .http
-            .get_json_resource_checked(&config.election_parameters)
+        let parameters: ElectionParameters = HTTP_CLIENT
+            .get_json_resource_checked(&election.election_parameters)
             .await?;
 
         let eg_config = ElectionGuardConfig {
             manifest,
             parameters,
         };
-        Ok((config, eg_config))
-    }
-}
-
-/// The application config necessary for the application to function. All fields
-/// are optional to allow initializing the application with an "empty" version
-/// of this.
-#[derive(Clone)]
-pub struct AppConfig {
-    /// The node endpoint used internally in the application
-    pub node_endpoint:  v2::Endpoint,
-    /// The connection to the contract.
-    pub connection:     ConnectionConfig,
-    /// The election config registered in the contract.
-    pub election:       ElectionConfig,
-    /// The election guard config.
-    pub election_guard: ElectionGuardConfig,
-}
-
-impl AppConfig {
-    /// Creates a new [`AppConfig`] while checking the parameters create a valid
-    /// connection to an election contract.
-    ///
-    /// # Errors
-    /// - If the node endpoint is invalid or the connection to the contract
-    ///   fails.
-    pub async fn create_checked(
-        node_endpoint: v2::Endpoint,
-        contract_address: ContractAddress,
-        network: Network,
-    ) -> Result<Self, Error> {
-        let mut connection =
-            ConnectionConfig::try_create_from_env(node_endpoint.clone(), contract_address, network)
-                .await?;
-        let (election, election_guard) = connection.try_get_election_config().await?;
-
-        Ok(Self {
-            node_endpoint,
-            connection,
-            election,
-            election_guard,
-        })
-    }
-
-    /// Creates a new [`AppConfig`] from a user config. If the user config is
-    /// incomplete, `None` is returned.
-    ///
-    /// # Errors
-    /// - If the node endpoint is invalid or the connection to the contract
-    ///   fails.
-    pub async fn from_user_config(config: impl Into<UserConfig>) -> Result<Self, Error> {
-        let config: UserConfig = config.into();
-        let Some(contract) = config.contract else {
-            return Err(Error::IncompleteConfiguration("contract".to_string()));
-        };
-
-        Self::create_checked(config.node(), contract, config.network).await
+        self.election_guard = Some(eg_config.clone());
+        Ok(eg_config)
     }
 }

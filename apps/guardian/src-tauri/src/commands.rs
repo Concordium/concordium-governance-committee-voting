@@ -46,6 +46,7 @@ use crate::{
         ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState,
         GuardianData,
     },
+    user_config::{self, PartialUserConfig, UserConfig},
 };
 
 /// The file name of the encrypted wallet account.
@@ -223,7 +224,8 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: serde::Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static, {
+    R: DeserializeOwned + Sync + Send + 'static,
+{
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
@@ -407,7 +409,8 @@ impl ValidatedProposal {
 impl Serialize for ValidatedProposal {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut proposal = serializer.serialize_struct("ValidatedProposal", 2)?;
         proposal.serialize_field("type", <&str>::from(self))?;
         proposal.serialize_field("ccdCost", &self.ccd_cost())?;
@@ -1009,29 +1012,29 @@ pub struct GuardianStateResponse {
     /// Whether the guardian has registered its encrypted shares
     has_encrypted_shares: bool,
     /// Whether the guardian has registered a public key
-    has_public_key:       bool,
+    has_public_key: bool,
     /// The guardian index
-    index:                u32,
+    index: u32,
     /// The guardian status registered for the guardian
-    status:               Option<contract::GuardianStatus>,
+    status: Option<contract::GuardianStatus>,
     /// Whether the guardian has registered a decryption share
     has_decryption_share: bool,
     /// Whether the guardian has proof of correct decryption
     has_decryption_proof: bool,
     /// Whether the guardian is excluded from the tally phase
-    excluded:             bool,
+    excluded: bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_shares: value.encrypted_share.is_some(),
-            has_public_key:       value.public_key.is_some(),
-            index:                value.index,
-            status:               value.status.clone(),
+            has_public_key: value.public_key.is_some(),
+            index: value.index,
+            status: value.status.clone(),
             has_decryption_share: value.decryption_share.is_some(),
             has_decryption_proof: value.decryption_share_proof.is_some(),
-            excluded:             value.excluded,
+            excluded: value.excluded,
         }
     }
 }
@@ -1080,18 +1083,11 @@ pub async fn refresh_encrypted_tally(
     contract_data: tauri::State<'_, ContractDataState>,
 ) -> Result<bool, Error> {
     let mut app_config = app_config.0.lock().await;
-    let mut contract = app_config.connection().await?.contract;
-    let Some(tally) = contract
-        .view::<_, Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
-        .await?
-    else {
+    let Some(tally) = app_config.contract().await?.encrypted_tally().await? else {
         return Ok(false);
     };
-
     let manifest = app_config.election_guard().await?.manifest;
 
-    let tally: EncryptedTally =
-        decode(&tally).context("Failed to deserialize the encrypted tally")?;
     if !tally
         .keys()
         .all(|k| manifest.contests.indices().contains(k))
@@ -1108,7 +1104,7 @@ pub async fn refresh_encrypted_tally(
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
-    contract_config:     ElectionConfig,
+    contract_config: ElectionConfig,
     election_parameters: ElectionParameters,
 }
 
@@ -1125,6 +1121,7 @@ pub async fn connect(
     app_config: tauri::State<'_, AppConfigState>,
 ) -> Result<ConnectResponse, Error> {
     let mut app_config_guard = app_config.0.lock().await;
+
     let contract_config = app_config_guard.election().await?;
     let eg_config = app_config_guard.election_guard().await?;
 

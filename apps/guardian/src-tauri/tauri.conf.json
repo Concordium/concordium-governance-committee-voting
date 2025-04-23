@@ -17,7 +17,7 @@
                 "open": true
             },
             "fs": {
-                "scope": ["$APPDATA/*", "$RESOURCE/*"],
+                "scope": ["$APPDATA/*", "$APPCONFIG/*", "$RESOURCE/*"],
                 "readFile": true,
                 "readDir": true,
                 "writeFile": true,
