@@ -80,8 +80,8 @@ pub struct ContractDataState(pub Mutex<ContractData>);
 
 /// The application config state
 #[derive(Default)]
-pub struct AppConfigState(pub Mutex<AppConfig>);
+pub struct AppConfigState(pub Mutex<Option<AppConfig>>);
 
 impl From<AppConfig> for AppConfigState {
-    fn from(config: AppConfig) -> Self { Self(Mutex::new(config)) }
+    fn from(config: AppConfig) -> Self { Self(Mutex::new(Some(config))) }
 }

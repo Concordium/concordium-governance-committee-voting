@@ -23,16 +23,14 @@ pub enum NodeConfig {
 
 fn deserialize_endpoint<'de, D>(deserializer: D) -> Result<v2::Endpoint, D::Error>
 where
-    D: serde::Deserializer<'de>,
-{
+    D: serde::Deserializer<'de>, {
     let s = String::deserialize(deserializer)?;
     v2::Endpoint::from_str(&s).map_err(serde::de::Error::custom)
 }
 
 fn serialize_endpoint<S>(endpoint: &v2::Endpoint, serializer: S) -> Result<S::Ok, S::Error>
 where
-    S: serde::Serializer,
-{
+    S: serde::Serializer, {
     let s = endpoint.uri().to_string();
     serializer.serialize_str(&s)
 }
@@ -57,14 +55,15 @@ impl NodeConfig {
     }
 }
 
-/// The user configuration for the application. This matches [`UserConfig`] but with non-optional fields.
+/// The user configuration for the application. This matches [`UserConfig`] but
+/// with non-optional fields.
 #[derive(Debug, serde::Deserialize)]
 pub struct UserConfig {
     /// The network id.
-    pub network: Network,
+    pub network:  Network,
     /// Describes the node endpoint to use.
     #[serde(default)]
-    pub node: NodeConfig,
+    pub node:     NodeConfig,
     /// The contract address of the election.
     #[serde(default)]
     pub contract: Option<ContractAddress>,
@@ -84,30 +83,28 @@ impl From<PartialUserConfig> for UserConfig {
     fn from(config: PartialUserConfig) -> Self {
         let default = Self::default();
         Self {
-            network: config.network.unwrap_or(default.network),
-            node: config.node.unwrap_or(default.node),
+            network:  config.network.unwrap_or(default.network),
+            node:     config.node.unwrap_or(default.node),
             contract: config.contract,
         }
     }
 }
 
 impl UserConfig {
-    pub fn node(&self) -> v2::Endpoint {
-        match &self.node {
-            NodeConfig::Auto => v2::Endpoint::from_str(env!("CCD_ELECTION_NODE")).unwrap(),
-            NodeConfig::Manual(endpoint) => endpoint.clone(),
-        }
-    }
+    pub const FILE: &'static str = "config.toml";
+
+    pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
 }
 
-/// Represents a partial [`UserConfig`], which is what will be written to the users disk and merged with
-/// [`UserConfig::default`] to form the complete application config.
+/// Represents a partial [`UserConfig`], which is what will be written to the
+/// users disk and merged with [`UserConfig::default`] to form the complete
+/// application config.
 #[derive(Debug, serde::Serialize, Clone)]
 pub struct PartialUserConfig {
     /// The network id.
-    pub network: Option<Network>,
+    pub network:  Option<Network>,
     /// Describes the node endpoint to use.
-    pub node: Option<NodeConfig>,
+    pub node:     Option<NodeConfig>,
     /// The contract address of the election.
     pub contract: Option<ContractAddress>,
 }
@@ -115,24 +112,21 @@ pub struct PartialUserConfig {
 impl From<UserConfig> for PartialUserConfig {
     fn from(config: UserConfig) -> Self {
         Self {
-            network: Some(config.network),
-            node: Some(config.node),
+            network:  Some(config.network),
+            node:     Some(config.node),
             contract: config.contract,
         }
     }
 }
 
 impl Default for PartialUserConfig {
-    fn default() -> Self {
-        Self::from(UserConfig::default())
-    }
+    fn default() -> Self { Self::from(UserConfig::default()) }
 }
 
 impl<'de> serde::Deserialize<'de> for PartialUserConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::de::Deserializer<'de>,
-    {
+        D: serde::de::Deserializer<'de>, {
         let mut user_config = PartialUserConfig::default();
 
         let map = serde_json::Value::deserialize(deserializer)?;
@@ -154,7 +148,17 @@ impl<'de> serde::Deserialize<'de> for PartialUserConfig {
 }
 
 impl PartialUserConfig {
-    /// Creates a new [`UserConfig`] for an election defined by the network id and the contract address.
+    /// Creates an empty configuration.
+    pub fn empty() -> Self {
+        Self {
+            network:  None,
+            node:     None,
+            contract: None,
+        }
+    }
+
+    /// Creates a new [`UserConfig`] for an election defined by the network id
+    /// and the contract address.
     pub fn with_election(network: Network, contract: ContractAddress) -> Self {
         Self {
             network: Some(network),
@@ -163,11 +167,10 @@ impl PartialUserConfig {
         }
     }
 
-    pub fn full_config(&self) -> UserConfig {
-        UserConfig::from(self.clone())
-    }
+    pub fn full_config(&self) -> UserConfig { UserConfig::from(self.clone()) }
 
-    /// Gets the toml representation of the [`UserConfig`], annotated with comments.
+    /// Gets the toml representation of the [`UserConfig`], annotated with
+    /// comments.
     pub fn get_toml(&self) -> String {
         let mut document =
             toml_edit::ser::to_document(self).expect("UserConfig should serialize to TOML");
@@ -227,10 +230,10 @@ mod tests {
     #[test]
     fn test_get_toml_full() {
         let user_config = PartialUserConfig {
-            network: Some(Network::Mainnet),
-            node: Some(NodeConfig::Auto),
+            network:  Some(Network::Mainnet),
+            node:     Some(NodeConfig::Auto),
             contract: Some(ContractAddress {
-                index: 1,
+                index:    1,
                 subindex: 0,
             }),
         };
@@ -267,10 +270,10 @@ node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API o
     #[test]
     fn test_get_toml_partial() {
         let user_config = PartialUserConfig {
-            network: None,
-            node: None,
+            network:  None,
+            node:     None,
             contract: Some(ContractAddress {
-                index: 1,
+                index:    1,
                 subindex: 0,
             }),
         };
@@ -290,8 +293,8 @@ subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
     #[test]
     fn test_get_toml_empty() {
         let user_config = PartialUserConfig {
-            network: None,
-            node: None,
+            network:  None,
+            node:     None,
             contract: None,
         };
 

@@ -6,12 +6,12 @@ use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use tauri::{App, Manager};
 
 mod commands;
-mod user_config;
 mod config;
 pub mod shared;
 pub mod state;
+mod user_config;
 
-use config::AppConfig;
+use user_config::{PartialUserConfig, UserConfig};
 
 fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)]
@@ -26,15 +26,19 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     if !app_data_dir.exists() {
         std::fs::create_dir(&app_data_dir).context("Failed to create app data directory")?;
     }
+    let config_path = app_data_dir.join(UserConfig::FILE);
+    if !config_path.exists() {
+        std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
+            .context("Failed to create user config")?;
+    }
 
-    let app_config = AppConfig::try_from(app.get_cli_matches()?)?;
-    app.manage(AppConfigState::from(app_config));
     Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
         .setup(handle_setup)
+        .manage(AppConfigState::default())
         .manage(ActiveGuardianState::default())
         .manage(ContractDataState::default())
         .invoke_handler(tauri::generate_handler![

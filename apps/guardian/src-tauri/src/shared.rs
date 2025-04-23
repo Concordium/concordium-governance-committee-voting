@@ -63,6 +63,8 @@ pub enum Error {
     /// When a decryption share result shared by some guardian is invalid
     #[error("{0} - manual intervention required by the election coordinator")]
     InvalidDecryptionShare(String),
+    #[error("The user configuration is incomplete. The '{0}' field is missing.")]
+    IncompleteConfiguration(String),
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {

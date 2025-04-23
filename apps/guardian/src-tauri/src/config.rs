@@ -10,13 +10,12 @@ use concordium_rust_sdk::{
 };
 use eg::{election_manifest::ElectionManifest, election_parameters::ElectionParameters};
 use election_common::HttpClient;
-use tauri::api::cli;
-use tonic::transport::{ClientTlsConfig, Endpoint};
+use tonic::transport::ClientTlsConfig;
 
-use crate::shared::{Error, GenesisHash, DEFAULT_REQUEST_TIMEOUT_MS};
-
-/// The CLI argument to specify to override the node used internally.
-pub const CLI_ARG_NODE: &str = "node";
+use crate::{
+    shared::{Error, GenesisHash, DEFAULT_REQUEST_TIMEOUT_MS},
+    user_config::{PartialUserConfig, UserConfig},
+};
 
 /// The necessary election guard configuration to construct election guard
 /// entities.
@@ -44,13 +43,14 @@ pub struct ConnectionConfig {
 impl ConnectionConfig {
     /// Creates a connection to a concordium node and a contract client. This
     /// function panics if the necessary environment variables are not set.
-    pub async fn try_create_from_env(endpoint: v2::Endpoint) -> Result<Self, Error> {
+    pub async fn try_create_from_env(
+        endpoint: v2::Endpoint,
+        contract_address: ContractAddress,
+        network: Network,
+    ) -> Result<Self, Error> {
         let timeout = option_env!("CCD_ELECTION_REQUEST_TIMEOUT_MS")
             .map(|v| u64::from_str(v).expect("Could not parse CCD_ELECTION_REQUEST_TIMEOUT_MS"))
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS.into());
-        let contract_address = ContractAddress::from_str(env!("CCD_ELECTION_CONTRACT_ADDRESS"))
-            .expect("Could not parse CCD_ELECTION_CONTRACT_ADDRESS");
-        let network_id = env!("CCD_ELECTION_NETWORK");
 
         let endpoint = if endpoint
             .uri()
@@ -69,14 +69,11 @@ impl ConnectionConfig {
         let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
         let mut node = v2::Client::new(endpoint).await?;
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
-        let expected_genesis_hash = network_id
-            .parse::<Network>()
-            .context("CCD_ELECTION_NETWORK needs to be either 'testnet' or 'mainnet'")?
-            .genesis_hash();
+        let expected_genesis_hash = network.genesis_hash();
         if genesis_hash != expected_genesis_hash {
             return Err(anyhow!(
                 "Invalid node specified. Application must use a {} node",
-                network_id
+                network
             )
             .into());
         }
@@ -119,109 +116,51 @@ impl ConnectionConfig {
 pub struct AppConfig {
     /// The node endpoint used internally in the application
     pub node_endpoint:  v2::Endpoint,
-    /// The connection to the contract. Best to access this through
-    /// [`AppConfig::connection`] as this lazily creates the connection and
-    /// caches it.
-    pub connection:     Option<ConnectionConfig>,
-    /// The election config registered in the contract. Best to access this
-    /// through [`AppConfig::election`] as this lazily loads the
-    /// election config and caches it.
-    pub election:       Option<ElectionConfig>,
-    /// The election guard config. Best to access this through
-    /// [`AppConfig::election_guard`] as this lazily loads the
-    /// election guard config and caches it.
-    pub election_guard: Option<ElectionGuardConfig>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        let node_endpoint = Endpoint::from_str(env!("CCD_ELECTION_NODE"))
-            .expect("Could not parse CCD_ELECTION_NODE");
-        Self {
-            node_endpoint,
-            connection: Default::default(),
-            election: Default::default(),
-            election_guard: Default::default(),
-        }
-    }
-}
-
-impl TryFrom<cli::Matches> for AppConfig {
-    type Error = Error;
-
-    fn try_from(matches: cli::Matches) -> Result<Self, Self::Error> {
-        let Some(serde_json::Value::String(node_arg)) = matches
-            .args
-            .get(CLI_ARG_NODE)
-            .map(|node_arg| &node_arg.value)
-        else {
-            return Ok(Self::default());
-        };
-
-        let node_endpoint = v2::Endpoint::from_str(node_arg)?;
-        Ok(Self::create(node_endpoint))
-    }
+    /// The connection to the contract.
+    pub connection:     ConnectionConfig,
+    /// The election config registered in the contract.
+    pub election:       ElectionConfig,
+    /// The election guard config.
+    pub election_guard: ElectionGuardConfig,
 }
 
 impl AppConfig {
-    /// Creates a new [`AppConfig`]
-    pub fn create(node_endpoint: v2::Endpoint) -> Self {
-        Self {
+    /// Creates a new [`AppConfig`] while checking the parameters create a valid
+    /// connection to an election contract.
+    ///
+    /// # Errors
+    /// - If the node endpoint is invalid or the connection to the contract
+    ///   fails.
+    pub async fn create_checked(
+        node_endpoint: v2::Endpoint,
+        contract_address: ContractAddress,
+        network: Network,
+    ) -> Result<Self, Error> {
+        let mut connection =
+            ConnectionConfig::try_create_from_env(node_endpoint.clone(), contract_address, network)
+                .await?;
+        let (election, election_guard) = connection.try_get_election_config().await?;
+
+        Ok(Self {
             node_endpoint,
-            connection: Default::default(),
-            election: Default::default(),
-            election_guard: Default::default(),
-        }
+            connection,
+            election,
+            election_guard,
+        })
     }
 
-    /// Gets the connection. If a connection does not exist, a new one is
-    /// created and stored in the configuration before being returned.
-    pub async fn connection(&mut self) -> Result<ConnectionConfig, Error> {
-        let connection = if let Some(connection) = &self.connection {
-            connection.clone()
-        } else {
-            let connection =
-                ConnectionConfig::try_create_from_env(self.node_endpoint.clone()).await?;
-            self.connection = Some(connection.clone());
-            connection
+    /// Creates a new [`AppConfig`] from a user config. If the user config is
+    /// incomplete, `None` is returned.
+    ///
+    /// # Errors
+    /// - If the node endpoint is invalid or the connection to the contract
+    ///   fails.
+    pub async fn from_user_config(config: impl Into<UserConfig>) -> Result<Self, Error> {
+        let config: UserConfig = config.into();
+        let Some(contract) = config.contract else {
+            return Err(Error::IncompleteConfiguration("contract".to_string()));
         };
 
-        Ok(connection)
-    }
-
-    /// Gets the election guard config. If not already present, it is fetched
-    /// and stored (along with the election config) before being returned.
-    pub async fn election_guard(&mut self) -> Result<ElectionGuardConfig, Error> {
-        let eg = if let Some(eg) = &self.election_guard {
-            eg.clone()
-        } else {
-            let mut connection = self.connection().await?;
-            let (election, eg) = connection.try_get_election_config().await?;
-
-            self.election_guard = Some(eg.clone());
-            self.election = Some(election);
-
-            eg
-        };
-
-        Ok(eg)
-    }
-
-    /// Gets the election guard. If not already present, it is fetched and
-    /// stored (along with the election guard config) before being returned.
-    pub async fn election(&mut self) -> Result<ElectionConfig, Error> {
-        let election = if let Some(election) = &self.election {
-            election.clone()
-        } else {
-            let mut connection = self.connection().await?;
-            let (election, eg) = connection.try_get_election_config().await?;
-
-            self.election_guard = Some(eg);
-            self.election = Some(election.clone());
-
-            election
-        };
-
-        Ok(election)
+        Self::create_checked(config.node(), contract, config.network).await
     }
 }
