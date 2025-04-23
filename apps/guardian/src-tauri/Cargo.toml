@@ -12,6 +12,7 @@ edition = "2021"
 [build-dependencies]
 concordium-rust-sdk = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 tauri-build = { version = "1.5", features = [] }
 toml_edit = { version = "0.22", features = ["serde"] }
 

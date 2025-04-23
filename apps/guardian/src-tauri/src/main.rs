@@ -6,6 +6,7 @@ use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use tauri::{App, Manager};
 
 mod commands;
+mod user_config;
 mod config;
 pub mod shared;
 pub mod state;
