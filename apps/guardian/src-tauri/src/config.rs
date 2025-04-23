@@ -150,7 +150,11 @@ impl TryFrom<cli::Matches> for AppConfig {
     type Error = Error;
 
     fn try_from(matches: cli::Matches) -> Result<Self, Self::Error> {
-        let Some(serde_json::Value::String(node_arg)) = matches.args.get(CLI_ARG_NODE).map(|node_arg| &node_arg.value) else {
+        let Some(serde_json::Value::String(node_arg)) = matches
+            .args
+            .get(CLI_ARG_NODE)
+            .map(|node_arg| &node_arg.value)
+        else {
             return Ok(Self::default());
         };
 
