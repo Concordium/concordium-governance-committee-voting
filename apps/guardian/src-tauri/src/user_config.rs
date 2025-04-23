@@ -7,7 +7,7 @@ use serde::Deserialize;
 // user configuration (found at `resources/default_config.toml`) at build time.
 
 /// Represents the node configuration for the application.
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize, Clone)]
 pub enum NodeConfig {
     /// Node is determined automatically from the network.
     #[default]
@@ -37,9 +37,29 @@ where
     serializer.serialize_str(&s)
 }
 
-/// The default user configuration for the application. This matches [`UserConfig`] but with non-optional fields.
+const DEFAULT_NODE_TESTNET: &str = "https://grpc.testnet.concordium.com:20000";
+const DEFAULT_NODE_MAINNET: &str = "https://grpc.mainnet.concordium.software:20000";
+
+impl NodeConfig {
+    pub fn default_endpoint(network: Network) -> v2::Endpoint {
+        match network {
+            Network::Testnet => v2::Endpoint::from_str(DEFAULT_NODE_TESTNET).unwrap(),
+            Network::Mainnet => v2::Endpoint::from_str(DEFAULT_NODE_MAINNET).unwrap(),
+        }
+    }
+
+    pub fn endpoint(&self, network: Network) -> v2::Endpoint {
+        let NodeConfig::Manual(endpoint) = self else {
+            return Self::default_endpoint(network);
+        };
+
+        endpoint.clone()
+    }
+}
+
+/// The user configuration for the application. This matches [`UserConfig`] but with non-optional fields.
 #[derive(Debug, serde::Deserialize)]
-pub struct DefaultUserConfig {
+pub struct UserConfig {
     /// The network id.
     pub network: Network,
     /// Describes the node endpoint to use.
@@ -50,18 +70,40 @@ pub struct DefaultUserConfig {
     pub contract: Option<ContractAddress>,
 }
 
+// Include the default config file at compile time
 const DEFAULT_CONFIG: &str = include_str!("../resources/default_config.toml");
 
-impl Default for DefaultUserConfig {
+impl Default for UserConfig {
     fn default() -> Self {
-        // Include the default config file at compile time
+        // This is already checked in `build.rs` so we can unwrap here
         toml_edit::de::from_str(DEFAULT_CONFIG).expect("Can successfully parse default config")
     }
 }
 
-/// The user configuration for the application.
-#[derive(Debug, serde::Serialize)]
-pub struct UserConfig {
+impl From<PartialUserConfig> for UserConfig {
+    fn from(config: PartialUserConfig) -> Self {
+        let default = Self::default();
+        Self {
+            network: config.network.unwrap_or(default.network),
+            node: config.node.unwrap_or(default.node),
+            contract: config.contract,
+        }
+    }
+}
+
+impl UserConfig {
+    pub fn node(&self) -> v2::Endpoint {
+        match &self.node {
+            NodeConfig::Auto => v2::Endpoint::from_str(env!("CCD_ELECTION_NODE")).unwrap(),
+            NodeConfig::Manual(endpoint) => endpoint.clone(),
+        }
+    }
+}
+
+/// Represents a partial [`UserConfig`], which is what will be written to the users disk and merged with
+/// [`UserConfig::default`] to form the complete application config.
+#[derive(Debug, serde::Serialize, Clone)]
+pub struct PartialUserConfig {
     /// The network id.
     pub network: Option<Network>,
     /// Describes the node endpoint to use.
@@ -70,8 +112,8 @@ pub struct UserConfig {
     pub contract: Option<ContractAddress>,
 }
 
-impl From<DefaultUserConfig> for UserConfig {
-    fn from(config: DefaultUserConfig) -> Self {
+impl From<UserConfig> for PartialUserConfig {
+    fn from(config: UserConfig) -> Self {
         Self {
             network: Some(config.network),
             node: Some(config.node),
@@ -80,18 +122,18 @@ impl From<DefaultUserConfig> for UserConfig {
     }
 }
 
-impl Default for UserConfig {
+impl Default for PartialUserConfig {
     fn default() -> Self {
-        Self::from(DefaultUserConfig::default())
+        Self::from(UserConfig::default())
     }
 }
 
-impl<'de> serde::Deserialize<'de> for UserConfig {
+impl<'de> serde::Deserialize<'de> for PartialUserConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::de::Deserializer<'de>,
     {
-        let mut user_config = UserConfig::default();
+        let mut user_config = PartialUserConfig::default();
 
         let map = serde_json::Value::deserialize(deserializer)?;
         if let Some(network) = map.get("network") {
@@ -111,7 +153,7 @@ impl<'de> serde::Deserialize<'de> for UserConfig {
     }
 }
 
-impl UserConfig {
+impl PartialUserConfig {
     /// Creates a new [`UserConfig`] for an election defined by the network id and the contract address.
     pub fn with_election(network: Network, contract: ContractAddress) -> Self {
         Self {
@@ -119,6 +161,10 @@ impl UserConfig {
             contract: Some(contract),
             ..Default::default()
         }
+    }
+
+    pub fn full_config(&self) -> UserConfig {
+        UserConfig::from(self.clone())
     }
 
     /// Gets the toml representation of the [`UserConfig`], annotated with comments.
@@ -180,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_get_toml_full() {
-        let user_config = UserConfig {
+        let user_config = PartialUserConfig {
             network: Some(Network::Mainnet),
             node: Some(NodeConfig::Auto),
             contract: Some(ContractAddress {
@@ -199,22 +245,28 @@ index = 1 # The index of the contract. Must be an unsigned integer.
 subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
 
         assert_eq!(toml_output, expected);
+
+        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+            .expect("Should be able to parse the toml output");
     }
 
     #[test]
     fn test_get_toml_default() {
-        let user_config = UserConfig::default();
+        let user_config = PartialUserConfig::default();
 
         let toml_output = user_config.get_toml();
         let expected = r#"network = "mainnet" # The network id. Must be either "mainnet" or "testnet".
 node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API of a Concordium node, e.g. "https://grpc.mainnet.concordium.software:20000". Setting to "auto" results in automatic determination of the endpoint depending on the "network"."#;
 
         assert_eq!(toml_output, expected);
+
+        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+            .expect("Should be able to parse the toml output");
     }
 
     #[test]
     fn test_get_toml_partial() {
-        let user_config = UserConfig {
+        let user_config = PartialUserConfig {
             network: None,
             node: None,
             contract: Some(ContractAddress {
@@ -230,11 +282,14 @@ index = 1 # The index of the contract. Must be an unsigned integer.
 subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
 
         assert_eq!(toml_output, expected);
+
+        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+            .expect("Should be able to parse the toml output");
     }
 
     #[test]
     fn test_get_toml_empty() {
-        let user_config = UserConfig {
+        let user_config = PartialUserConfig {
             network: None,
             node: None,
             contract: None,
@@ -244,5 +299,8 @@ subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
         let expected = "";
 
         assert_eq!(toml_output, expected);
+
+        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+            .expect("Should be able to parse the toml output");
     }
 }
