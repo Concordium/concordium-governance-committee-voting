@@ -17,7 +17,7 @@
                 "open": true
             },
             "fs": {
-                "scope": ["$APPDATA/*", "$APPCONFIG/*", "$RESOURCE/*"],
+                "scope": ["$APPDATA/*", "$APPCONFIG/*"],
                 "readFile": true,
                 "readDir": true,
                 "writeFile": true,
@@ -42,8 +42,7 @@
                 "icons/128x128@2x.png",
                 "icons/icon.icns",
                 "icons/icon.ico"
-            ],
-            "resources": ["resources/*"]
+            ]
         },
         "security": {
             "csp": null
