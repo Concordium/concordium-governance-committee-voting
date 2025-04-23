@@ -1,13 +1,20 @@
 use std::{str::FromStr, sync::LazyLock};
 
 use anyhow::{anyhow, Context};
-use concordium_governance_committee_election::ElectionConfig;
+use concordium_governance_committee_election::{self as contract};
 use concordium_rust_sdk::{
-    contract_client::ContractClient,
+    common::types::Amount,
+    contract_client::{ContractClient, ContractUpdateBuilder},
+    id::types::AccountAddress,
     v2::{self, BlockIdentifier},
 };
-use eg::{election_manifest::ElectionManifest, election_parameters::ElectionParameters};
-use election_common::{decode, EncryptedTally, HttpClient};
+use eg::{
+    election_manifest::ElectionManifest, election_parameters::ElectionParameters,
+    guardian_public_key::GuardianPublicKey, guardian_share::GuardianEncryptedShare,
+};
+use election_common::{
+    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof, HttpClient,
+};
 use tonic::transport::ClientTlsConfig;
 
 use crate::{
@@ -29,7 +36,7 @@ static HTTP_CLIENT: LazyLock<HttpClient> =
 #[derive(Clone)]
 pub struct ElectionGuardConfig {
     /// The election manifest
-    pub manifest: ElectionManifest,
+    pub manifest:   ElectionManifest,
     /// The election parameters
     pub parameters: ElectionParameters,
 }
@@ -38,13 +45,17 @@ pub struct ElectionContractMarker;
 pub type ElectionClient = ContractClient<ElectionContractMarker>;
 /// The election contract client
 #[derive(Clone)]
-pub struct ElectionContract(ElectionClient);
+pub struct ElectionContract(pub ElectionClient);
 
 impl ElectionContract {
-    pub async fn election_config(&mut self) -> Result<ElectionConfig, Error> {
-        let config: ElectionConfig = self
+    pub async fn election_config(&mut self) -> Result<contract::ElectionConfig, Error> {
+        let config = self
             .0
-            .view::<_, ElectionConfig, Error>("viewConfig", &(), BlockIdentifier::LastFinal)
+            .view::<_, contract::ElectionConfig, Error>(
+                "viewConfig",
+                &(),
+                BlockIdentifier::LastFinal,
+            )
             .await?;
 
         Ok(config)
@@ -68,15 +79,118 @@ impl ElectionContract {
 
         Ok(Some(tally))
     }
+
+    pub async fn guardians_state(&mut self) -> Result<contract::GuardiansState, Error> {
+        let state = self
+            .0
+            .view::<_, contract::GuardiansState, Error>(
+                "viewGuardiansState",
+                &(),
+                BlockIdentifier::LastFinal,
+            )
+            .await?;
+
+        Ok(state)
+    }
+
+    pub async fn register_guardian_public_key(
+        &mut self,
+        sender: &AccountAddress,
+        public_key: &GuardianPublicKey,
+    ) -> Result<ContractUpdateBuilder, Error> {
+        let update = self
+            .0
+            .dry_run_update::<Vec<u8>, Error>(
+                "registerGuardianPublicKey",
+                Amount::zero(),
+                *sender,
+                &encode(public_key).unwrap(), // Serialization will not fail
+            )
+            .await?;
+
+        Ok(update)
+    }
+
+    pub async fn register_encrypted_shares(
+        &mut self,
+        sender: &AccountAddress,
+        shares: &Vec<GuardianEncryptedShare>,
+    ) -> Result<ContractUpdateBuilder, Error> {
+        let update = self
+            .0
+            .dry_run_update::<Vec<u8>, Error>(
+                "registerGuardianEncryptedShare",
+                Amount::zero(),
+                *sender,
+                &encode(shares).unwrap(), // Serialization will not fail
+            )
+            .await?;
+
+        Ok(update)
+    }
+
+    pub async fn register_guardian_status(
+        &mut self,
+        sender: &AccountAddress,
+        guardian_status: &contract::GuardianStatus,
+    ) -> Result<ContractUpdateBuilder, Error> {
+        let update = self
+            .0
+            .dry_run_update::<contract::GuardianStatus, Error>(
+                "registerGuardianStatus",
+                Amount::zero(),
+                *sender,
+                guardian_status,
+            )
+            .await?;
+
+        Ok(update)
+    }
+
+    pub async fn post_decryption(
+        &mut self,
+        sender: &AccountAddress,
+        decryption: &GuardianDecryption,
+    ) -> Result<ContractUpdateBuilder, Error> {
+        let update = self
+            .0
+            .dry_run_update::<Vec<u8>, Error>(
+                "postDecryptionShare",
+                Amount::zero(),
+                *sender,
+                &encode(decryption).unwrap(), // Serialization will not fail
+            )
+            .await?;
+
+        Ok(update)
+    }
+
+    pub async fn post_decryption_proof(
+        &mut self,
+        sender: &AccountAddress,
+        shares: &GuardianDecryptionProof,
+    ) -> Result<ContractUpdateBuilder, Error> {
+        let update = self
+            .0
+            .dry_run_update::<Vec<u8>, Error>(
+                "postDecryptionProofResponseShare",
+                Amount::zero(),
+                *sender,
+                &encode(shares).unwrap(), // Serialization will not fail
+            )
+            .await?;
+
+        Ok(update)
+    }
 }
 
 pub struct AppConfig {
     /// The user config loaded from disc
-    config: UserConfig,
+    config:         UserConfig,
     /// The contract client for querying the contract.
-    contract: Option<ElectionContract>,
+    contract:       Option<ElectionContract>,
     /// The election config registered in the contract.
-    election: Option<ElectionConfig>,
+    election:       Option<contract::ElectionConfig>,
     /// The election guard config.
     election_guard: Option<ElectionGuardConfig>,
 }
@@ -144,12 +258,12 @@ impl AppConfig {
         Ok(contract)
     }
 
-    pub async fn election(&mut self) -> Result<ElectionConfig, Error> {
+    pub async fn election(&mut self) -> Result<contract::ElectionConfig, Error> {
         if let Some(election) = &self.election {
             return Ok(election.clone());
         }
 
-        let config: ElectionConfig = self.contract().await?.election_config().await?;
+        let config: contract::ElectionConfig = self.contract().await?.election_config().await?;
         self.election = Some(config.clone());
         Ok(config)
     }

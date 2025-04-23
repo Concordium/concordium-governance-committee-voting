@@ -150,10 +150,7 @@ impl<'de> serde::Deserialize<'de> for PartialUserConfig {
 impl FromStr for PartialUserConfig {
     type Err = toml_edit::de::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        toml_edit::de::from_str(s)
-
-    }
+    fn from_str(s: &str) -> Result<Self, Self::Err> { toml_edit::de::from_str(s) }
 }
 
 impl PartialUserConfig {
