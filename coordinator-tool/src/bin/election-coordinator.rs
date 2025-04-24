@@ -1279,7 +1279,7 @@ async fn handle_initial_weights(
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
     let mut affected = BTreeSet::new();
 
-    while let Some((block, normal, specials)) = receiver.recv().await {
+    'blocks: while let Some((block, normal, specials)) = receiver.recv().await {
         if block.block_height > last_block.block_height {
             drop(receiver);
             eprintln!("Done indexing");
@@ -1311,7 +1311,7 @@ async fn handle_initial_weights(
             );
 
             if !has_payday_event {
-                continue;
+                continue 'blocks;
             };
         }
 
