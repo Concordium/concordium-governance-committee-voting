@@ -90,8 +90,6 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
-    pub const FILENAME: &'static str = "config.toml";
-
     pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
 
     /// Gets the contract of the user configuration, returning an error if the

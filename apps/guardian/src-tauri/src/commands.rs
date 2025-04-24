@@ -37,7 +37,7 @@ use election_common::{
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use serde::{de::DeserializeOwned, ser::SerializeStruct, Serialize};
-use tauri::{AppHandle, Window};
+use tauri::{AppHandle, PathResolver, Window};
 use util::csprng::Csprng;
 
 use crate::{
@@ -47,6 +47,7 @@ use crate::{
         ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState,
         GuardianData,
     },
+    user_config::{PartialUserConfig, UserConfig},
 };
 
 /// The file name of the encrypted wallet account.
@@ -60,6 +61,8 @@ const SECRET_SHARE_FILE: &str = "secret-share.json.aes";
 const KEY_SHARE_ENCRYPTION_SECRETS_FILE: &str = "key-share-secrets.json.aes";
 /// The file name of the encrypted secret share for a guardian
 const DECRYPTION_SECRET_STATES: &str = "secret-decryption_states.json.aes";
+/// The file name of the user configuration
+const USER_CONFIG_FILE: &str = "config.toml";
 
 /// Get the data directory for guardians, creating it if it does not exist.
 fn guardians_data_dir(
@@ -88,6 +91,25 @@ fn guardian_data_dir(
     network: Network,
 ) -> PathBuf {
     guardians_data_dir(app_handle, contract, network).join(account.to_string())
+}
+
+/// Reads the user configuration from disk. If the file does not exist,
+/// it will be created with default values.
+pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error> {
+    let app_config_dir = path_resolver.app_config_dir().unwrap();
+    if !app_config_dir.exists() {
+        std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
+    }
+
+    let config_path = app_config_dir.join(USER_CONFIG_FILE);
+    if !config_path.exists() {
+        std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
+            .context("Failed to create user config")?;
+    }
+
+    let file = std::fs::read_to_string(config_path)?;
+    let user_config = PartialUserConfig::from_str(&file)?.full_config();
+    Ok(user_config)
 }
 
 /// Writes `data` encrypted with `password` to disk
@@ -1139,6 +1161,8 @@ pub async fn refresh_encrypted_tally(
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
+    network:             Network,
+    contract_address:    ContractAddress,
     contract_config:     ElectionConfig,
     election_parameters: ElectionParameters,
 }
@@ -1155,16 +1179,39 @@ pub struct ConnectResponse {
 pub async fn connect(
     app_config: tauri::State<'_, AppConfigState>,
 ) -> Result<ConnectResponse, Error> {
-    let mut app_config_guard = app_config.0.lock().await;
+    let mut app_config = app_config.0.lock().await;
 
-    let contract_config = app_config_guard.election().await?;
-    let eg_config = app_config_guard.election_guard().await?;
+    let contract_config = app_config.election().await?;
+    let eg_config = app_config.election_guard().await?;
 
     let response = ConnectResponse {
+        network: app_config.user_config().network,
+        contract_address: app_config.user_config().contract()?,
         contract_config,
         election_parameters: eg_config.parameters,
     };
     Ok(response)
+}
+
+/// Reloads the user configuration from disk. This is useful when the user
+/// modifies the configuration file while the app is running.
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::Http`]
+#[tauri::command]
+pub async fn reload_config(
+    app_config: tauri::State<'_, AppConfigState>,
+    app_handle: AppHandle,
+) -> Result<ConnectResponse, Error> {
+    {
+        let user_config = read_user_config(app_handle.path_resolver())?;
+        let mut app_config = app_config.0.lock().await;
+        app_config.refresh(user_config);
+    }
+
+    connect(app_config).await
 }
 
 /// Calculates the [`Amount`] for a given amount of [`Energy`].

@@ -199,8 +199,8 @@ impl From<UserConfig> for AppConfig {
     fn from(user_config: UserConfig) -> Self {
         Self {
             user_config,
-            contract:       None,
-            election:       None,
+            contract: None,
+            election: None,
             election_guard: None,
         }
     }
