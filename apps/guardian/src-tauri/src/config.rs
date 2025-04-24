@@ -186,7 +186,7 @@ impl ElectionContract {
 
 pub struct AppConfig {
     /// The user config loaded from disc
-    config:         UserConfig,
+    user_config:    UserConfig,
     /// The contract client for querying the contract.
     contract:       Option<ElectionContract>,
     /// The election config registered in the contract.
@@ -198,21 +198,20 @@ pub struct AppConfig {
 impl From<UserConfig> for AppConfig {
     fn from(config: UserConfig) -> Self {
         Self {
-            config,
-            contract: None,
-            election: None,
+            user_config:    config,
+            contract:       None,
+            election:       None,
             election_guard: None,
         }
     }
 }
 
 impl AppConfig {
-    pub async fn refresh(&mut self, config: UserConfig) -> Result<(), Error> {
-        self.config = config;
+    pub fn refresh(&mut self, config: UserConfig) {
+        self.user_config = config;
         self.contract = None;
         self.election = None;
         self.election_guard = None;
-        Ok(())
     }
 
     pub async fn contract(&mut self) -> Result<ElectionContract, Error> {
@@ -220,12 +219,12 @@ impl AppConfig {
             return Ok(contract.clone());
         }
 
-        let Some(contract_address) = self.config.contract else {
+        let Some(contract_address) = self.user_config.contract else {
             return Err(Error::IncompleteConfiguration("contract".to_string()));
         };
 
-        let node_endpoint = self.config.node();
-        let network = self.config.network;
+        let node_endpoint = self.user_config.node();
+        let network = self.user_config.network;
 
         let endpoint = if node_endpoint
             .uri()
