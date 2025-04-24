@@ -117,9 +117,9 @@ export function loadAccount(account: AccountAddress.Type, password: string): Pro
  */
 export type ElectionConfig = {
     /** The network from the user configuration */
-    network: TargetNetwork,
+    network: TargetNetwork;
     /** The contract address from the user configuration */
-    contractAddress: ContractAddress.Type,
+    contractAddress: ContractAddress.Type;
     /** The election start time */
     electionStart: Date;
     /** The election end time */
