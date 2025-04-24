@@ -1,6 +1,7 @@
 ## Unreleased
 
-- Bumped rust-sdk dependency to 5.0
+- Added configuration by user config file, allowing users to configure the network/contract to integrate with
+- Bumped rust-sdk dependency to 6.0
 
 ## 1.0.0
 
