@@ -1,8 +1,15 @@
 ## Unreleased
 
+### Breaking changes
+
+- Removed `--node` cli flag, as the target node can now be configured through the user configuration file
+
+### Changes
+
 - Bumped rust-sdk dependency to 6.0
 - Update `@concordium/web-sdk` to 9.1.
 - Added configuration by user config file, allowing users to configure the network/contract to integrate with
+
 
 ## 1.0.0
 
