@@ -1,3 +1,7 @@
+// We add `#![allow(dead_code)]` to avoid warnings about unused code in this file due to use in both `build.rs` and
+// `main.rs`.
+#![allow(dead_code)]
+
 use std::str::FromStr;
 
 use concordium_rust_sdk::{types::ContractAddress, v2, web3id::did::Network};
@@ -35,10 +39,12 @@ where
     serializer.serialize_str(&s)
 }
 
+
 const DEFAULT_NODE_TESTNET: &str = "https://grpc.testnet.concordium.com:20000";
 const DEFAULT_NODE_MAINNET: &str = "https://grpc.mainnet.concordium.software:20000";
 
 impl NodeConfig {
+
     pub fn default_endpoint(network: Network) -> v2::Endpoint {
         match network {
             Network::Testnet => v2::Endpoint::from_str(DEFAULT_NODE_TESTNET).unwrap(),
@@ -91,6 +97,7 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
+
     pub const FILENAME: &'static str = "config.toml";
 
     pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
