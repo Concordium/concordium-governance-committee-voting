@@ -1,14 +1,7 @@
-// We add `#![allow(dead_code)]` to avoid warnings about unused code in this file due to use in both `build.rs` and
-// `main.rs`.
-#![allow(dead_code)]
-
 use std::str::FromStr;
 
 use concordium_rust_sdk::{types::ContractAddress, v2, web3id::did::Network};
 use serde::Deserialize;
-
-// This is isolated in its own module to make it easier to validate the default
-// user configuration (found at `resources/default_config.toml`) at build time.
 
 /// Represents the node configuration for the application.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize, Clone)]
@@ -39,12 +32,10 @@ where
     serializer.serialize_str(&s)
 }
 
-
 const DEFAULT_NODE_TESTNET: &str = "https://grpc.testnet.concordium.com:20000";
 const DEFAULT_NODE_MAINNET: &str = "https://grpc.mainnet.concordium.software:20000";
 
 impl NodeConfig {
-
     pub fn default_endpoint(network: Network) -> v2::Endpoint {
         match network {
             Network::Testnet => v2::Endpoint::from_str(DEFAULT_NODE_TESTNET).unwrap(),
@@ -97,7 +88,6 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
-
     pub const FILENAME: &'static str = "config.toml";
 
     pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
@@ -262,7 +252,7 @@ subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
 
         assert_eq!(toml_output, expected);
 
-        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+        toml_edit::de::from_str::<PartialUserConfig>(expected)
             .expect("Should be able to parse the toml output");
     }
 
@@ -276,7 +266,7 @@ node = "auto" # Can be set to either "auto", or a url pointing to the GRPC API o
 
         assert_eq!(toml_output, expected);
 
-        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+        toml_edit::de::from_str::<PartialUserConfig>(expected)
             .expect("Should be able to parse the toml output");
     }
 
@@ -299,7 +289,7 @@ subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
 
         assert_eq!(toml_output, expected);
 
-        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+        toml_edit::de::from_str::<PartialUserConfig>(expected)
             .expect("Should be able to parse the toml output");
     }
 
@@ -316,7 +306,13 @@ subindex = 0 # The subindex of the contract. Must be an unsigned integer."#;
 
         assert_eq!(toml_output, expected);
 
-        toml_edit::de::from_str::<PartialUserConfig>(&expected)
+        toml_edit::de::from_str::<PartialUserConfig>(expected)
             .expect("Should be able to parse the toml output");
+    }
+
+    #[test]
+    fn test_parse_default_config() {
+        toml_edit::de::from_str::<UserConfig>(DEFAULT_CONFIG)
+            .expect("Should be able to parse the default config");
     }
 }
