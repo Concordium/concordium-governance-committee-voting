@@ -1,3 +1,3 @@
 ## Unreleased
 
-- Bumped rust-sdk dependency to 5.0
+- Bumped rust-sdk dependency to 6.0
