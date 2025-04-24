@@ -23,12 +23,6 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         window.maximize().ok();
     }
 
-    // Will not fail due to being declared accessible in `tauri.conf.json`
-    let app_data_dir = app.path_resolver().app_data_dir().unwrap();
-    if !app_data_dir.exists() {
-        std::fs::create_dir(&app_data_dir).context("Failed to create app data directory")?;
-    }
-
     let app_config_dir = app.path_resolver().app_config_dir().unwrap();
     if !app_config_dir.exists() {
         std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
@@ -40,8 +34,8 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let file = std::fs::read_to_string(config_path)?;
-    let user_config = PartialUserConfig::from_str(&file)?;
-    app.manage(AppConfigState::from(user_config.full_config()));
+    let user_config = PartialUserConfig::from_str(&file)?.full_config();
+    app.manage(AppConfigState::from(user_config));
 
     Ok(())
 }

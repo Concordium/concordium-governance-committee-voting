@@ -12,8 +12,9 @@ use concordium_rust_sdk::{
         types::Amount,
     },
     id::types::AccountAddress,
-    types::{Energy, WalletAccount},
+    types::{ContractAddress, Energy, WalletAccount},
     v2::{self, BlockIdentifier},
+    web3id::did::Network,
 };
 use eg::{
     election_parameters::ElectionParameters,
@@ -60,13 +61,33 @@ const KEY_SHARE_ENCRYPTION_SECRETS_FILE: &str = "key-share-secrets.json.aes";
 /// The file name of the encrypted secret share for a guardian
 const DECRYPTION_SECRET_STATES: &str = "secret-decryption_states.json.aes";
 
-/// Get the data directory for a guardian account
-fn guardian_data_dir(app_handle: &AppHandle, account: AccountAddress) -> PathBuf {
-    app_handle
+/// Get the data directory for guardians, creating it if it does not exist.
+fn guardians_data_dir(
+    app_handle: &AppHandle,
+    contract: ContractAddress,
+    network: Network,
+) -> PathBuf {
+    let guardian_dir = app_handle
         .path_resolver()
         .app_data_dir()
         .unwrap() // Path is available as declared in `tauri.conf.json`
-        .join(account.to_string())
+        .join(network.to_string())
+        .join(format!("{}-{}", contract.index, contract.subindex));
+
+    if !guardian_dir.exists() {
+        let _ = std::fs::create_dir_all(&guardian_dir);
+    }
+    guardian_dir
+}
+
+/// Get the data directory for a guardian account
+fn guardian_data_dir(
+    app_handle: &AppHandle,
+    account: AccountAddress,
+    contract: ContractAddress,
+    network: Network,
+) -> PathBuf {
+    guardians_data_dir(app_handle, contract, network).join(account.to_string())
 }
 
 /// Writes `data` encrypted with `password` to disk
@@ -114,11 +135,19 @@ pub async fn import_wallet_account(
     guardian_index: GuardianIndex,
     password: String,
     active_guardian: tauri::State<'_, ActiveGuardianState>,
+    app_config: tauri::State<'_, AppConfigState>,
     app_handle: AppHandle,
 ) -> Result<AccountAddress, Error> {
     let account = wallet_account.address;
+    let app_config = app_config.0.lock().await;
+    let user_config = app_config.user_config();
 
-    let guardian_dir = guardian_data_dir(&app_handle, account);
+    let guardian_dir = guardian_data_dir(
+        &app_handle,
+        account,
+        user_config.contract()?,
+        user_config.network,
+    );
     if guardian_dir.exists() {
         return Err(Error::ExistingAccount);
     }
@@ -179,9 +208,19 @@ pub async fn load_account(
     password: String,
     app_handle: AppHandle,
     active_guardian: tauri::State<'_, ActiveGuardianState>,
+    app_config: tauri::State<'_, AppConfigState>,
 ) -> Result<(), Error> {
     let password = Password::from(password);
-    let account_path = guardian_data_dir(&app_handle, account).join(WALLET_ACCOUNT_FILE);
+    let app_config = app_config.0.lock().await;
+    let user_config = app_config.user_config();
+
+    let account_path = guardian_data_dir(
+        &app_handle,
+        account,
+        user_config.contract()?,
+        user_config.network,
+    )
+    .join(WALLET_ACCOUNT_FILE);
     let guardian_data: GuardianData = read_encrypted_file(&password, &account_path)?;
 
     let mut active_guardian = active_guardian.0.lock().await;
@@ -295,8 +334,15 @@ pub async fn register_guardian_key_flow(
             .context("Guardian account not available in app state")?;
         let mut app_config = app_config.0.lock().await;
         let public_key = {
-            let secret_key_path = guardian_data_dir(&app_handle, active_guardian.guardian.account)
-                .join(SECRET_KEY_FILE);
+            let user_config = app_config.user_config();
+
+            let secret_key_path = guardian_data_dir(
+                &app_handle,
+                active_guardian.guardian.account,
+                user_config.contract()?,
+                user_config.network,
+            )
+            .join(SECRET_KEY_FILE);
 
             let secret_key = if secret_key_path.exists() {
                 read_encrypted_file(&active_guardian.password, &secret_key_path)?
@@ -445,8 +491,13 @@ pub async fn register_guardian_shares_flow(
         let election_parameters = app_config.election_guard().await?.parameters;
         let contract_data = contract_data.0.lock().await;
 
-        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
-
+        let user_config = app_config.user_config();
+        let guardian_data_dir = guardian_data_dir(
+            &app_handle,
+            active_guardian.guardian.account,
+            user_config.contract()?,
+            user_config.network,
+        );
         let secret_key_path = guardian_data_dir.join(SECRET_KEY_FILE);
         let secret_key = read_encrypted_file(&active_guardian.password, &secret_key_path)?;
         let encrypted_shares = match generate_encrypted_shares(
@@ -611,7 +662,13 @@ pub async fn generate_secret_share_flow(
             .as_ref()
             .context("Active account not set")?;
         let contract_data = contract_data.0.lock().await;
-        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
+        let user_config = app_config.user_config();
+        let guardian_data_dir = guardian_data_dir(
+            &app_handle,
+            active_guardian.guardian.account,
+            user_config.contract()?,
+            user_config.network,
+        );
         let secret_key_path = guardian_data_dir.join(SECRET_KEY_FILE);
         let secret_key: GuardianSecretKey =
             read_encrypted_file(&active_guardian.password, &secret_key_path)?;
@@ -748,7 +805,13 @@ pub async fn register_decryption_shares_flow(
         let active_guardian = active_guardian
             .as_ref()
             .context("Expected guardian account to be available in app state")?;
-        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
+        let user_config = app_config.user_config();
+        let guardian_data_dir = guardian_data_dir(
+            &app_handle,
+            active_guardian.guardian.account,
+            user_config.contract()?,
+            user_config.network,
+        );
 
         let secret_share = read_encrypted_file(
             &active_guardian.password,
@@ -932,7 +995,13 @@ pub async fn register_decryption_proofs_flow(
         let active_guardian = active_guardian
             .as_ref()
             .context("Expected guardian account to be available in app state")?;
-        let guardian_data_dir = guardian_data_dir(&app_handle, active_guardian.guardian.account);
+        let user_config = app_config.user_config();
+        let guardian_data_dir = guardian_data_dir(
+            &app_handle,
+            active_guardian.guardian.account,
+            user_config.contract()?,
+            user_config.network,
+        );
         let secret_key_share = read_encrypted_file(
             &active_guardian.password,
             &guardian_data_dir.join(SECRET_SHARE_FILE),
