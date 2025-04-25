@@ -89,9 +89,9 @@ fn guardian_data_dir(
     guardians_data_dir(app_handle, user_config).map(|dir| dir.join(account.to_string()))
 }
 
-/// Reads the user configuration from disk. If the file does not exist,
-/// it will be created with default values.
-pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error> {
+/// Get the path of the user configuration file. This will create the
+/// configuration file if it does not exist.
+pub fn user_config_path(path_resolver: PathResolver) -> Result<PathBuf, Error> {
     let app_config_dir = path_resolver.app_config_dir().unwrap();
     if !app_config_dir.exists() {
         std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
@@ -102,7 +102,13 @@ pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error
         std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
             .context("Failed to create user config")?;
     }
+    Ok(config_path)
+}
 
+/// Reads the user configuration from disk. If the file does not exist,
+/// it will be created with default values.
+pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error> {
+    let config_path = user_config_path(path_resolver)?;
     let file = std::fs::read_to_string(config_path)?;
     let user_config = PartialUserConfig::from_str(&file)?.full_config();
     Ok(user_config)
@@ -1124,7 +1130,7 @@ pub async fn refresh_encrypted_tally(
     Ok(true)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
     network:             Network,
@@ -1160,7 +1166,8 @@ pub async fn connect(
 }
 
 /// Reloads the user configuration from disk. This is useful when the user
-/// modifies the configuration file while the app is running.
+/// modifies the configuration file while the app is running. This will emit an
+/// event with the updated configuration instead of returning it directly.
 ///
 /// ## Errors
 /// - [`Error::NodeConnection`]
@@ -1170,14 +1177,20 @@ pub async fn connect(
 pub async fn reload_config(
     app_config: tauri::State<'_, AppConfigState>,
     app_handle: AppHandle,
-) -> Result<ConnectResponse, Error> {
+    window: Window,
+) -> Result<(), Error> {
     {
         let user_config = read_user_config(app_handle.path_resolver())?;
         let mut app_config = app_config.0.lock().await;
         app_config.refresh(user_config);
     }
 
-    connect(app_config).await
+    let response = connect(app_config).await?;
+    window
+        .emit("config-reloaded", response) // TODO: and what about the error?
+        .context("Failed to emit event")?;
+
+    Ok(())
 }
 
 /// Calculates the [`Amount`] for a given amount of [`Energy`].
