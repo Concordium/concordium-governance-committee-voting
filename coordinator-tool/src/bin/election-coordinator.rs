@@ -1279,7 +1279,7 @@ async fn handle_initial_weights(
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
     let mut affected = BTreeSet::new();
 
-    'blocks: while let Some((block, normal, specials)) = receiver.recv().await {
+    while let Some((block, normal, specials)) = receiver.recv().await {
         if block.block_height > last_block.block_height {
             drop(receiver);
             eprintln!("Done indexing");
@@ -1302,18 +1302,17 @@ async fn handle_initial_weights(
 
         // Check if the block is a payday block by going through the special transaction
         // events. If not, then skip the block.
-        for special in &specials {
-            let has_payday_event = matches!(
+        let has_payday_event = specials.iter().any(|special| {
+            matches!(
                 special,
                 SpecialTransactionOutcome::PaydayPoolReward { .. }
                     | SpecialTransactionOutcome::PaydayAccountReward { .. }
                     | SpecialTransactionOutcome::PaydayFoundationReward { .. }
-            );
-
-            if !has_payday_event {
-                continue 'blocks;
-            };
-        }
+            )
+        });
+        if !has_payday_event {
+            continue;
+        };
 
         // Then for all the affected accounts, add their balances for the payday
         let payday_block_ident = BlockIdentifier::from(block.block_height);
