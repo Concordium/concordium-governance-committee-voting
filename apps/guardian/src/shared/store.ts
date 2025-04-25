@@ -14,6 +14,7 @@ import {
     refreshGuardians,
 } from './ffi';
 import { expectValue } from 'shared/util';
+import { appWindow } from '@tauri-apps/api/window';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
@@ -298,11 +299,15 @@ export const connectionErrorAtom = atom(
 export function initStore() {
     const store = createStore();
 
-    void store.set(electionConfigAtom);
-    void store.set(accountsAtom);
+    function refresh() {
+        void store.set(electionConfigAtom);
+        void store.set(accountsAtom);
+        void store.set(guardiansStateAtom);
+        void store.set(hasTallyAtom);
+        void store.set(electionStepAtom);
+    }
+    refresh();
 
-    void store.set(guardiansStateAtom);
-    void store.set(hasTallyAtom);
     setInterval(() => {
         void store.set(guardiansStateAtom);
         const electionPhase = store.get(electionPhaseBaseAtom);
@@ -312,10 +317,11 @@ export function initStore() {
         }
     }, CONTRACT_UPDATE_INTERVAL);
 
-    store.set(electionStepAtom);
     setInterval(() => {
-        store.set(electionStepAtom);
+        void store.set(electionStepAtom);
     }, REFRESH_ELECTION_PHASE_INTERVAL);
+
+    void appWindow.listen('config-reloaded', refresh);
 
     return store;
 }

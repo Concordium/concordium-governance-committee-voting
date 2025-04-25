@@ -161,15 +161,13 @@ export async function connect(): Promise<ElectionConfig> {
 /**
  * Reloads the user configuration into the backend application state, returning a new {@linkcode ElectionConfig} object.
  *
- * @returns Response of type {@linkcode ConnectResponse} on successful connection
  * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.Http`
  */
-export async function reloadConfig(): Promise<ElectionConfig> {
-    const response = await invokeWrapped<any>('reload_config');
-    return convertConnectionResponse(response);
+export async function reloadConfig(): Promise<void> {
+    await invokeWrapped<any>('reload_config');
 }
 
 export const enum GuardianStatus {

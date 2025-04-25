@@ -1167,7 +1167,7 @@ pub async fn connect(
 
 /// Reloads the user configuration from disk. This is useful when the user
 /// modifies the configuration file while the app is running. This will emit an
-/// event with the updated configuration instead of returning it directly.
+/// event "config-reloaded".
 ///
 /// ## Errors
 /// - [`Error::NodeConnection`]
@@ -1185,9 +1185,8 @@ pub async fn reload_config(
         app_config.refresh(user_config);
     }
 
-    let response = connect(app_config).await?;
     window
-        .emit("config-reloaded", response) // TODO: and what about the error?
+        .emit("config-reloaded", ())
         .context("Failed to emit event")?;
 
     Ok(())
