@@ -3,6 +3,8 @@
 ### Breaking changes
 
 - Removed `--node` cli flag, as the target node can now be configured through the user configuration file
+- Store guardian data on a path on disk derived from the user configuration. Specifically, this means the data will be
+  stored at `$APPDATA/<network>/<contract-address>/<account-address>` for each guardian.
 
 ### Changes
 

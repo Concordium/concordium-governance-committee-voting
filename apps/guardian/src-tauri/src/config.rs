@@ -196,17 +196,20 @@ pub struct AppConfig {
 }
 
 impl From<UserConfig> for AppConfig {
-    fn from(config: UserConfig) -> Self {
+    fn from(user_config: UserConfig) -> Self {
         Self {
-            user_config:    config,
-            contract:       None,
-            election:       None,
+            user_config,
+            contract: None,
+            election: None,
             election_guard: None,
         }
     }
 }
 
 impl AppConfig {
+    /// Returns a reference to the user configuration.
+    pub fn user_config(&self) -> &UserConfig { &self.user_config }
+
     pub fn refresh(&mut self, config: UserConfig) {
         self.user_config = config;
         self.contract = None;

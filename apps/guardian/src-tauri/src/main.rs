@@ -1,9 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::str::FromStr;
-
-use anyhow::Context;
+use commands::read_user_config;
 use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use tauri::{App, Manager};
 
@@ -13,8 +11,6 @@ pub mod shared;
 pub mod state;
 mod user_config;
 
-use user_config::{PartialUserConfig, UserConfig};
-
 fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)]
     {
@@ -23,25 +19,8 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         window.maximize().ok();
     }
 
-    // Will not fail due to being declared accessible in `tauri.conf.json`
-    let app_data_dir = app.path_resolver().app_data_dir().unwrap();
-    if !app_data_dir.exists() {
-        std::fs::create_dir(&app_data_dir).context("Failed to create app data directory")?;
-    }
-
-    let app_config_dir = app.path_resolver().app_config_dir().unwrap();
-    if !app_config_dir.exists() {
-        std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
-    }
-    let config_path = app_config_dir.join(UserConfig::FILENAME);
-    if !config_path.exists() {
-        std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
-            .context("Failed to create user config")?;
-    }
-
-    let file = std::fs::read_to_string(config_path)?;
-    let user_config = PartialUserConfig::from_str(&file)?;
-    app.manage(AppConfigState::from(user_config.full_config()));
+    let user_config = read_user_config(app.path_resolver())?; // Creates the user config file if it doesn't exist
+    app.manage(AppConfigState::from(user_config));
 
     Ok(())
 }
@@ -53,6 +32,7 @@ fn main() {
         .manage(ContractDataState::default())
         .invoke_handler(tauri::generate_handler![
             commands::connect,
+            commands::reload_config,
             commands::get_accounts,
             commands::import_wallet_account,
             commands::load_account,

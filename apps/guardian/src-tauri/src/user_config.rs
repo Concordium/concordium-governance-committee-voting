@@ -3,6 +3,8 @@ use std::str::FromStr;
 use concordium_rust_sdk::{types::ContractAddress, v2, web3id::did::Network};
 use serde::Deserialize;
 
+use crate::shared::Error;
+
 /// Represents the node configuration for the application.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize, Clone)]
 pub enum NodeConfig {
@@ -88,9 +90,14 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
-    pub const FILENAME: &'static str = "config.toml";
-
     pub fn node_endpoint(&self) -> v2::Endpoint { self.node.node_endpoint(self.network) }
+
+    /// Gets the contract of the user configuration, returning an error if the
+    /// contract is not set.
+    pub fn contract(&self) -> Result<ContractAddress, Error> {
+        self.contract
+            .ok_or(Error::IncompleteConfiguration("contract".to_string()))
+    }
 }
 
 /// Represents a partial [`UserConfig`], which is what will be written to the
