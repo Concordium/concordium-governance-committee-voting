@@ -661,7 +661,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "concordium-smart-contract-engine",
- "concordium_base 7.0.0",
+ "concordium_base",
  "derive_more",
  "ed25519-dalek",
  "futures",
@@ -729,49 +729,6 @@ dependencies = [
  "derive_more",
  "leb128",
  "num_enum",
-]
-
-[[package]]
-name = "concordium_base"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b92eba25481b3cec616943c433d780d1ca6db02cf2bc9be8d8d192d54dedb8"
-dependencies = [
- "anyhow",
- "ark-bls12-381",
- "ark-ec",
- "ark-ff",
- "ark-serialize",
- "ark-std",
- "bs58",
- "byteorder",
- "chrono",
- "concordium-contracts-common",
- "concordium_base_derive",
- "curve25519-dalek",
- "derive_more",
- "ed25519-dalek",
- "either",
- "ff",
- "hex",
- "itertools 0.10.5",
- "leb128",
- "libc",
- "nom",
- "num",
- "num-bigint",
- "num-traits",
- "rand",
- "rayon",
- "rust_decimal",
- "serde",
- "serde_json",
- "serde_with",
- "sha2",
- "sha3",
- "subtle",
- "thiserror",
- "zeroize",
 ]
 
 [[package]]
@@ -1199,7 +1156,7 @@ name = "election-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "concordium_base 4.0.0",
+ "concordium_base",
  "concordium_governance_committee_election",
  "eg",
  "reqwest 0.12.3",

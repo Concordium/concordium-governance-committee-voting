@@ -15,7 +15,7 @@
     },
     "dependencies": {
         "@concordium/wallet-connectors": "0.6.0-alpha.6",
-        "@concordium/web-sdk": "^7.1.0",
+        "@concordium/web-sdk": "^9.1.0",
         "@protobuf-ts/grpcweb-transport": "^2.9.1",
         "@walletconnect/types": "^2.10.4",
         "buffer": "^6.0.3",

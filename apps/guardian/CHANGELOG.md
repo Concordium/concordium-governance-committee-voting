@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Bumped rust-sdk dependency to 6.0
+- Update `@concordium/web-sdk` to 9.1.
 
 ## 1.0.0
 

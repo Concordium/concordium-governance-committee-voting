@@ -1,3 +1,7 @@
+## Unreleased
+
+- Update `@concordium/web-sdk` to 9.1.
+
 ## 1.0.0
 
 - Updates contract client based on changes to election contract
