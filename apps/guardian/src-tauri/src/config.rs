@@ -223,7 +223,7 @@ impl AppConfig {
             return Err(Error::IncompleteConfiguration("contract".to_string()));
         };
 
-        let node_endpoint = self.user_config.node();
+        let node_endpoint = self.user_config.node_endpoint();
         let network = self.user_config.network;
 
         let endpoint = if node_endpoint

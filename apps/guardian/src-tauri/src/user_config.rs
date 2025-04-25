@@ -43,7 +43,7 @@ impl NodeConfig {
         }
     }
 
-    pub fn endpoint(&self, network: Network) -> v2::Endpoint {
+    pub fn node_endpoint(&self, network: Network) -> v2::Endpoint {
         let NodeConfig::Manual(endpoint) = self else {
             return Self::default_endpoint(network);
         };
@@ -52,8 +52,8 @@ impl NodeConfig {
     }
 }
 
-/// The user configuration for the application. This matches [`UserConfig`] but
-/// with non-optional fields.
+/// The user configuration for the application. This matches
+/// [`PartialUserConfig`] but with mostly non-optional fields.
 #[derive(Debug, serde::Deserialize)]
 pub struct UserConfig {
     /// The network id.
@@ -90,7 +90,7 @@ impl From<PartialUserConfig> for UserConfig {
 impl UserConfig {
     pub const FILENAME: &'static str = "config.toml";
 
-    pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
+    pub fn node_endpoint(&self) -> v2::Endpoint { self.node.node_endpoint(self.network) }
 }
 
 /// Represents a partial [`UserConfig`], which is what will be written to the
