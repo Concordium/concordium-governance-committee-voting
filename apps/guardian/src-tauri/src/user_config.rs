@@ -45,7 +45,7 @@ impl NodeConfig {
         }
     }
 
-    pub fn endpoint(&self, network: Network) -> v2::Endpoint {
+    pub fn node_endpoint(&self, network: Network) -> v2::Endpoint {
         let NodeConfig::Manual(endpoint) = self else {
             return Self::default_endpoint(network);
         };
@@ -54,8 +54,8 @@ impl NodeConfig {
     }
 }
 
-/// The user configuration for the application. This matches [`UserConfig`] but
-/// with non-optional fields.
+/// The user configuration for the application. This matches
+/// [`PartialUserConfig`] but with mostly non-optional fields.
 #[derive(Debug, serde::Deserialize)]
 pub struct UserConfig {
     /// The network id.
@@ -90,7 +90,7 @@ impl From<PartialUserConfig> for UserConfig {
 }
 
 impl UserConfig {
-    pub fn node(&self) -> v2::Endpoint { self.node.endpoint(self.network) }
+    pub fn node_endpoint(&self) -> v2::Endpoint { self.node.node_endpoint(self.network) }
 
     /// Gets the contract of the user configuration, returning an error if the
     /// contract is not set.
