@@ -12,7 +12,7 @@ name: check crates
 
 env:
   RUST_FMT: nightly-2023-04-01
-  RUST_VERSION: "1.76"
+  RUST_VERSION: "1.81"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
   # The following environment variables need to be set for build to succeed.
   CCD_ELECTION_NODE: ""
@@ -39,10 +39,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: add legacy deb repository # see https://github.com/tauri-apps/tauri/issues/9662
+        uses: myci-actions/add-deb-repo@11
+        with:
+          repo: deb http://archive.ubuntu.com/ubuntu jammy main universe
+          repo-name: ubuntu-legacy
+
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           # Needed to support tauri
-          packages: libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          packages: libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
           version: 1.0
 
       - name: Run cargo clippy

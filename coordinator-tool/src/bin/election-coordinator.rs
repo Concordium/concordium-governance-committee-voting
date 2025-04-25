@@ -17,9 +17,9 @@ use concordium_rust_sdk::{
         queries::BlockInfo,
         smart_contracts::{OwnedContractName, WasmModule},
         AbsoluteBlockHeight, AccountAddressEq, AccountIndex, AccountTransactionEffects,
-        BlockItemSummaryDetails, ContractAddress, WalletAccount,
+        BlockItemSummaryDetails, ContractAddress, Epoch, SpecialTransactionOutcome, WalletAccount,
     },
-    v2::{self as sdk, BlockIdentifier},
+    v2::{self as sdk, BlockIdentifier, SpecifiedEpoch},
 };
 use concordium_std::schema::SchemaType;
 use eg::{
@@ -35,7 +35,7 @@ use election_common::{
     decode, encode, get_scaling_factor, EncryptedTally, GuardianDecryption,
     GuardianDecryptionProof, HttpClient, WeightRow,
 };
-use futures::TryStreamExt;
+use futures::{future::join_all, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
@@ -79,11 +79,9 @@ impl FromStr for CandidateLocation {
         if let Ok(url) = url::Url::from_str(s) {
             return Ok(Self::Remote(url));
         }
-        if let Ok(path) = std::path::PathBuf::from_str(s) {
-            return Ok(Self::Disk(path));
-        }
-
-        Err(anyhow::anyhow!("Failed to parse {s} as either url or path"))
+        let path =
+            std::path::PathBuf::from_str(s).context("Failed to parse {s} as either url or path")?;
+        Ok(Self::Disk(path))
     }
 }
 
@@ -342,13 +340,63 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Find a payday block starting at the given block. The block is found by
+/// moving through epochs until a payday block is found. If `search_backwards`
+/// is true then the block searched for is the last payday block before the
+/// given block, otherwise it is the first payday block after the given block.
+///
+/// # Arguments
+/// * `client` - The SDK client to use for querying the chain
+/// * `block` - The block to start searching from
+/// * `search_backwards` - Whether to search backwards or forwards from the
+///   start block
+///
+/// # Returns
+/// The first payday block found in the specified direction
+///
+/// # Errors
+/// Returns an error if communication with the node fails
+async fn find_payday_block(
+    client: &mut sdk::Client,
+    block: BlockInfo,
+    search_backwards: bool,
+) -> anyhow::Result<BlockInfo> {
+    let mut block = block;
+    let mut epoch = Epoch {
+        epoch: block.epoch.expect("Has protocol version 6 or above").epoch
+            + if search_backwards { 0 } else { 1 },
+    };
+
+    while !client.is_payday_block(block.block_height).await?.response {
+        epoch = Epoch {
+            epoch: if search_backwards {
+                epoch.epoch.saturating_sub(1)
+            } else {
+                epoch.epoch + 1
+            },
+        };
+        let epoch = SpecifiedEpoch {
+            epoch,
+            genesis_index: block.genesis_index,
+        };
+
+        let block_height = client.get_first_block_epoch(epoch).await?;
+        block = client.get_block_info(block_height).await?.response;
+    }
+
+    Ok(block)
+}
+
 /// Figure out which blocks to use as start and end blocks given the time range.
 /// The return blocks are the first block no earlier than the start time, and
-/// the last block no (strictly) later than the provided end time.
+/// the last block no (strictly) later than the provided end time. If
+/// `use_payday_blocks` is true, the start block will be the first payday block
+/// after the start time.
 async fn range_setup(
     client: &mut sdk::Client,
     start: chrono::DateTime<chrono::Utc>,
     end: chrono::DateTime<chrono::Utc>,
+    use_payday_blocks: bool,
 ) -> anyhow::Result<(BlockInfo, BlockInfo)> {
     anyhow::ensure!(
         start < end,
@@ -362,11 +410,11 @@ async fn range_setup(
         end <= info.block_slot_time,
         "End time not before the last finalized block."
     );
-    let first_block = client
+
+    let mut first_block = client
         .find_first_finalized_block_no_earlier_than(.., start)
         .await?;
-
-    let last_block = {
+    let mut last_block = {
         let last_block = client
             .find_first_finalized_block_no_earlier_than(.., end)
             .await?;
@@ -384,6 +432,15 @@ async fn range_setup(
             last_block
         }
     };
+
+    if use_payday_blocks {
+        // Find the first and last payday blocks within the bounds
+        eprintln!("Searching for payday block bounds");
+
+        first_block = find_payday_block(client, first_block, false).await?;
+        last_block = find_payday_block(client, last_block, true).await?;
+    }
+
     eprintln!(
         "Indexing from block {} at {} until block {} at {}.",
         first_block.block_hash,
@@ -428,7 +485,7 @@ async fn handle_final_weights(
         .context("Unable to get election data.")?;
 
     let (first_block, last_block) =
-        range_setup(&mut contract_client.client, config.start, config.end).await?;
+        range_setup(&mut contract_client.client, config.start, config.end, false).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -945,7 +1002,8 @@ async fn handle_tally(
     let start = election_data.start;
     let end = election_data.end;
 
-    let (first_block, last_block) = range_setup(&mut contract_client.client, start, end).await?;
+    let (first_block, last_block) =
+        range_setup(&mut contract_client.client, start, end, false).await?;
 
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
@@ -1122,10 +1180,15 @@ async fn handle_initial_weights(
 ) -> anyhow::Result<()> {
     ensure!(out.is_dir(), "out argument must point to a directory");
 
+    // Get the balance of each account for each payday block
+    let start_time = std::time::Instant::now();
+
     let mut client = sdk::Client::new(endpoint.clone())
         .await
         .context("Unable to connect.")?;
 
+    // Get the parameters needed to run the weight generation and possible
+    // verification.
     let (start, end, registered_weights_hash) = match &args {
         InitialWeights::Generate(gen) => (gen.start, gen.end, None),
         InitialWeights::Verify { contract } => {
@@ -1149,7 +1212,9 @@ async fn handle_initial_weights(
         }
     };
 
-    let (first_block, last_block) = range_setup(&mut client, start, end).await?;
+    // Variables used to hold the weight calculation data.
+    let (first_block, last_block) = range_setup(&mut client, start, end, true).await?;
+    eprintln!("block range: {:.2?}", start_time.elapsed());
     let initial_block_ident: BlockIdentifier = first_block.block_height.into();
     let initial_account_number = client
         .get_account_list(initial_block_ident)
@@ -1157,8 +1222,10 @@ async fn handle_initial_weights(
         .response
         .try_fold(0u64, |acc, _| async move { Ok(acc + 1) })
         .await?;
-    let mut account_balances = vec![Vec::new(); initial_account_number as usize];
     let mut account_addresses = Vec::with_capacity(initial_account_number as usize);
+    let mut account_balances = vec![Vec::new(); initial_account_number as usize]; // Account balance for each payday block.
+
+    // Get initial account balances
     let bar = ProgressBar::new(initial_account_number).with_style(ProgressStyle::with_template(
         "{spinner} {msg} {wide_bar} {pos}/{len}",
     )?);
@@ -1167,17 +1234,41 @@ async fn handle_initial_weights(
         "Getting initial account balances in block {}.",
         first_block.block_hash
     );
-    for (ai, balances) in account_balances.iter_mut().enumerate() {
-        let info = client
-            .get_account_info(&AccountIndex::from(ai as u64).into(), initial_block_ident)
-            .await?;
-        account_addresses.push(info.response.account_address);
-        bar.set_message(info.response.account_address.to_string());
-        bar.inc(1);
-        balances.push((first_block.block_slot_time, info.response.account_amount));
+
+    let tasks: Vec<_> = account_balances
+        .iter_mut()
+        .enumerate()
+        .map(|(ai, _)| {
+            let mut client = client.clone();
+            let bar = bar.clone();
+
+            async move {
+                let info = client
+                    .get_account_info(&AccountIndex::from(ai as u64).into(), initial_block_ident)
+                    .await?;
+
+                bar.set_message(info.response.account_address.to_string());
+                bar.inc(1);
+
+                Ok::<_, anyhow::Error>((
+                    ai,
+                    info.response.account_address,
+                    info.response.account_amount,
+                ))
+            }
+        })
+        .collect();
+    for result in join_all(tasks).await {
+        let (ai, address, amount) = result?;
+        account_addresses.push(address);
+        account_balances[ai].push((first_block.block_slot_time, amount));
     }
+
     bar.finish_and_clear();
     drop(bar);
+    eprintln!("initial account balances: {:.2?}", start_time.elapsed());
+
+    // Get the balance of each account for each payday block
     let bar = ProgressBar::new(last_block.block_height.height - first_block.block_height.height)
         .with_style(ProgressStyle::with_template(
             "{spinner} {msg} {wide_bar} {pos}/{len}",
@@ -1186,50 +1277,98 @@ async fn handle_initial_weights(
     let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
     let cancel_handle = tokio::spawn(traverse_config.traverse(indexer::BlockEventsIndexer, sender));
+    let mut affected = BTreeSet::new();
+
     while let Some((block, normal, specials)) = receiver.recv().await {
-        if block.block_slot_time > end {
+        if block.block_height > last_block.block_height {
             drop(receiver);
             eprintln!("Done indexing");
             break;
         }
         bar.set_message(block.block_slot_time.to_string());
         bar.inc(1);
-        let mut affected = BTreeSet::new();
+
+        // First collect the affected addresses within the payday
         for tx in normal {
             for addr in tx.affected_addresses() {
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
-        for special in specials {
+        for special in &specials {
             for addr in special.affected_addresses() {
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
-        let block_ident = BlockIdentifier::from(block.block_height);
-        for acc in affected {
-            let info = client
-                .get_account_info(&AccountAddress::from(acc).into(), block_ident)
-                .await?;
-            let index = info.response.account_index.index as usize;
+
+        // Check if the block is a payday block by going through the special transaction
+        // events. If not, then skip the block.
+        let has_payday_event = specials.iter().any(|special| {
+            matches!(
+                special,
+                SpecialTransactionOutcome::PaydayPoolReward { .. }
+                    | SpecialTransactionOutcome::PaydayAccountReward { .. }
+                    | SpecialTransactionOutcome::PaydayFoundationReward { .. }
+            )
+        });
+        if !has_payday_event {
+            continue;
+        };
+
+        // Then for all the affected accounts, add their balances for the payday
+        let payday_block_ident = BlockIdentifier::from(block.block_height);
+        let tasks = affected.iter().map(|acc| {
+            let mut client = client.clone();
+            async move {
+                let info = client
+                    .get_account_info(&AccountAddress::from(*acc).into(), payday_block_ident)
+                    .await?
+                    .response;
+                let index = info.account_index.index as usize;
+
+                Ok::<_, anyhow::Error>((index, info.account_address, info.account_amount))
+            }
+        });
+        for result in join_all(tasks).await {
+            let (index, account_address, account_amount) = result?;
+
             if let Some(elem) = account_balances.get_mut(index) {
-                elem.push((block.block_slot_time, info.response.account_amount));
+                elem.push((block.block_slot_time, account_amount));
             } else {
-                // Newly created accounts have balance 0 at the start of the period.
-                for idx in account_balances.len()..index {
+                // Find all new accounts created between the last recorded account in
+                // `account_addresses` and the account identified by `index`.
+                let tasks = (account_addresses.len()..index).map(|idx| {
+                    let mut client = client.clone();
+                    async move {
+                        let idx_acc = client
+                            .get_account_info(
+                                &AccountIndex::from(idx as u64).into(),
+                                &payday_block_ident,
+                            )
+                            .await?;
+                        Ok::<_, anyhow::Error>(idx_acc.response.account_address)
+                    }
+                });
+
+                // Record the new accounts
+                for result in join_all(tasks).await {
+                    let account_address = result?;
+                    account_addresses.push(account_address);
+                    // Newly created accounts have balance 0 at the start of the period.
                     account_balances.push(vec![(first_block.block_slot_time, Amount::zero())]);
-                    let idx_acc = client
-                        .get_account_info(&AccountIndex::from(idx as u64).into(), block_ident)
-                        .await?;
-                    account_addresses.push(idx_acc.response.account_address);
                 }
+                // Finally, record the data for the account identified by `index`
+                account_addresses.push(account_address);
                 account_balances.push(vec![
                     (first_block.block_slot_time, Amount::zero()),
-                    (block.block_slot_time, info.response.account_amount),
+                    (block.block_slot_time, account_amount),
                 ]);
-                account_addresses.push(info.response.account_address);
             }
         }
+
+        // Reset the affected accounts for the subsequent payday.
+        affected = BTreeSet::new();
     }
+
     cancel_handle.abort();
     bar.finish_and_clear();
 
@@ -1238,6 +1377,9 @@ async fn handle_initial_weights(
         "Expecting addresses match account balances. This is a bug."
     );
 
+    eprintln!("indexed account balances: {:.2?}", start_time.elapsed());
+
+    // Calculate the average weight for each account.
     let mut data = vec![];
     {
         let mut weights = csv::Writer::from_writer(&mut data);
@@ -1272,6 +1414,8 @@ async fn handle_initial_weights(
         }
         weights.flush()?;
     }
+
+    eprintln!("processed account weights: {:.2?}", start_time.elapsed());
 
     let mut weights_out = std::fs::File::create(out.join("initial-weights.csv"))
         .context("Failed to create weights file")?;
