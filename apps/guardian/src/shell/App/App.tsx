@@ -51,7 +51,13 @@ function Configuration() {
                 connected={electionConfig !== undefined}
                 error={hasConnectionError}
             >
-                {import.meta.env.CCD_ELECTION_CONTRACT_ADDRESS} on {import.meta.env.CCD_ELECTION_NETWORK}
+                {electionConfig === undefined && !hasConnectionError && 'Connecting'}
+                {hasConnectionError && 'Failed to connect'}
+                {electionConfig !== undefined && (
+                    <>
+                        {electionConfig.contractAddress.toString()} on {electionConfig.network}
+                    </>
+                )}
             </ConfigurationItem>
             <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>
             <div className="mt-2">v{version}</div>
