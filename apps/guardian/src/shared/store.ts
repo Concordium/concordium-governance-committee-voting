@@ -15,6 +15,7 @@ import {
 } from './ffi';
 import { expectValue } from 'shared/util';
 import { appWindow } from '@tauri-apps/api/window';
+import { router, routes } from '~/shell/router';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
@@ -300,13 +301,15 @@ export function initStore() {
     const store = createStore();
 
     function refresh() {
-        void store.set(electionConfigAtom);
-        void store.set(accountsAtom);
-        void store.set(guardiansStateAtom);
-        void store.set(hasTallyAtom);
-        void store.set(electionStepAtom);
+        return Promise.all([
+            store.set(electionConfigAtom),
+            store.set(accountsAtom),
+            store.set(guardiansStateAtom),
+            store.set(hasTallyAtom),
+            store.set(electionStepAtom),
+        ]);
     }
-    refresh();
+    void refresh();
 
     setInterval(() => {
         void store.set(guardiansStateAtom);
@@ -321,7 +324,11 @@ export function initStore() {
         void store.set(electionStepAtom);
     }, REFRESH_ELECTION_PHASE_INTERVAL);
 
-    void appWindow.listen('config-reloaded', refresh);
+    void appWindow.listen('config-reloaded', () => {
+        void refresh().then(() => {
+            void router.navigate(routes.selectAccount.path);
+        });
+    });
 
     return store;
 }

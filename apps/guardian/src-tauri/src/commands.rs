@@ -195,9 +195,14 @@ pub async fn import_wallet_account(
 /// ## Errors
 /// Fails if the appliction data directory could not be read, which should not
 /// happen due to ensuring the existence during application setup.
-#[tauri::command(async)]
-pub fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, Error> {
-    let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
+#[tauri::command]
+pub async fn get_accounts(
+    handle: AppHandle,
+    app_config: tauri::State<'_, AppConfigState>,
+) -> Result<Vec<AccountAddress>, Error> {
+    let app_config = app_config.0.lock().await;
+    let user_config = app_config.user_config();
+    let app_data_dir = guardians_data_dir(&handle, user_config)?;
     let entries = std::fs::read_dir(app_data_dir)?;
 
     let accounts: Vec<_> = entries
