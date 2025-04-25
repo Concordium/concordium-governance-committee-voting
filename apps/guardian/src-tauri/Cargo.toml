@@ -37,6 +37,7 @@ tauri = { version = "1.5", features = [
   "shell-open",
   "cli",
 ] }
+toml_edit = { version = "0.22", features = ["serde"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

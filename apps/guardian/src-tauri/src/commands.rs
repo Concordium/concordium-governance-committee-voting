@@ -30,7 +30,7 @@ use eg::{
     },
 };
 use election_common::{
-    decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
+    decode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof,
     GuardianDecryptionProofState,
 };
 use itertools::Itertools;
@@ -309,14 +309,9 @@ pub async fn register_guardian_key_flow(
             secret_key.make_public_key()
         };
 
-        let mut contract = app_config.connection().await?.contract;
+        let mut contract = app_config.contract().await?;
         let result = contract
-            .dry_run_update::<Vec<u8>, Error>(
-                "registerGuardianPublicKey",
-                Amount::zero(),
-                active_guardian.guardian.account,
-                &encode(&public_key).unwrap(), // Serialization will not fail
-            )
+            .register_guardian_public_key(&active_guardian.guardian.account, &public_key)
             .await?;
 
         // Wait for response from the user through the frontend
@@ -464,7 +459,7 @@ pub async fn register_guardian_shares_flow(
             Err(error) => return Err(error),
         };
 
-        let mut contract = app_config.connection().await?.contract;
+        let mut contract = app_config.contract().await?;
         // Depending on whether any validation failures are detected, either:
         // 1. register the generated shares
         // 2. file a complaint with the guardian accounts with invalid key registrations
@@ -480,28 +475,23 @@ pub async fn register_guardian_shares_flow(
                 write_encrypted_file(&active_guardian.password, &secrets, &secrets_path)?;
 
                 let update = contract
-                    .dry_run_update::<Vec<u8>, Error>(
-                        "registerGuardianEncryptedShare",
-                        Amount::zero(),
-                        active_guardian.guardian.account,
-                        &encode(&encrypted_shares).unwrap(), // Serialization will not fail
-                    )
+                    .register_encrypted_shares(&active_guardian.guardian.account, &encrypted_shares)
                     .await?;
 
-                let ccd_cost = energy_to_ccd(update.current_energy(), &mut contract.client).await?;
+                let ccd_cost =
+                    energy_to_ccd(update.current_energy(), &mut contract.0.client).await?;
                 let proposal = ValidatedProposal::Success(ccd_cost);
                 (proposal, update)
             }
             Err(accounts) => {
                 let update = contract
-                    .dry_run_update::<contract::GuardianStatus, Error>(
-                        "registerGuardianStatus",
-                        Amount::zero(),
-                        active_guardian.guardian.account,
+                    .register_guardian_status(
+                        &active_guardian.guardian.account,
                         &contract::GuardianStatus::KeyVerificationFailed(accounts), // Serialization will not fail
                     )
                     .await?;
-                let ccd_cost = energy_to_ccd(update.current_energy(), &mut contract.client).await?;
+                let ccd_cost =
+                    energy_to_ccd(update.current_energy(), &mut contract.0.client).await?;
                 let proposal = ValidatedProposal::Complaint(ccd_cost);
                 (proposal, update)
             }
@@ -648,17 +638,12 @@ pub async fn generate_secret_share_flow(
             Err(accounts) => contract::GuardianStatus::SharesVerificationFailed(accounts),
         };
 
-        let mut contract = app_config.connection().await?.contract;
+        let mut contract = app_config.contract().await?;
         let contract_update = contract
-            .dry_run_update::<contract::GuardianStatus, Error>(
-                "registerGuardianStatus",
-                Amount::zero(),
-                active_guardian.guardian.account,
-                &guardian_status,
-            )
+            .register_guardian_status(&active_guardian.guardian.account, &guardian_status)
             .await?;
         let ccd_cost =
-            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
+            energy_to_ccd(contract_update.current_energy(), &mut contract.0.client).await?;
         let proposal = match guardian_status {
             contract::GuardianStatus::VerificationSuccessful => {
                 ValidatedProposal::Success(ccd_cost)
@@ -781,17 +766,12 @@ pub async fn register_decryption_shares_flow(
             decryption_shares
         };
 
-        let mut contract = app_config.connection().await?.contract;
+        let mut contract = app_config.contract().await?;
         let contract_update = contract
-            .dry_run_update::<Vec<u8>, Error>(
-                "postDecryptionShare",
-                Amount::zero(),
-                active_guardian.guardian.account,
-                &encode(&decryption_shares).context("Failed to serialize decryption shares")?,
-            )
+            .post_decryption(&active_guardian.guardian.account, &decryption_shares)
             .await?;
         let ccd_cost =
-            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
+            energy_to_ccd(contract_update.current_energy(), &mut contract.0.client).await?;
 
         // Wait for response from the user through the frontend
         wait_for_approval(&channel_id, &window, &ccd_cost).await?;
@@ -970,17 +950,12 @@ pub async fn register_decryption_proofs_flow(
         )
         .await?;
 
-        let mut contract = app_config.connection().await?.contract;
+        let mut contract = app_config.contract().await?;
         let contract_update = contract
-            .dry_run_update::<Vec<u8>, Error>(
-                "postDecryptionProofResponseShare",
-                Amount::zero(),
-                active_guardian.guardian.account,
-                &encode(&response_shares).context("Failed to serialize decryption shares")?,
-            )
+            .post_decryption_proof(&active_guardian.guardian.account, &response_shares)
             .await?;
         let ccd_cost =
-            energy_to_ccd(contract_update.current_energy(), &mut contract.client).await?;
+            energy_to_ccd(contract_update.current_energy(), &mut contract.0.client).await?;
 
         // Wait for response from the user through the frontend
         wait_for_approval(&channel_id, &window, &ccd_cost).await?;
@@ -1046,14 +1021,8 @@ pub async fn refresh_guardians(
     app_config: tauri::State<'_, AppConfigState>,
     contract_data: tauri::State<'_, ContractDataState>,
 ) -> Result<Vec<(AccountAddress, GuardianStateResponse)>, Error> {
-    let mut contract = app_config.0.lock().await.connection().await?.contract;
-    let guardians_state = contract
-        .view::<_, contract::GuardiansState, Error>(
-            "viewGuardiansState",
-            &(),
-            BlockIdentifier::LastFinal,
-        )
-        .await?;
+    let mut contract = app_config.0.lock().await.contract().await?;
+    let guardians_state = contract.guardians_state().await?;
 
     let response: Vec<_> = guardians_state
         .iter()
@@ -1080,18 +1049,11 @@ pub async fn refresh_encrypted_tally(
     contract_data: tauri::State<'_, ContractDataState>,
 ) -> Result<bool, Error> {
     let mut app_config = app_config.0.lock().await;
-    let mut contract = app_config.connection().await?.contract;
-    let Some(tally) = contract
-        .view::<_, Option<Vec<u8>>, Error>("viewEncryptedTally", &(), BlockIdentifier::LastFinal)
-        .await?
-    else {
+    let Some(tally) = app_config.contract().await?.encrypted_tally().await? else {
         return Ok(false);
     };
-
     let manifest = app_config.election_guard().await?.manifest;
 
-    let tally: EncryptedTally =
-        decode(&tally).context("Failed to deserialize the encrypted tally")?;
     if !tally
         .keys()
         .all(|k| manifest.contests.indices().contains(k))
@@ -1125,6 +1087,7 @@ pub async fn connect(
     app_config: tauri::State<'_, AppConfigState>,
 ) -> Result<ConnectResponse, Error> {
     let mut app_config_guard = app_config.0.lock().await;
+
     let contract_config = app_config_guard.election().await?;
     let eg_config = app_config_guard.election_guard().await?;
 

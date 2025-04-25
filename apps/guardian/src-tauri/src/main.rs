@@ -1,6 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::str::FromStr;
+
 use anyhow::Context;
 use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use tauri::{App, Manager};
@@ -9,8 +11,9 @@ mod commands;
 mod config;
 pub mod shared;
 pub mod state;
+mod user_config;
 
-use config::AppConfig;
+use user_config::{PartialUserConfig, UserConfig};
 
 fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)]
@@ -26,8 +29,20 @@ fn handle_setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir(&app_data_dir).context("Failed to create app data directory")?;
     }
 
-    let app_config = AppConfig::try_from(app.get_cli_matches()?)?;
-    app.manage(AppConfigState::from(app_config));
+    let app_config_dir = app.path_resolver().app_config_dir().unwrap();
+    if !app_config_dir.exists() {
+        std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
+    }
+    let config_path = app_config_dir.join(UserConfig::FILENAME);
+    if !config_path.exists() {
+        std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
+            .context("Failed to create user config")?;
+    }
+
+    let file = std::fs::read_to_string(config_path)?;
+    let user_config = PartialUserConfig::from_str(&file)?;
+    app.manage(AppConfigState::from(user_config.full_config()));
+
     Ok(())
 }
 
