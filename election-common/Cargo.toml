@@ -19,4 +19,4 @@ concordium_base = "7.0"
 rmp-serde = "1.1"
 
 [features]
-http = ["dep:reqwest", "dep:concordium-rust-sdk"]
+async = ["dep:reqwest", "dep:concordium-rust-sdk"]

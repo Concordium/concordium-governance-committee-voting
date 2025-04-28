@@ -14,7 +14,7 @@ csv = { workspace = true }
 concordium-rust-sdk = { workspace = true }
 concordium_governance_committee_election = { workspace = true }
 eg = { workspace = true }
-election-common = { workspace = true, features = ["http"] }
+election-common = { workspace = true, features = ["async"] }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_cbor = { workspace = true }

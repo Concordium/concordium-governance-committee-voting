@@ -1,7 +1,7 @@
-#[cfg(feature = "http")]
+#[cfg(feature = "async")]
 use anyhow::{ensure, Context};
 use concordium_base::contracts_common::{AccountAddress, Amount};
-#[cfg(feature = "http")]
+#[cfg(feature = "async")]
 use concordium_governance_committee_election::{ChecksumUrl, HashSha2256};
 use eg::{
     election_manifest::ContestIndex,
@@ -13,7 +13,7 @@ use eg::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[cfg(feature = "http")]
+#[cfg(feature = "async")]
 pub mod contract;
 
 /// The representation of an encrypted tally, i.e. one [`Ciphertext`] per
@@ -61,11 +61,11 @@ pub fn get_scaling_factor(amount: &Amount) -> u64 { amount.micro_ccd() / 1_000_0
 
 /// Wrapper around [`reqwest::Client`] to provide
 /// `HttpClient::get_resource_checked`
-#[cfg(feature = "http")]
+#[cfg(feature = "async")]
 #[derive(Debug, Clone)]
 pub struct HttpClient(reqwest::Client);
 
-#[cfg(feature = "http")]
+#[cfg(feature = "async")]
 impl HttpClient {
     pub fn try_create(timeout_ms: u64) -> anyhow::Result<Self> {
         let timeout = core::time::Duration::from_millis(timeout_ms);
