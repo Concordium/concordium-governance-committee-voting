@@ -1,6 +1,6 @@
 import { ContractAddress } from '@concordium/web-sdk';
 import { useAtom } from 'jotai';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Form } from 'react-bootstrap';
 import { FormProvider, SubmitHandler, Validate, useForm } from 'react-hook-form';
 import Button from '~/shared/Button';
@@ -34,7 +34,6 @@ type SetupForm = {
  */
 export default function Setup() {
     const [electionConfig, setElectionConfig] = useAtom(electionConfigAtom);
-    const [loading, setLoading] = useState(false);
     const form = useForm<SetupForm>({
         defaultValues: {
             network: electionConfig?.network ?? 'mainnet',
@@ -59,15 +58,9 @@ export default function Setup() {
 
     const submit: SubmitHandler<SetupForm> = useCallback(
         async (data: SetupForm) => {
-            setLoading(true);
-
             const { network, contractIndex } = data;
-            try {
-                const config = await setElectionTarget(network, ContractAddress.create(BigInt(contractIndex)));
-                void setElectionConfig(config);
-            } finally {
-                setLoading(false);
-            }
+            const config = await setElectionTarget(network, ContractAddress.create(BigInt(contractIndex)));
+            void setElectionConfig(config);
         },
         [setElectionConfig],
     );
