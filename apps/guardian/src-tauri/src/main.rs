@@ -8,7 +8,7 @@ use log::LevelFilter;
 use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use strum::{Display, EnumIter, EnumMessage, EnumString, IntoEnumIterator};
 use tauri::{App, CustomMenuItem, Manager, Menu, Submenu};
-use tauri_plugin_log::LogTarget;
+use tauri_plugin_log::{LogTarget, RotationStrategy};
 
 mod commands;
 mod config;
@@ -87,10 +87,24 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
 }
 
 fn main() {
-    let log_plugin = tauri_plugin_log::Builder::default()
-        .level(LevelFilter::Info)
-        .targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview])
-        .build();
+    let mut log_plugin =
+        tauri_plugin_log::Builder::default().rotation_strategy(RotationStrategy::KeepAll);
+    #[cfg(debug_assertions)]
+    {
+        log_plugin = log_plugin.level(LevelFilter::Debug).targets([
+            LogTarget::LogDir,
+            LogTarget::Stdout,
+            LogTarget::Webview,
+        ]);
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        log_plugin = log_plugin
+            .level(LevelFilter::Info)
+            .targets([LogTarget::LogDir, LogTarget::Stdout]);
+    }
+
+    let log_plugin = log_plugin.build();
     log_print_panics::init();
 
     tauri::Builder::default()

@@ -56,7 +56,8 @@ impl ElectionContract {
                 &(),
                 BlockIdentifier::LastFinal,
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to get config from contract: {e}"))?;
 
         Ok(config)
     }
@@ -69,7 +70,8 @@ impl ElectionContract {
                 &(),
                 BlockIdentifier::LastFinal,
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to get encrypted tally from contract: {e}"))?;
         let Some(tally) = tally else {
             return Ok(None);
         };
@@ -88,7 +90,8 @@ impl ElectionContract {
                 &(),
                 BlockIdentifier::LastFinal,
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to get guardians state from contract: {e}"))?;
 
         Ok(state)
     }
@@ -106,7 +109,8 @@ impl ElectionContract {
                 *sender,
                 &encode(public_key).unwrap(), // Serialization will not fail
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to register public key in contract: {e}"))?;
 
         Ok(update)
     }
@@ -124,7 +128,8 @@ impl ElectionContract {
                 *sender,
                 &encode(shares).unwrap(), // Serialization will not fail
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to register encrypted share in contract: {e}"))?;
 
         Ok(update)
     }
@@ -142,7 +147,8 @@ impl ElectionContract {
                 *sender,
                 guardian_status,
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to register guardian status in contract: {e}"))?;
 
         Ok(update)
     }
@@ -160,7 +166,8 @@ impl ElectionContract {
                 *sender,
                 &encode(decryption).unwrap(), // Serialization will not fail
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to post decryption in contract: {e}"))?;
 
         Ok(update)
     }
@@ -178,7 +185,8 @@ impl ElectionContract {
                 *sender,
                 &encode(shares).unwrap(), // Serialization will not fail
             )
-            .await?;
+            .await
+            .inspect_err(|e| log::error!("Failed to post decryption proof in contract: {e}"))?;
 
         Ok(update)
     }

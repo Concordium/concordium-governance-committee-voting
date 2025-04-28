@@ -75,7 +75,9 @@ fn guardians_data_dir(app_handle: &AppHandle, user_config: &UserConfig) -> Resul
         .join(format!("{}-{}", contract.index, contract.subindex));
 
     if !guardian_dir.exists() {
-        let _ = std::fs::create_dir_all(&guardian_dir);
+        let _ = std::fs::create_dir_all(&guardian_dir).inspect_err(|e| {
+            log::error!("Failed to create guardian data directory: {e}");
+        });
     }
     Ok(guardian_dir)
 }
@@ -94,12 +96,19 @@ fn guardian_data_dir(
 pub fn user_config_path(path_resolver: PathResolver) -> Result<PathBuf, Error> {
     let app_config_dir = path_resolver.app_config_dir().unwrap();
     if !app_config_dir.exists() {
-        std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
+        std::fs::create_dir(&app_config_dir)
+            .inspect_err(|e| {
+                log::error!("Failed to app config directory: {e}");
+            })
+            .context("Failed to create app config directory")?;
     }
 
     let config_path = app_config_dir.join(USER_CONFIG_FILE);
     if !config_path.exists() {
         std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
+            .inspect_err(|e| {
+                log::error!("Failed to create user config: {e}");
+            })
             .context("Failed to create user config")?;
     }
     Ok(config_path)
@@ -1205,7 +1214,8 @@ pub async fn reload_config(
 async fn energy_to_ccd(energy: Energy, node: &mut v2::Client) -> Result<Amount, Error> {
     let chain_parameters = node
         .get_block_chain_parameters(BlockIdentifier::LastFinal)
-        .await?
+        .await
+        .inspect_err(|e| log::error!("Error while querying node ({:?}): {e}", node))?
         .response;
     let amount = chain_parameters.ccd_cost(energy);
     Ok(amount)
