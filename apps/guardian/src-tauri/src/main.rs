@@ -4,9 +4,11 @@
 use std::{str::FromStr, sync::LazyLock};
 
 use commands::{read_user_config, user_config_path};
+use log::LevelFilter;
 use state::{ActiveGuardianState, AppConfigState, ContractDataState};
 use strum::{Display, EnumIter, EnumMessage, EnumString, IntoEnumIterator};
 use tauri::{App, CustomMenuItem, Manager, Menu, Submenu};
+use tauri_plugin_log::LogTarget;
 
 mod commands;
 mod config;
@@ -85,8 +87,15 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
 }
 
 fn main() {
+    let log_plugin = tauri_plugin_log::Builder::default()
+        .level(LevelFilter::Info)
+        .targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview])
+        .build();
+    log_print_panics::init();
+
     tauri::Builder::default()
         .setup(handle_setup)
+        .plugin(log_plugin)
         .menu(MENU.clone())
         .on_menu_event(handle_menu_event)
         .manage(ActiveGuardianState::default())

@@ -1,6 +1,9 @@
 import { atom, createStore } from 'jotai';
 import { AccountAddress } from '@concordium/web-sdk/types';
+import { appWindow } from '@tauri-apps/api/window';
 
+import { expectValue } from 'shared/util';
+import { router, routes } from '~/shell/router';
 import {
     BackendError,
     BackendErrorType,
@@ -13,9 +16,6 @@ import {
     refreshEncryptedTally,
     refreshGuardians,
 } from './ffi';
-import { expectValue } from 'shared/util';
-import { appWindow } from '@tauri-apps/api/window';
-import { router, routes } from '~/shell/router';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
