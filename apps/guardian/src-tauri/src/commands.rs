@@ -1155,7 +1155,7 @@ pub struct ConnectResponse {
 
 /// Initializes a connection to the contract and queries the necessary election
 /// configuration data. Returns the election configuration stored in the
-/// election contract
+/// election contract, or `None` if the configurarion is incomplete.
 ///
 /// ## Errors
 /// - [`Error::NodeConnection`]
@@ -1164,10 +1164,15 @@ pub struct ConnectResponse {
 #[tauri::command]
 pub async fn connect(
     app_config: tauri::State<'_, AppConfigState>,
-) -> Result<ConnectResponse, Error> {
+) -> Result<Option<ConnectResponse>, Error> {
     let mut app_config = app_config.0.lock().await;
 
-    let contract_config = app_config.election().await?;
+    let res = app_config.election().await;
+    if let Err(Error::IncompleteConfiguration(_)) = res {
+        return Ok(None);
+    }
+
+    let contract_config = res?;
     let eg_config = app_config.election_guard().await?;
 
     let response = ConnectResponse {
@@ -1176,7 +1181,7 @@ pub async fn connect(
         contract_config,
         election_parameters: eg_config.parameters,
     };
-    Ok(response)
+    Ok(Some(response))
 }
 
 /// Reloads the user configuration from disk. This is useful when the user

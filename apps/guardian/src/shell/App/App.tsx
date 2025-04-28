@@ -48,12 +48,12 @@ function Configuration() {
         <div className="app-configuration">
             <ConfigurationItem
                 className="d-flex align-items-center"
-                connected={electionConfig !== undefined}
+                connected={electionConfig !== undefined && electionConfig !== null}
                 error={hasConnectionError}
             >
                 {electionConfig === undefined && !hasConnectionError && 'Connecting'}
                 {hasConnectionError && 'Failed to connect'}
-                {electionConfig !== undefined && (
+                {electionConfig !== undefined && electionConfig !== null && (
                     <>
                         {electionConfig.contractAddress.toString()} on {electionConfig.network}
                     </>

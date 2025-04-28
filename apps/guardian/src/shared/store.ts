@@ -27,7 +27,7 @@ const electionConfigErrorAtom = atom<BackendError | undefined>(undefined);
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
  */
-const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
+const electionConfigBaseAtom = atom<ElectionConfig | undefined | null>(undefined);
 /**
  * Holds the {@linkcode ElectionConfig}. Invoking the setter reloads the configuration from the backend.
  */
@@ -35,8 +35,11 @@ export const electionConfigAtom = atom(
     (get) => get(electionConfigBaseAtom),
     async (_, set) => {
         try {
-            set(electionConfigBaseAtom, await connect());
+            const response = await connect();
+            set(electionConfigBaseAtom, response);
             set(electionConfigErrorAtom, undefined);
+
+            return response;
         } catch (e: unknown) {
             set(electionConfigErrorAtom, e as BackendError);
         }
@@ -187,7 +190,7 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
         const electionConfig = get(electionConfigAtom);
         const now = new Date();
 
-        if (electionConfig === undefined) return;
+        if (electionConfig === undefined || electionConfig === null) return;
 
         let phase: ElectionPhase;
         if (now < electionConfig.electionStart) {
@@ -300,18 +303,31 @@ export const connectionErrorAtom = atom(
 export function initStore() {
     const store = createStore();
 
-    function refresh() {
-        return Promise.all([
-            store.set(electionConfigAtom),
+    async function refresh() {
+        const config = await store.set(electionConfigAtom);
+        console.log(config);
+        if (config === null) {
+            return router.navigate(routes.setup.path);
+        }
+
+        await Promise.all([
             store.set(accountsAtom),
             store.set(guardiansStateAtom),
             store.set(hasTallyAtom),
             store.set(electionStepAtom),
         ]);
+
+        return router.navigate(routes.selectAccount.path);
     }
+
     void refresh();
 
     setInterval(() => {
+        const config = store.get(electionConfigAtom);
+        if (config === null) {
+            return;
+        }
+
         void store.set(guardiansStateAtom);
         const electionPhase = store.get(electionPhaseBaseAtom);
 
@@ -321,13 +337,16 @@ export function initStore() {
     }, CONTRACT_UPDATE_INTERVAL);
 
     setInterval(() => {
+        const config = store.get(electionConfigAtom);
+        if (config === null) {
+            return;
+        }
+
         void store.set(electionStepAtom);
     }, REFRESH_ELECTION_PHASE_INTERVAL);
 
     void appWindow.listen('config-reloaded', () => {
-        void refresh().then(() => {
-            void router.navigate(routes.selectAccount.path);
-        });
+        void refresh();
     });
 
     return store;

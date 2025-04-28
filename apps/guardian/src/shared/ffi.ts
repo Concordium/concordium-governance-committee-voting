@@ -147,14 +147,19 @@ function convertConnectionResponse(config: any): ElectionConfig {
 /**
  * Initiate a connection to the election contract.
  *
- * @returns Response of type {@linkcode ConnectResponse} on successful connection
+ * @returns Response of type {@linkcode ConnectResponse} on successful connection, or `null` if the configuration is
+ * incomplete.
  * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.Http`
  */
-export async function connect(): Promise<ElectionConfig> {
+export async function connect(): Promise<ElectionConfig | null> {
     const response = await invokeWrapped<any>('connect');
+    if (response === null) {
+        return null;
+    }
+
     return convertConnectionResponse(response);
 }
 

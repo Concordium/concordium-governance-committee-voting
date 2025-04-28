@@ -120,8 +120,8 @@ export function isDefined<T>(value: T | undefined): value is T {
  *
  * @returns The unwrapped value.
  */
-export function expectValue<T>(value: T | undefined, error: string): T {
-    if (!isDefined(value)) {
+export function expectValue<T>(value: T | undefined | null, error: string): T {
+    if (!isDefined(value) || value === null) {
         throw new Error(error);
     }
 
