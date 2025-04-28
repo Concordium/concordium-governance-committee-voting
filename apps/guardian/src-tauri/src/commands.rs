@@ -47,7 +47,7 @@ use crate::{
         ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState,
         GuardianData,
     },
-    user_config::{NodeConfig, PartialUserConfig, UserConfig},
+    user_config::{PartialUserConfig, UserConfig},
 };
 
 /// The file name of the encrypted wallet account.
@@ -1188,23 +1188,15 @@ pub async fn connect(
 /// Reloads the user configuration from disk. This is useful when the user
 /// modifies the configuration file while the app is running. This will emit an
 /// event "config-reloaded".
-///
-/// ## Errors
-/// - [`Error::NodeConnection`]
-/// - [`Error::NetworkError`]
-/// - [`Error::InvalidConfiguration`]
-/// - [`Error::Http`]
 #[tauri::command]
 pub async fn reload_config(
     app_config: tauri::State<'_, AppConfigState>,
     app_handle: AppHandle,
     window: Window,
 ) -> Result<(), Error> {
-    {
-        let user_config = read_user_config(app_handle.path_resolver())?;
-        let mut app_config = app_config.0.lock().await;
-        app_config.refresh(user_config);
-    }
+    let user_config = read_user_config(app_handle.path_resolver())?;
+    let mut app_config = app_config.0.lock().await;
+    app_config.refresh(user_config);
 
     window
         .emit("config-reloaded", ())
@@ -1213,13 +1205,38 @@ pub async fn reload_config(
     Ok(())
 }
 
+/// Sets a new election target for the application. This will reload the
+/// configuration and emit an event "config-reloaded". The new target is
+/// specified by the network and contract address
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::InvalidConfiguration`]
+/// - [`Error::Http`]
 #[tauri::command]
 pub async fn set_election_target(
     app_config: tauri::State<'_, AppConfigState>,
+    app_handle: AppHandle,
+    window: Window,
     network: Network,
     contract_address: ContractAddress,
-) -> Result<(), Error> {
-    Ok(())
+) -> Result<Option<ConnectResponse>, Error> {
+    {
+        let config_path = user_config_path(app_handle.path_resolver())?;
+        let user_config_doc = std::fs::read_to_string(&config_path)?;
+        let mut user_config_doc = toml_edit::DocumentMut::from_str(&user_config_doc)?;
+
+        user_config_doc["network"] = toml_edit::value(network.to_string());
+        user_config_doc["contract"]["index"] = toml_edit::value(contract_address.index as i64);
+        user_config_doc["contract"]["subindex"] =
+            toml_edit::value(contract_address.subindex as i64);
+
+        std::fs::write(&config_path, user_config_doc.to_string())?;
+    }
+
+    reload_config(app_config.clone(), app_handle, window).await?;
+    connect(app_config).await
 }
 
 /// Verify that the network/contract combination is a valid election target.

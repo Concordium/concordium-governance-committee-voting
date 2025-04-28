@@ -1,14 +1,14 @@
 import { ContractAddress } from '@concordium/web-sdk';
-import { useAtomValue } from 'jotai';
-import { useCallback } from 'react';
+import { useAtom } from 'jotai';
+import { useCallback, useEffect } from 'react';
 import { Form } from 'react-bootstrap';
 import { FormProvider, SubmitHandler, Validate, useForm } from 'react-hook-form';
 import Button from '~/shared/Button';
-import { validateElectionTarget } from '~/shared/ffi';
+import { setElectionTarget, validateElectionTarget } from '~/shared/ffi';
 import { electionConfigAtom } from '~/shared/store';
 
 const validateIsElection: Validate<SetupForm['contractIndex'], SetupForm> = async (value, form) => {
-    const contract = ContractAddress.create(BigInt(value))
+    const contract = ContractAddress.create(BigInt(value));
     try {
         await validateElectionTarget(form.network, contract);
     } catch (e: unknown) {
@@ -20,7 +20,7 @@ const validateIsElection: Validate<SetupForm['contractIndex'], SetupForm> = asyn
 const validateIsInteger: Validate<SetupForm['contractIndex'], SetupForm> = (value) => {
     const parsedValue = Number(value);
     return Number.isInteger(parsedValue) || 'Contract index must be an integer';
-}
+};
 
 type SetupForm = {
     /** The network of the target election contract */
@@ -33,7 +33,7 @@ type SetupForm = {
  * Component which enables the user to setup the application to target a specific election.
  */
 export default function Setup() {
-    const electionConfig = useAtomValue(electionConfigAtom);
+    const [electionConfig, setElectionConfig] = useAtom(electionConfigAtom);
     const form = useForm<SetupForm>({
         defaultValues: {
             network: electionConfig?.network ?? 'mainnet',
@@ -42,14 +42,28 @@ export default function Setup() {
     });
     const {
         handleSubmit,
-        formState: { errors },
+        formState: { errors, isSubmitted },
+        watch,
+        trigger,
     } = form;
 
-    const submit: SubmitHandler<SetupForm> = useCallback((data: SetupForm) => {
-        const { network, contractIndex } = data;
-        console.log('Network:', network);
-        console.log('Contract index:', contractIndex);
-    }, []);
+    const network = watch('network');
+
+    useEffect(() => {
+        if (isSubmitted) {
+            void trigger('contractIndex');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [network]);
+
+    const submit: SubmitHandler<SetupForm> = useCallback(
+        async (data: SetupForm) => {
+            const { network, contractIndex } = data;
+            const config = await setElectionTarget(network, ContractAddress.create(BigInt(contractIndex)));
+            void setElectionConfig(config);
+        },
+        [setElectionConfig],
+    );
 
     return (
         <div className="setup">
@@ -73,6 +87,7 @@ export default function Setup() {
                             <Form.Control
                                 type="number"
                                 isInvalid={errors.contractIndex !== undefined}
+                                isValid={errors.contractIndex === undefined && isSubmitted}
                                 {...form.register('contractIndex', {
                                     required: 'Target contract index must be specified',
                                     min: { value: 0, message: 'Contract index must be a positive number' },

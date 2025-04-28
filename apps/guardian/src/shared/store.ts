@@ -8,6 +8,7 @@ import {
     BackendError,
     BackendErrorType,
     ElectionConfig,
+    ElectionConfigReponse,
     GuardianState,
     GuardianStatus,
     GuardiansState,
@@ -27,15 +28,19 @@ const electionConfigErrorAtom = atom<BackendError | undefined>(undefined);
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
  */
-const electionConfigBaseAtom = atom<ElectionConfig | undefined | null>(undefined);
+const electionConfigBaseAtom = atom<ElectionConfigReponse | undefined>(undefined);
 /**
  * Holds the {@linkcode ElectionConfig}. Invoking the setter reloads the configuration from the backend.
  */
-export const electionConfigAtom = atom(
+export const electionConfigAtom = atom<
+    ElectionConfig | null | undefined,
+    [ElectionConfigReponse?],
+    Promise<ElectionConfig | null | undefined>
+>(
     (get) => get(electionConfigBaseAtom),
-    async (_, set) => {
+    async (_, set, config) => {
         try {
-            const response = await connect();
+            const response = config !== undefined ? config : await connect();
             set(electionConfigBaseAtom, response);
             set(electionConfigErrorAtom, undefined);
 
@@ -303,21 +308,24 @@ export const connectionErrorAtom = atom(
 export function initStore() {
     const store = createStore();
 
-    async function refresh() {
-        const config = await store.set(electionConfigAtom);
-        console.log(config);
+    store.sub(electionConfigAtom, () => {
+        const config = store.get(electionConfigAtom);
+        store.set(selectedAccountAtom, undefined);
+
         if (config === null) {
-            return router.navigate(routes.setup.path);
+            void router.navigate(routes.setup.path);
         }
 
-        await Promise.all([
+        void Promise.all([
             store.set(accountsAtom),
             store.set(guardiansStateAtom),
             store.set(hasTallyAtom),
             store.set(electionStepAtom),
-        ]);
+        ]).then(() => router.navigate(routes.selectAccount.path));
+    });
 
-        return router.navigate(routes.selectAccount.path);
+    async function refresh() {
+        return store.set(electionConfigAtom);
     }
 
     void refresh();

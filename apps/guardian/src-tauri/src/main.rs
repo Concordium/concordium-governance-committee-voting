@@ -87,20 +87,19 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
 }
 
 fn main() {
-    let mut log_plugin =
-        tauri_plugin_log::Builder::default().rotation_strategy(RotationStrategy::KeepAll);
+    let mut log_plugin = tauri_plugin_log::Builder::default()
+        .rotation_strategy(RotationStrategy::KeepAll)
+        .level(LevelFilter::Error); // Disable logging by default for all crates
     #[cfg(debug_assertions)]
     {
-        log_plugin = log_plugin.level(LevelFilter::Debug).targets([
-            LogTarget::LogDir,
-            LogTarget::Stdout,
-            LogTarget::Webview,
-        ]);
+        log_plugin = log_plugin
+            .level_for(module_path!(), LevelFilter::Debug) // Enable debug logging for this crate
+            .targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview]);
     }
     #[cfg(not(debug_assertions))]
     {
         log_plugin = log_plugin
-            .level(LevelFilter::Info)
+            .level_for(module_path!(), LevelFilter::Info) // Enable debug logging for this crate
             .targets([LogTarget::LogDir, LogTarget::Stdout]);
     }
 
@@ -117,6 +116,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::connect,
             commands::reload_config,
+            commands::set_election_target,
             commands::validate_election_target,
             commands::get_accounts,
             commands::import_wallet_account,

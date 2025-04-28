@@ -67,8 +67,16 @@ pub enum Error {
     IncompleteConfiguration(String),
     #[error("The configuration is invalid: {0}")]
     InvalidConfiguration(String),
-    #[error("The user configuration is corrupt: {0}")]
-    CorruptedConfig(#[from] toml_edit::de::Error),
+    #[error("The user configuration is corrupt ({0})")]
+    CorruptedConfig(String),
+}
+
+impl From<toml_edit::de::Error> for Error {
+    fn from(error: toml_edit::de::Error) -> Self { Error::CorruptedConfig(error.to_string()) }
+}
+
+impl From<toml_edit::TomlError> for Error {
+    fn from(error: toml_edit::TomlError) -> Self { Error::CorruptedConfig(error.to_string()) }
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {

@@ -148,6 +148,8 @@ function convertConnectionResponse(config: any): ElectionConfig {
     };
 }
 
+export type ElectionConfigReponse = ElectionConfig | null;
+
 /**
  * Initiate a connection to the election contract.
  *
@@ -155,11 +157,38 @@ function convertConnectionResponse(config: any): ElectionConfig {
  * incomplete.
  * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.Http`
  */
-export async function connect(): Promise<ElectionConfig | null> {
+export async function connect(): Promise<ElectionConfigReponse> {
     const response = await invokeWrapped<any>('connect');
+    if (response === null) {
+        return null;
+    }
+
+    return convertConnectionResponse(response);
+}
+
+/**
+ * Initiate a connection to the election contract.
+ *
+ * @returns Response of type {@linkcode ConnectResponse} on successful connection, or `null` if the configuration is
+ * incomplete.
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
+ * - `BackendErrorType.NetworkError`
+ * - `BackendErrorType.Http`
+ */
+export async function setElectionTarget(
+    network: TargetNetwork,
+    contract: ContractAddress.Type,
+): Promise<ElectionConfigReponse> {
+    const response = await invokeWrapped<any>('set_election_target', {
+        network,
+        contractAddress: { index: Number(contract.index), subindex: Number(contract.subindex) },
+    });
     if (response === null) {
         return null;
     }
@@ -170,10 +199,7 @@ export async function connect(): Promise<ElectionConfig | null> {
 /**
  * Reloads the user configuration into the backend application state, returning a new {@linkcode ElectionConfig} object.
  *
- * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
- * - `BackendErrorType.NodeConnection`
- * - `BackendErrorType.NetworkError`
- * - `BackendErrorType.Http`
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property
  */
 export async function reloadConfig(): Promise<void> {
     await invokeWrapped<any>('reload_config');
@@ -190,7 +216,7 @@ export async function reloadConfig(): Promise<void> {
 export async function validateElectionTarget(network: TargetNetwork, contract: ContractAddress.Type): Promise<void> {
     await invokeWrapped<void>('validate_election_target', {
         network,
-        contractAddress: {index: Number(contract.index), subindex: Number(contract.subindex)},
+        contractAddress: { index: Number(contract.index), subindex: Number(contract.subindex) },
     });
 }
 
