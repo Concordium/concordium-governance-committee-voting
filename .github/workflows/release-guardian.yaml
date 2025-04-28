@@ -1,0 +1,91 @@
+on:
+  push:
+    tags:
+      - "release/guardian-app/*"  # Trigger on version tags for guardian app
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            arch: x64
+            target: x86_64-apple-darwin
+          - platform: macos-latest
+            arch: arm64
+            target: aarch64-apple-darwin
+          - platform: ubuntu-latest
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            arch: x64
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # TODO: check that the tag version matches the app version in the package.json
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: add legacy deb repository # see https://github.com/tauri-apps/tauri/issues/9662
+        if: matrix.platform == 'ubuntu-latest'
+        uses: myci-actions/add-deb-repo@11
+        with:
+          repo: deb http://archive.ubuntu.com/ubuntu jammy main universe
+          repo-name: ubuntu-legacy
+
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        if: matrix.platform == 'ubuntu-latest'
+        with:
+          # Needed to support tauri
+          packages: libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          version: 1.0
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # Build the app
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # macOS signing
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          # Windows signing
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          tagName: release/guardian-app/__VERSION__  # This will replace __VERSION__ with the app version
+          releaseName: "Concordium Election Guardian v__VERSION__"
+          releaseBody: "See the assets to download and install this version."
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
+          projectPath: apps/guardian
+
