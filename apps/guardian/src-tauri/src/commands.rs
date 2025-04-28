@@ -1222,18 +1222,15 @@ pub async fn set_election_target(
     network: Network,
     contract_address: ContractAddress,
 ) -> Result<Option<ConnectResponse>, Error> {
-    {
-        let config_path = user_config_path(app_handle.path_resolver())?;
-        let user_config_doc = std::fs::read_to_string(&config_path)?;
-        let mut user_config_doc = toml_edit::DocumentMut::from_str(&user_config_doc)?;
+    let config_path = user_config_path(app_handle.path_resolver())?;
+    let user_config_doc = std::fs::read_to_string(&config_path)?;
+    let mut user_config_doc = toml_edit::DocumentMut::from_str(&user_config_doc)?;
 
-        user_config_doc["network"] = toml_edit::value(network.to_string());
-        user_config_doc["contract"]["index"] = toml_edit::value(contract_address.index as i64);
-        user_config_doc["contract"]["subindex"] =
-            toml_edit::value(contract_address.subindex as i64);
+    user_config_doc["network"] = toml_edit::value(network.to_string());
+    user_config_doc["contract"]["index"] = toml_edit::value(contract_address.index as i64);
+    user_config_doc["contract"]["subindex"] = toml_edit::value(contract_address.subindex as i64);
 
-        std::fs::write(&config_path, user_config_doc.to_string())?;
-    }
+    std::fs::write(&config_path, user_config_doc.to_string())?;
 
     reload_config(app_config.clone(), app_handle, window).await?;
     connect(app_config).await

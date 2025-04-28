@@ -314,6 +314,7 @@ export function initStore() {
 
         if (config === null) {
             void router.navigate(routes.setup.path);
+            return;
         }
 
         void store.set(accountsAtom).then(() => router.navigate(routes.selectAccount.path));
