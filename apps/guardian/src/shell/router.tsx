@@ -7,6 +7,7 @@ import SelectAccount from '~/pages/SelectAccount/SelectAccount';
 import ImportWalletAccount from '~/pages/ImportWalletAccount';
 import Actions from '~/pages/Actions';
 import Setup from '~/pages/Setup';
+import { appWindow } from '@tauri-apps/api/window';
 
 /**
  * Application relative routes, used by the {@linkcode router}.
@@ -56,3 +57,7 @@ export const router = createBrowserRouter([
         element: <Setup />,
     },
 ]);
+
+void appWindow.listen('open-setup', () => {
+    void router.navigate(routes.setup.path);
+});

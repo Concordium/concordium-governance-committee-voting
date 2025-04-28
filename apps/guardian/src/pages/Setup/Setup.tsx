@@ -1,6 +1,6 @@
 import { ContractAddress } from '@concordium/web-sdk';
 import { useAtom } from 'jotai';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Form } from 'react-bootstrap';
 import { FormProvider, SubmitHandler, Validate, useForm } from 'react-hook-form';
 import Button from '~/shared/Button';
@@ -34,6 +34,7 @@ type SetupForm = {
  */
 export default function Setup() {
     const [electionConfig, setElectionConfig] = useAtom(electionConfigAtom);
+    const [loading, setLoading] = useState(false);
     const form = useForm<SetupForm>({
         defaultValues: {
             network: electionConfig?.network ?? 'mainnet',
@@ -42,7 +43,7 @@ export default function Setup() {
     });
     const {
         handleSubmit,
-        formState: { errors, isSubmitted },
+        formState: { errors, isSubmitted, isSubmitting },
         watch,
         trigger,
     } = form;
@@ -58,9 +59,15 @@ export default function Setup() {
 
     const submit: SubmitHandler<SetupForm> = useCallback(
         async (data: SetupForm) => {
+            setLoading(true);
+
             const { network, contractIndex } = data;
-            const config = await setElectionTarget(network, ContractAddress.create(BigInt(contractIndex)));
-            void setElectionConfig(config);
+            try {
+                const config = await setElectionTarget(network, ContractAddress.create(BigInt(contractIndex)));
+                void setElectionConfig(config);
+            } finally {
+                setLoading(false);
+            }
         },
         [setElectionConfig],
     );
@@ -102,7 +109,9 @@ export default function Setup() {
                                 {errors.contractIndex?.message}
                             </Form.Control.Feedback>
                         </Form.Group>
-                        <Button type="submit">Connect</Button>
+                        <Button type="submit" loading={isSubmitting}>
+                            Connect
+                        </Button>
                     </form>
                 </FormProvider>
             </div>

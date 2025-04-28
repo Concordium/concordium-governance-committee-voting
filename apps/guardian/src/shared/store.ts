@@ -316,12 +316,8 @@ export function initStore() {
             void router.navigate(routes.setup.path);
         }
 
-        void Promise.all([
-            store.set(accountsAtom),
-            store.set(guardiansStateAtom),
-            store.set(hasTallyAtom),
-            store.set(electionStepAtom),
-        ]).then(() => router.navigate(routes.selectAccount.path));
+        void store.set(accountsAtom).then(() => router.navigate(routes.selectAccount.path));
+        void Promise.all([store.set(guardiansStateAtom), store.set(hasTallyAtom), store.set(electionStepAtom)]);
     });
 
     async function refresh() {

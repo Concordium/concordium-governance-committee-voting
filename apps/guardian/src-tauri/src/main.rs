@@ -6,7 +6,7 @@ use std::{str::FromStr, sync::LazyLock};
 use commands::{read_user_config, user_config_path};
 use log::LevelFilter;
 use state::{ActiveGuardianState, AppConfigState, ContractDataState};
-use strum::{Display, EnumIter, EnumMessage, EnumString, IntoEnumIterator};
+use strum::{Display, EnumIter, EnumMessage, EnumString};
 use tauri::{App, CustomMenuItem, Manager, Menu, Submenu};
 use tauri_plugin_log::{LogTarget, RotationStrategy};
 
@@ -23,16 +23,29 @@ static CONFIG: LazyLock<tauri::Config> = LazyLock::new(|| {
 
 #[derive(Debug, Display, EnumString, EnumMessage, EnumIter)]
 enum SettingsMenuEvent {
-    #[strum(serialize = "config", message = "Open configuration")]
+    #[strum(serialize = "set_election", message = "Set Election Target")]
+    SetElection,
+    #[strum(serialize = "config", message = "Open Configuration")]
     Config,
-    #[strum(serialize = "reload_config", message = "Reload configuration")]
+    #[strum(serialize = "reload_config", message = "Reload Configuration")]
     ReloadConfig,
 }
 
 static MENU: LazyLock<Menu> = LazyLock::new(|| {
-    let settings = SettingsMenuEvent::iter()
-        .map(|event| CustomMenuItem::new(event.to_string(), event.get_message().unwrap()))
-        .fold(Menu::new(), |menu, item| menu.add_item(item));
+    let settings = Menu::new()
+        .add_item(CustomMenuItem::new(
+            SettingsMenuEvent::SetElection.to_string(),
+            SettingsMenuEvent::SetElection.get_message().unwrap(),
+        ))
+        .add_native_item(tauri::MenuItem::Separator)
+        .add_item(CustomMenuItem::new(
+            SettingsMenuEvent::Config.to_string(),
+            SettingsMenuEvent::Config.get_message().unwrap(),
+        ))
+        .add_item(CustomMenuItem::new(
+            SettingsMenuEvent::ReloadConfig.to_string(),
+            SettingsMenuEvent::ReloadConfig.get_message().unwrap(),
+        ));
 
     // TODO: On macOS, the convention is to add configuration/settings under the
     // first sub-menu in the application menu. This could be an optimization for
@@ -82,6 +95,12 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
                 let config_state = app_clone.state::<AppConfigState>();
                 let _ = commands::reload_config(config_state, app, event.window().clone()).await;
             });
+        }
+        SettingsMenuEvent::SetElection => {
+            event
+                .window()
+                .emit("open-setup", ())
+                .expect("Can emit event");
         }
     }
 }
