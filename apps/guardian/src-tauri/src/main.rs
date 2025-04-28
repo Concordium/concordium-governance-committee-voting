@@ -117,6 +117,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::connect,
             commands::reload_config,
+            commands::validate_election_target,
             commands::get_accounts,
             commands::import_wallet_account,
             commands::load_account,

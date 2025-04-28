@@ -1,10 +1,10 @@
 use std::{str::FromStr, sync::LazyLock};
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use concordium_governance_committee_election::{self as contract};
 use concordium_rust_sdk::{
     common::types::Amount,
-    contract_client::{ContractClient, ContractUpdateBuilder},
+    contract_client::ContractUpdateBuilder,
     id::types::AccountAddress,
     v2::{self, BlockIdentifier},
 };
@@ -13,6 +13,7 @@ use eg::{
     guardian_public_key::GuardianPublicKey, guardian_share::GuardianEncryptedShare,
 };
 use election_common::{
+    contract::{verify_contract, ElectionClient},
     decode, encode, EncryptedTally, GuardianDecryption, GuardianDecryptionProof, HttpClient,
 };
 use tonic::transport::ClientTlsConfig;
@@ -31,18 +32,6 @@ static TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
 static HTTP_CLIENT: LazyLock<HttpClient> =
     LazyLock::new(|| HttpClient::try_create(*TIMEOUT).expect("Failed to create HTTP client"));
 
-/// The necessary election guard configuration to construct election guard
-/// entities.
-#[derive(Clone)]
-pub struct ElectionGuardConfig {
-    /// The election manifest
-    pub manifest:   ElectionManifest,
-    /// The election parameters
-    pub parameters: ElectionParameters,
-}
-
-pub struct ElectionContractMarker;
-pub type ElectionClient = ContractClient<ElectionContractMarker>;
 /// The election contract client
 #[derive(Clone)]
 pub struct ElectionContract(pub ElectionClient);
@@ -192,13 +181,23 @@ impl ElectionContract {
     }
 }
 
+/// The necessary election guard configuration to construct election guard
+/// entities.
+#[derive(Clone)]
+pub struct ElectionGuardConfig {
+    /// The election manifest
+    pub manifest: ElectionManifest,
+    /// The election parameters
+    pub parameters: ElectionParameters,
+}
+
 pub struct AppConfig {
     /// The user config loaded from disc
-    user_config:    UserConfig,
+    user_config: UserConfig,
     /// The contract client for querying the contract.
-    contract:       Option<ElectionContract>,
+    contract: Option<ElectionContract>,
     /// The election config registered in the contract.
-    election:       Option<contract::ElectionConfig>,
+    election: Option<contract::ElectionConfig>,
     /// The election guard config.
     election_guard: Option<ElectionGuardConfig>,
 }
@@ -216,7 +215,9 @@ impl From<UserConfig> for AppConfig {
 
 impl AppConfig {
     /// Returns a reference to the user configuration.
-    pub fn user_config(&self) -> &UserConfig { &self.user_config }
+    pub fn user_config(&self) -> &UserConfig {
+        &self.user_config
+    }
 
     pub fn refresh(&mut self, config: UserConfig) {
         self.user_config = config;
@@ -256,14 +257,16 @@ impl AppConfig {
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
         let expected_genesis_hash = network.genesis_hash();
         if genesis_hash != expected_genesis_hash {
-            return Err(anyhow!(
-                "Invalid node specified. Application must use a {} node",
+            return Err(Error::InvalidConfiguration(format!(
+                "Wrong node configuration, expected a {} node",
                 network
-            )
-            .into());
+            )));
         }
 
-        let contract = ElectionContract(ElectionClient::create(node, contract_address).await?);
+        let contract = verify_contract(node, contract_address).await.map_err(|_| {
+            Error::InvalidConfiguration("Failed to verify election contract".to_string())
+        })?;
+        let contract = ElectionContract(contract);
         self.contract = Some(contract.clone());
         Ok(contract)
     }

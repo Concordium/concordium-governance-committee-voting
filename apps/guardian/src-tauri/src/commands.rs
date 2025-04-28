@@ -47,7 +47,7 @@ use crate::{
         ActiveGuardian, ActiveGuardianState, AppConfigState, ContractData, ContractDataState,
         GuardianData,
     },
-    user_config::{PartialUserConfig, UserConfig},
+    user_config::{NodeConfig, PartialUserConfig, UserConfig},
 };
 
 /// The file name of the encrypted wallet account.
@@ -290,7 +290,8 @@ async fn send_message<M, R>(
 ) -> Result<Option<R>, serde_json::Error>
 where
     M: serde::Serialize + Clone,
-    R: DeserializeOwned + Sync + Send + 'static, {
+    R: DeserializeOwned + Sync + Send + 'static,
+{
     // Construct the message channel and setup response listener
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.once(id, move |e| {
@@ -472,7 +473,8 @@ impl ValidatedProposal {
 impl Serialize for ValidatedProposal {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut proposal = serializer.serialize_struct("ValidatedProposal", 2)?;
         proposal.serialize_field("type", <&str>::from(self))?;
         proposal.serialize_field("ccdCost", &self.ccd_cost())?;
@@ -694,7 +696,7 @@ pub async fn generate_secret_share_flow(
                 .await;
         let secret_share = match secret_share {
             Ok(secret_share) => {
-                // Write to disk regardless of whether it already exists to avoid data
+                // Write to disk regardless of whether it already exists to aoid data
                 // corruption (at least up until this point)
                 write_encrypted_file(&active_guardian.password, &secret_share, &secret_share_path)?;
                 Ok(())
@@ -1061,29 +1063,29 @@ pub struct GuardianStateResponse {
     /// Whether the guardian has registered its encrypted shares
     has_encrypted_shares: bool,
     /// Whether the guardian has registered a public key
-    has_public_key:       bool,
+    has_public_key: bool,
     /// The guardian index
-    index:                u32,
+    index: u32,
     /// The guardian status registered for the guardian
-    status:               Option<contract::GuardianStatus>,
+    status: Option<contract::GuardianStatus>,
     /// Whether the guardian has registered a decryption share
     has_decryption_share: bool,
     /// Whether the guardian has proof of correct decryption
     has_decryption_proof: bool,
     /// Whether the guardian is excluded from the tally phase
-    excluded:             bool,
+    excluded: bool,
 }
 
 impl From<&contract::GuardianState> for GuardianStateResponse {
     fn from(value: &contract::GuardianState) -> Self {
         Self {
             has_encrypted_shares: value.encrypted_share.is_some(),
-            has_public_key:       value.public_key.is_some(),
-            index:                value.index,
-            status:               value.status.clone(),
+            has_public_key: value.public_key.is_some(),
+            index: value.index,
+            status: value.status.clone(),
             has_decryption_share: value.decryption_share.is_some(),
             has_decryption_proof: value.decryption_share_proof.is_some(),
-            excluded:             value.excluded,
+            excluded: value.excluded,
         }
     }
 }
@@ -1147,9 +1149,9 @@ pub async fn refresh_encrypted_tally(
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
-    network:             Network,
-    contract_address:    ContractAddress,
-    contract_config:     ElectionConfig,
+    network: Network,
+    contract_address: ContractAddress,
+    contract_config: ElectionConfig,
     election_parameters: ElectionParameters,
 }
 
@@ -1160,6 +1162,7 @@ pub struct ConnectResponse {
 /// ## Errors
 /// - [`Error::NodeConnection`]
 /// - [`Error::NetworkError`]
+/// - [`Error::InvalidConfiguration`]
 /// - [`Error::Http`]
 #[tauri::command]
 pub async fn connect(
@@ -1191,6 +1194,7 @@ pub async fn connect(
 /// ## Errors
 /// - [`Error::NodeConnection`]
 /// - [`Error::NetworkError`]
+/// - [`Error::InvalidConfiguration`]
 /// - [`Error::Http`]
 #[tauri::command]
 pub async fn reload_config(
@@ -1207,6 +1211,41 @@ pub async fn reload_config(
     window
         .emit("config-reloaded", ())
         .context("Failed to emit event")?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_election_target(
+    app_config: tauri::State<'_, AppConfigState>,
+    network: Network,
+    contract_address: ContractAddress,
+) -> Result<(), Error> {
+    Ok(())
+}
+
+
+/// Verify that the network/contract combination is a valid election target.
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::InvalidConfiguration`]
+/// - [`Error::NetworkError`]
+#[tauri::command]
+pub async fn validate_election_target(
+    app_config: tauri::State<'_, AppConfigState>,
+    network: Network,
+    contract_address: ContractAddress,
+) -> Result<(), Error> {
+    let app_config = app_config.0.lock().await;
+    let user_config = UserConfig {
+        node: app_config.user_config().node.clone(),
+        network,
+        contract: Some(contract_address),
+    };
+
+    let mut app_config = AppConfig::from(user_config);
+    app_config.contract().await?;
 
     Ok(())
 }

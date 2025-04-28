@@ -1712,6 +1712,7 @@ name = "election-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "concordium-rust-sdk",
  "concordium_base",
  "concordium_governance_committee_election",
  "eg",

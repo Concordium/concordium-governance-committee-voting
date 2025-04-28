@@ -65,6 +65,8 @@ pub enum Error {
     InvalidDecryptionShare(String),
     #[error("The user configuration is incomplete. The '{0}' field is missing.")]
     IncompleteConfiguration(String),
+    #[error("The configuration is invalid: {0}")]
+    InvalidConfiguration(String),
     #[error("The user configuration is corrupt: {0}")]
     CorruptedConfig(#[from] toml_edit::de::Error),
 }

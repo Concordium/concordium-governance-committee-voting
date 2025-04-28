@@ -27,6 +27,10 @@ export const enum BackendErrorType {
     AbortInteraction = 'AbortInteraction',
     /** Internal error when something unexpected happens */
     Internal = 'Internal',
+    /** The user configuration is invalid */
+    InvalidConfiguration = 'InvalidConfiguration',
+    /** The user configuration is incomplete */
+    IncompleteConfiguration = 'IncompleteConfiguration',
 }
 
 type BackendErrorJSON = { type: BackendErrorType; message: string };
@@ -173,6 +177,21 @@ export async function connect(): Promise<ElectionConfig | null> {
  */
 export async function reloadConfig(): Promise<void> {
     await invokeWrapped<any>('reload_config');
+}
+
+/**
+ * Verify that the election target is valid.
+ *
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.NetworkError`
+ */
+export async function validateElectionTarget(network: TargetNetwork, contract: ContractAddress.Type): Promise<void> {
+    await invokeWrapped<void>('validate_election_target', {
+        network,
+        contractAddress: {index: Number(contract.index), subindex: Number(contract.subindex)},
+    });
 }
 
 export const enum GuardianStatus {

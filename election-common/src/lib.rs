@@ -13,6 +13,9 @@ use eg::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+#[cfg(feature = "http")]
+pub mod contract;
+
 /// The representation of an encrypted tally, i.e. one [`Ciphertext`] per
 /// candidate.
 pub type EncryptedTally = BTreeMap<ContestIndex, Vec<Ciphertext>>;

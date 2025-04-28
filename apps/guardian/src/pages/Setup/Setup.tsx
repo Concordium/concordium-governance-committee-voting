@@ -1,14 +1,20 @@
+import { ContractAddress } from '@concordium/web-sdk';
 import { useAtomValue } from 'jotai';
 import { useCallback } from 'react';
 import { Form } from 'react-bootstrap';
 import { FormProvider, SubmitHandler, Validate, useForm } from 'react-hook-form';
 import Button from '~/shared/Button';
+import { validateElectionTarget } from '~/shared/ffi';
 import { electionConfigAtom } from '~/shared/store';
 
 const validateIsElection: Validate<SetupForm['contractIndex'], SetupForm> = async (value, form) => {
-    console.log(value, form);
-    // TODO: validate contract index
-    return true || 'Not a valid election contract';
+    const contract = ContractAddress.create(BigInt(value))
+    try {
+        await validateElectionTarget(form.network, contract);
+    } catch (e: unknown) {
+        return (e as Error).message;
+    }
+    return true;
 };
 
 const validateIsInteger: Validate<SetupForm['contractIndex'], SetupForm> = (value) => {
