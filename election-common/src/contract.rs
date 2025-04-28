@@ -1,10 +1,12 @@
 use anyhow::Context;
 use concordium_base::base::ContractAddress;
 use concordium_rust_sdk::{
-    types::smart_contracts::InstanceInfo, v2::{self, BlockIdentifier}
+    contract_client::ContractClient,
+    types::smart_contracts::InstanceInfo,
+    v2::{self, BlockIdentifier},
 };
-use concordium_rust_sdk::contract_client::ContractClient;
 
+#[derive(Clone, Debug)]
 pub struct ElectionContractMarker;
 pub type ElectionClient = ContractClient<ElectionContractMarker>;
 
