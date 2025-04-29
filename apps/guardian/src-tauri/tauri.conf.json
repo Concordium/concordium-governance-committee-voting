@@ -44,6 +44,7 @@
                 "icons/icon.ico"
             ],
             "windows": {
+                "signCommand": "../scripts/sign.sh %1",
                 "certificateThumbprint": "3f305698ee54726dbe5324778abbd84196676b7c",
                 "digestAlgorithm": "sha256",
                 "timestampUrl": "http://timestamp.digicert.com"
