@@ -1534,7 +1534,8 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
                         .and_then(OsStr::to_str)
                         .with_context(|| format!("Invalid filename for path {:?}", &path))?;
                     let candidate_url = make_url(format!("candidates/{}", candidate_file))?;
-                    let data = std::fs::read(&path).context("Unable to read voters file.")?;
+                    let data =
+                        std::fs::read(&path).with_context(|| "Unable to candidate file {path}.")?;
 
                     (candidate_url, data)
                 }
