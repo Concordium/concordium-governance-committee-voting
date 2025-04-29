@@ -123,7 +123,7 @@ fn main() {
     }
 
     let log_plugin = log_plugin.build();
-    log_print_panics::init();
+    log_panics::init();
 
     tauri::Builder::default()
         .setup(handle_setup)

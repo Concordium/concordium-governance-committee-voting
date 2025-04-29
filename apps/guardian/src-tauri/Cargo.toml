@@ -39,9 +39,9 @@ tauri = { version = "1.5", features = [
 ] }
 toml_edit = { version = "0.22", features = ["serde"] }
 open = "5.3"
-tauri-plugin-log = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+tauri-plugin-log = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "3b8e56a4d9002a8fa30fcd182bebfb447a0b9c41" }
 log = "0.4"
-log-print-panics = "2.1.3"
+log-panics = "2.1"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
