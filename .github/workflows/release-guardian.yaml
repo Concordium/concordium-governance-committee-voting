@@ -36,7 +36,7 @@ jobs:
 
       - name: Extract tag name
         id: get_tag
-        run: echo "::set-output name=tag::${GITHUB_REF#refs/tags/release/guardian-app/}"
+        run: echo "tag=${GITHUB_REF#refs/tags/release/guardian-app/}"  >> $GITHUB_OUTPUT
 
       - name: Test that tag version matches package.json version
         working-directory: apps/guardian
