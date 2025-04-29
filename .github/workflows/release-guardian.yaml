@@ -108,7 +108,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
           # windows signing
-          SIGN: 1
+          WINDOWS_SIGN: 1
           WINDOWS_PKCS11_CONFIG: ${{ steps.digicert_client.outputs.PKCS11_CONFIG }}
           WINDOWS_SM_KEYPAIR_ALIAS: ${{ secrets.WINDOWS_SM_KEYPAIR_ALIAS }}
           SM_HOST: ${{ vars.WINDOWS_SM_HOST }}

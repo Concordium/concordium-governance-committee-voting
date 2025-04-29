@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Check if signing is enabled
-if [ "$SIGN" != "1" ]; then
+if [ "$WINDOWS_SIGN" != "1" ]; then
   echo "Skipping signing."
   exit 0
 fi
