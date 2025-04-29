@@ -30,7 +30,13 @@ jobs:
         with:
           submodules: recursive
 
-      # TODO: check that the tag version matches the app version in the package.json
+      - name: Extract tag name
+        id: get_tag
+        run: echo "::set-output name=tag::${GITHUB_REF#refs/tags/release/guardian-app/}"
+
+      - name: Test that tag version matches package.json version
+        working-directory: apps/guardian
+        run: test "${{ steps.get_tag.outputs.tag }}" = "$(jq -r ".version" package.json)" || exit 1
 
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -61,6 +67,7 @@ jobs:
           version: 1.0
 
       - name: Install dependencies
+        working-directory: apps/guardian
         run: yarn install --frozen-lockfile
 
       - name: import windows certificate
