@@ -30,14 +30,6 @@ yarn install
 
 ## Build configuration
 
-Building for both development and production will fail if the correct environment variables are not set:
-
-```env
-CCD_ELECTION_NETWORK="testnet" # The network name. This has to correspond to the network `CCD_ELECTION_NODE` is connected to.
-CCD_ELECTION_CONTRACT_ADDRESS="<8011,0>" # Specify the contract address to target
-CCD_ELECTION_NODE="https://grpc.testnet.concordium.com:20000" # The node to use for queries
-```
-
 ### Optional configuration
 
 The following environment variables can be provided optionally:

@@ -14,14 +14,10 @@ env:
   RUST_FMT: nightly-2023-04-01
   RUST_VERSION: "1.81"
   CARGO_CONCORDIUM_VERSION: "3.0.0"
-  # The following environment variables need to be set for build to succeed.
-  CCD_ELECTION_NODE: ""
-  CCD_ELECTION_CONTRACT_ADDRESS: ""
-  CCD_ELECTION_NETWORK: ""
 
 jobs:
-  clippy:
-    name: clippy
+  check:
+    name: check
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -56,6 +52,10 @@ jobs:
           rustup default ${{ env.RUST_VERSION }}
           rustup component add clippy
           cargo clippy --manifest-path=${{ matrix.crates }} --locked -- -D warnings
+
+      - name: Run cargo test
+        run: |
+          cargo test --workspace --exclude concordium_governance_committee_election --exclude eg --exclude util # We exclude test execution for the contract + external deps
   rustfmt:
     name: format
     runs-on: ubuntu-latest

@@ -1,10 +1,13 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { RouteChildren, buildAbsoluteRoutes } from 'shared/routing';
 
+import Main from '~/layouts/Main';
+
 import SelectAccount from '~/pages/SelectAccount/SelectAccount';
 import ImportWalletAccount from '~/pages/ImportWalletAccount';
 import Actions from '~/pages/Actions';
-import Main from '~/layouts/Main';
+import Setup from '~/pages/Setup';
+import { appWindow } from '@tauri-apps/api/window';
 
 /**
  * Application relative routes, used by the {@linkcode router}.
@@ -13,6 +16,10 @@ const relativeRoutes = {
     /** Allows user to select the account to load into the app. */
     selectAccount: {
         path: '/',
+    },
+    /** Setup the app with the target election */
+    setup: {
+        path: '/setup',
     },
     /** Allows the user to import a new account into the app. */
     importAccount: {
@@ -45,4 +52,12 @@ export const router = createBrowserRouter([
             { path: relativeRoutes.actions.path, element: <Actions /> },
         ],
     },
+    {
+        path: relativeRoutes.setup.path,
+        element: <Setup />,
+    },
 ]);
+
+void appWindow.listen('open-setup', () => {
+    void router.navigate(routes.setup.path);
+});

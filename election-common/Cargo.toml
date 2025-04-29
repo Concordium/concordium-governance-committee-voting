@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 concordium_governance_committee_election = { workspace = true }
+concordium-rust-sdk = { workspace = true, optional = true }
 eg = { workspace = true }
 reqwest = { workspace = true, optional = true}
 serde = { workspace = true }
@@ -18,4 +19,4 @@ concordium_base = "7.0"
 rmp-serde = "1.1"
 
 [features]
-http = ["dep:reqwest"]
+async = ["dep:reqwest", "dep:concordium-rust-sdk"]

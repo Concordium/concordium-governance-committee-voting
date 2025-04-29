@@ -159,7 +159,7 @@ export function DecryptionActions() {
     const guardians = useAtomValue(guardiansStateAtom).guardians?.filter(([, g]) => !g.excluded);
     const electionConfig = useAtomValue(electionConfigAtom);
 
-    if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined || electionConfig === undefined) {
+    if (electionStep?.phase !== ElectionPhase.Tally || guardians === undefined || electionConfig == null) {
         return null;
     }
 

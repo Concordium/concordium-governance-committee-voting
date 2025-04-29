@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { AccountAddress, Base58String, CcdAmount, WalletExportFormat } from '@concordium/web-sdk';
+import { AccountAddress, Base58String, CcdAmount, ContractAddress, WalletExportFormat } from '@concordium/web-sdk';
 import { invoke } from '@tauri-apps/api';
 import { appWindow } from '@tauri-apps/api/window';
 import { UnlistenFn, Event } from '@tauri-apps/api/event';
@@ -27,6 +27,10 @@ export const enum BackendErrorType {
     AbortInteraction = 'AbortInteraction',
     /** Internal error when something unexpected happens */
     Internal = 'Internal',
+    /** The user configuration is invalid */
+    InvalidConfiguration = 'InvalidConfiguration',
+    /** The user configuration is incomplete */
+    IncompleteConfiguration = 'IncompleteConfiguration',
 }
 
 type BackendErrorJSON = { type: BackendErrorType; message: string };
@@ -116,6 +120,10 @@ export function loadAccount(account: AccountAddress.Type, password: string): Pro
  * upon contract initialization.
  */
 export type ElectionConfig = {
+    /** The network from the user configuration */
+    network: TargetNetwork;
+    /** The contract address from the user configuration */
+    contractAddress: ContractAddress.Type;
     /** The election start time */
     electionStart: Date;
     /** The election end time */
@@ -128,26 +136,88 @@ export type ElectionConfig = {
     guardianThreshold: number;
 };
 
+function convertConnectionResponse(config: any): ElectionConfig {
+    return {
+        network: config.network,
+        contractAddress: ContractAddress.create(config.contractAddress.index, config.contractAddress.subindex),
+        electionStart: new Date(config.contractConfig.electionStart),
+        electionEnd: new Date(config.contractConfig.electionEnd),
+        decryptionDeadline: new Date(config.contractConfig.decryptionDeadline),
+        electionDescription: config.contractConfig.electionDescription,
+        guardianThreshold: config.electionParameters.varying_parameters.k,
+    };
+}
+
+export type ElectionConfigReponse = ElectionConfig | null;
+
 /**
  * Initiate a connection to the election contract.
  *
- * @returns Response of type {@linkcode ConnectResponse} on successful connection
+ * @returns Response of type {@linkcode ConnectResponse} on successful connection, or `null` if the configuration is
+ * incomplete.
  * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
  * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
  * - `BackendErrorType.NetworkError`
  * - `BackendErrorType.Http`
  */
-export async function connect(): Promise<ElectionConfig> {
-    const { contractConfig, electionParameters } = await invokeWrapped<any>('connect');
-    const guardianThreshold = electionParameters.varying_parameters.k;
-    const mapped: ElectionConfig = {
-        ...contractConfig,
-        electionStart: new Date(contractConfig.electionStart),
-        electionEnd: new Date(contractConfig.electionEnd),
-        decryptionDeadline: new Date(contractConfig.decryptionDeadline),
-        guardianThreshold,
-    };
-    return mapped;
+export async function connect(): Promise<ElectionConfigReponse> {
+    const response = await invokeWrapped<any>('connect');
+    if (response === null) {
+        return null;
+    }
+
+    return convertConnectionResponse(response);
+}
+
+/**
+ * Initiate a connection to the election contract.
+ *
+ * @returns Response of type {@linkcode ConnectResponse} on successful connection, or `null` if the configuration is
+ * incomplete.
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
+ * - `BackendErrorType.NetworkError`
+ * - `BackendErrorType.Http`
+ */
+export async function setElectionTarget(
+    network: TargetNetwork,
+    contract: ContractAddress.Type,
+): Promise<ElectionConfigReponse> {
+    const response = await invokeWrapped<any>('set_election_target', {
+        network,
+        contractAddress: { index: Number(contract.index), subindex: Number(contract.subindex) },
+    });
+    if (response === null) {
+        return null;
+    }
+
+    return convertConnectionResponse(response);
+}
+
+/**
+ * Reloads the user configuration into the backend application state, returning a new {@linkcode ElectionConfig} object.
+ *
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property
+ */
+export async function reloadConfig(): Promise<void> {
+    await invokeWrapped<any>('reload_config');
+}
+
+/**
+ * Verify that the election target is valid.
+ *
+ * @throws Error of type {@linkcode BackendError} with additional information on the `type` property:
+ * - `BackendErrorType.InvalidConfiguration` if the configuration is invalid
+ * - `BackendErrorType.NodeConnection`
+ * - `BackendErrorType.NetworkError`
+ */
+export async function validateElectionTarget(network: TargetNetwork, contract: ContractAddress.Type): Promise<void> {
+    await invokeWrapped<void>('validate_election_target', {
+        network,
+        contractAddress: { index: Number(contract.index), subindex: Number(contract.subindex) },
+    });
 }
 
 export const enum GuardianStatus {

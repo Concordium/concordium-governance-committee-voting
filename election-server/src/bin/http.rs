@@ -19,13 +19,13 @@ use concordium_rust_sdk::{
     smart_contracts::common::AccountAddress,
     types::{hashes::TransactionHash, ContractAddress},
 };
-use election_common::{get_scaling_factor, HttpClient, WeightRow};
+use election_common::{
+    contract::{verify_contract, ElectionClient as ElectionContract},
+    get_scaling_factor, HttpClient, WeightRow,
+};
 use election_server::{
     db::{DatabasePool, StoredBallotSubmission, StoredDelegation},
-    util::{
-        create_client, get_election_config, get_election_result, get_guardians_state,
-        verify_contract, ElectionContract,
-    },
+    util::{create_client, get_election_config, get_election_result, get_guardians_state},
 };
 use futures::FutureExt;
 use handlebars::{no_escape, Handlebars};

@@ -320,6 +320,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@concordium/rust-bindings@npm:^3.3.0":
+  version: 3.3.0
+  resolution: "@concordium/rust-bindings@npm:3.3.0"
+  checksum: 79d1d6af5aef6ae42f3f323330da057d010d9ef7fec5fd9a8628fa13a40d87ff38fafedd7990bbfc08005ca10dcb08e89c6cab501f90a0eb73b23a5beb1eaa09
+  languageName: node
+  linkType: hard
+
 "@concordium/wallet-connectors@npm:0.6.0-alpha.6":
   version: 0.6.0-alpha.6
   resolution: "@concordium/wallet-connectors@npm:0.6.0-alpha.6"
@@ -358,11 +365,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@concordium/web-sdk@npm:^7.1.0":
-  version: 7.1.0
-  resolution: "@concordium/web-sdk@npm:7.1.0"
+"@concordium/web-sdk@npm:^9.1.0":
+  version: 9.1.0
+  resolution: "@concordium/web-sdk@npm:9.1.0"
   dependencies:
-    "@concordium/rust-bindings": "npm:2.0.1"
+    "@concordium/rust-bindings": "npm:^3.3.0"
     "@grpc/grpc-js": "npm:^1.9.4"
     "@noble/ed25519": "npm:^2.0.0"
     "@noble/hashes": "npm:^1.3.2"
@@ -378,7 +385,9 @@ __metadata:
     iso-3166-1: "npm:^2.1.1"
     json-bigint: "npm:^1.0.0"
     uuid: "npm:^8.3.2"
-  checksum: 6737cdd39c302e47a279ade9f100477a750ec91f72951f4184d0386be870bb6485ba1671931f492464c44930d19fc3844e517f2b9e692aa24613051d3da7329c
+  peerDependencies:
+    "@protobuf-ts/runtime-rpc": ^2.8.2
+  checksum: 4cb4e8fe93a6bab07f7c7ab82a646ea05fcada2f0cc8500354b8ef6a58fd67f747084ef58c87e1f8694e06f8d82d542161860fbd415030395d13f78e1667111e
   languageName: node
   linkType: hard
 
@@ -1381,21 +1390,21 @@ __metadata:
   linkType: hard
 
 "@protobuf-ts/grpcweb-transport@npm:^2.9.1":
-  version: 2.9.1
-  resolution: "@protobuf-ts/grpcweb-transport@npm:2.9.1"
+  version: 2.9.6
+  resolution: "@protobuf-ts/grpcweb-transport@npm:2.9.6"
   dependencies:
-    "@protobuf-ts/runtime": "npm:^2.9.1"
-    "@protobuf-ts/runtime-rpc": "npm:^2.9.1"
-  checksum: e4bd9c0c086fc28a772a2d04b14ebf7a8da79d3db90c14b2d47a082f3e0e695a514dae2abccafa68ee753a0269baeec2b175be2bfa1839f6d81ce22728588f9b
+    "@protobuf-ts/runtime": "npm:^2.9.6"
+    "@protobuf-ts/runtime-rpc": "npm:^2.9.6"
+  checksum: 15714469b04d5b70a5cf3f9ee8ba28067a5e4d70c57cadeea86806287b81091e8e48d1a9b1df4284691cbd7600501ea38ad42fda17eeecf08dc070b11a1d1909
   languageName: node
   linkType: hard
 
-"@protobuf-ts/runtime-rpc@npm:^2.8.2, @protobuf-ts/runtime-rpc@npm:^2.9.1":
-  version: 2.9.1
-  resolution: "@protobuf-ts/runtime-rpc@npm:2.9.1"
+"@protobuf-ts/runtime-rpc@npm:^2.8.2, @protobuf-ts/runtime-rpc@npm:^2.9.1, @protobuf-ts/runtime-rpc@npm:^2.9.6":
+  version: 2.9.6
+  resolution: "@protobuf-ts/runtime-rpc@npm:2.9.6"
   dependencies:
-    "@protobuf-ts/runtime": "npm:^2.9.1"
-  checksum: 45cd105d717742678b1ce5e72d74e1a7ba4faee35e90faf79063d557fb69fc8a2d1bf776c6f36a2159bb72e89e719d8aac2a5f5320deb3123bd7d354f584d63c
+    "@protobuf-ts/runtime": "npm:^2.9.6"
+  checksum: 47b9a46727acb45888ca4c20f7823ddebd75799d13ec97703b7c86c2d0f42493e3b9ad410005f89a463bb318bb65d7458444c956706cacb4a6b4630fc8e266a0
   languageName: node
   linkType: hard
 
@@ -1403,6 +1412,13 @@ __metadata:
   version: 2.9.1
   resolution: "@protobuf-ts/runtime@npm:2.9.1"
   checksum: 34a1c710f9157352eafa5a134cbab3d72de0ef78a919f8959428adece88604bd02d600e3eb099b1aca878552a98adce288a30e24b26cf3074c3112a4d4610b4a
+  languageName: node
+  linkType: hard
+
+"@protobuf-ts/runtime@npm:^2.9.6":
+  version: 2.9.6
+  resolution: "@protobuf-ts/runtime@npm:2.9.6"
+  checksum: 4554af1209c6d258d743392287536a7a01112e41073ecd1da19c9c37fca6ee43481ba39cabe8d7884b6485b4e68ff15021d7af25b46a564528e117363659f762
   languageName: node
   linkType: hard
 
@@ -5183,7 +5199,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "guardian@workspace:guardian"
   dependencies:
-    "@concordium/web-sdk": "npm:^7.1.0"
+    "@concordium/web-sdk": "npm:^9.1.0"
     "@simbathesailor/use-what-changed": "npm:^2.0.0"
     "@tauri-apps/api": "npm:^1.5.2"
     "@tauri-apps/cli": "npm:^1.5.11"
@@ -7442,7 +7458,7 @@ __metadata:
   resolution: "shared@workspace:shared"
   dependencies:
     "@concordium/ccd-js-gen": "npm:^1.0.1"
-    "@concordium/web-sdk": "npm:^7.1.0"
+    "@concordium/web-sdk": "npm:^9.1.0"
     "@types/react": "npm:^18.2.15"
     buffer: "npm:^6.0.3"
     commander: "npm:^11.1.0"
@@ -8331,7 +8347,7 @@ __metadata:
   resolution: "voting@workspace:voting"
   dependencies:
     "@concordium/wallet-connectors": "npm:0.6.0-alpha.6"
-    "@concordium/web-sdk": "npm:^7.1.0"
+    "@concordium/web-sdk": "npm:^9.1.0"
     "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
     "@swc-jotai/react-refresh": "npm:^0.1.0"
     "@types/bootstrap": "npm:^5"

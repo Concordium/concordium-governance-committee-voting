@@ -1,0 +1,23 @@
+.setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+
+    .setup__form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: $white;
+        padding: 2rem;
+
+        max-width: 600px;
+        width: 100%;
+    }
+
+    form {
+        width: 100%;
+    }
+}

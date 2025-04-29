@@ -1,6 +1,18 @@
 ## Unreleased
 
+### Breaking changes
+
+- Removed `--node` cli flag, as the target node can now be configured through the user configuration file
+- Store guardian data on a path on disk derived from the user configuration. Specifically, this means the data will be
+  stored at `$APPDATA/<network>/<contract-address>/<account-address>` for each guardian.
+
+### Changes
+
 - Bumped rust-sdk dependency to 6.0
+- Update `@concordium/web-sdk` to 9.1.
+- Added configuration by user config file, allowing users to configure the network/contract to integrate with. This can
+  be accessed from the "Settings" menu from the native application menu
+
 
 ## 1.0.0
 

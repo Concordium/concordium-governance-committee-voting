@@ -25,7 +25,7 @@ export default function Actions() {
     const electionStep = useAtomValue(electionStepAtom);
     const electionConfig = useAtomValue(electionConfigAtom);
 
-    if (electionStep === undefined || electionConfig === undefined) {
+    if (electionStep === undefined || electionConfig == null) {
         return null;
     }
 
