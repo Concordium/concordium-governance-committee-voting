@@ -17,12 +17,15 @@ use eg::{
     guardian_public_key::GuardianPublicKey, hashes::Hashes, hashes_ext::HashesExt,
     joint_election_public_key::JointElectionPublicKey,
 };
-use election_common::{decode, HttpClient};
+use election_common::{
+    contract::{verify_contract, ElectionClient as ElectionContract},
+    decode, HttpClient,
+};
 use election_server::{
     db::{Database, DatabasePool, Transaction},
     util::{
-        create_client, get_election_config, get_guardians_state, verify_contract, BallotSubmission,
-        ElectionContract, VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
+        create_client, get_election_config, get_guardians_state, BallotSubmission,
+        VotingWeightDelegation, REGISTER_VOTES_RECEIVE,
     },
 };
 use futures::{future, TryStreamExt};

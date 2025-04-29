@@ -3,12 +3,13 @@ use concordium_governance_committee_election::{
     ElectionConfig, GuardiansState, ViewElectionResultQueryResponse,
 };
 use concordium_rust_sdk::{
-    contract_client::{ContractClient, ViewError},
+    contract_client::ViewError,
     smart_contracts::common as contracts_common,
-    types::{hashes::TransactionHash, smart_contracts::InstanceInfo, ContractAddress},
+    types::hashes::TransactionHash,
     v2::{self, BlockIdentifier},
 };
 use eg::ballot::BallotEncrypted;
+use election_common::contract::ElectionClient as ElectionContract;
 use serde::Serialize;
 use tonic::transport::ClientTlsConfig;
 
@@ -41,10 +42,6 @@ pub struct VotingWeightDelegation {
     pub transaction_hash: TransactionHash,
 }
 
-#[derive(Debug)]
-pub enum ElectionContractMarker {}
-pub type ElectionContract = ContractClient<ElectionContractMarker>;
-
 /// Creates a [`v2::Client`] from the [`v2::Endpoint`], enabling TLS and setting
 /// connection and request timeouts
 pub async fn create_client(
@@ -69,33 +66,6 @@ pub async fn create_client(
         .await
         .context("Could not connect to node.")?;
     Ok(node)
-}
-
-/// Verify that the contract instance represented by `contract_address` is an
-/// election contract. We check this to avoid failing silently from not indexing
-/// any transactions made to the contract due to either listening to
-/// transactions made to the wrong contract of a wrong contract entrypoint.
-pub async fn verify_contract(
-    mut node: v2::Client,
-    contract_address: ContractAddress,
-) -> anyhow::Result<ElectionContract> {
-    let instance_info = node
-        .get_instance_info(contract_address, BlockIdentifier::LastFinal)
-        .await
-        .context("Could not get instance info for election contract")?
-        .response;
-    let (name, methods) = match instance_info {
-        InstanceInfo::V0 { .. } => anyhow::bail!("Expected V1 contract"),
-        InstanceInfo::V1 { methods, name, .. } => (name, methods),
-    };
-
-    anyhow::ensure!(
-        methods.iter().any(|m| m == REGISTER_VOTES_RECEIVE),
-        "Expected method with receive name \"{}\" to be available on contract",
-        REGISTER_VOTES_RECEIVE
-    );
-
-    Ok(ElectionContract::new(node, contract_address, name))
 }
 
 /// Gets the [`ElectionConfig`] from the contract.

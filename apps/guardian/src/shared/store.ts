@@ -1,10 +1,14 @@
 import { atom, createStore } from 'jotai';
 import { AccountAddress } from '@concordium/web-sdk/types';
+import { appWindow } from '@tauri-apps/api/window';
 
+import { expectValue } from 'shared/util';
+import { router, routes } from '~/shell/router';
 import {
     BackendError,
     BackendErrorType,
     ElectionConfig,
+    ElectionConfigReponse,
     GuardianState,
     GuardianStatus,
     GuardiansState,
@@ -13,7 +17,6 @@ import {
     refreshEncryptedTally,
     refreshGuardians,
 } from './ffi';
-import { expectValue } from 'shared/util';
 
 /** The interval at which the guardians state will refresh from the contract */
 const CONTRACT_UPDATE_INTERVAL = 30000;
@@ -25,16 +28,23 @@ const electionConfigErrorAtom = atom<BackendError | undefined>(undefined);
 /**
  * Primitive atom for holding the {@linkcode ElectionConfig} of the election contract
  */
-const electionConfigBaseAtom = atom<ElectionConfig | undefined>(undefined);
+const electionConfigBaseAtom = atom<ElectionConfigReponse | undefined>(undefined);
 /**
  * Holds the {@linkcode ElectionConfig}. Invoking the setter reloads the configuration from the backend.
  */
-export const electionConfigAtom = atom(
+export const electionConfigAtom = atom<
+    ElectionConfig | null | undefined,
+    [ElectionConfigReponse?],
+    Promise<ElectionConfig | null | undefined>
+>(
     (get) => get(electionConfigBaseAtom),
-    async (_, set) => {
+    async (_, set, config) => {
         try {
-            set(electionConfigBaseAtom, await connect());
+            const response = config !== undefined ? config : await connect();
+            set(electionConfigBaseAtom, response);
             set(electionConfigErrorAtom, undefined);
+
+            return response;
         } catch (e: unknown) {
             set(electionConfigErrorAtom, e as BackendError);
         }
@@ -185,7 +195,7 @@ export const electionStepAtom = atom<ElectionStep | undefined, [], void>(
         const electionConfig = get(electionConfigAtom);
         const now = new Date();
 
-        if (electionConfig === undefined) return;
+        if (electionConfig === undefined || electionConfig === null) return;
 
         let phase: ElectionPhase;
         if (now < electionConfig.electionStart) {
@@ -298,12 +308,31 @@ export const connectionErrorAtom = atom(
 export function initStore() {
     const store = createStore();
 
-    void store.set(electionConfigAtom);
-    void store.set(accountsAtom);
+    store.sub(electionConfigAtom, () => {
+        const config = store.get(electionConfigAtom);
+        store.set(selectedAccountAtom, undefined);
 
-    void store.set(guardiansStateAtom);
-    void store.set(hasTallyAtom);
+        if (config === null) {
+            void router.navigate(routes.setup.path);
+            return;
+        }
+
+        void store.set(accountsAtom).then(() => router.navigate(routes.selectAccount.path));
+        void Promise.all([store.set(guardiansStateAtom), store.set(hasTallyAtom), store.set(electionStepAtom)]);
+    });
+
+    async function refresh() {
+        return store.set(electionConfigAtom);
+    }
+
+    void refresh();
+
     setInterval(() => {
+        const config = store.get(electionConfigAtom);
+        if (config === null) {
+            return;
+        }
+
         void store.set(guardiansStateAtom);
         const electionPhase = store.get(electionPhaseBaseAtom);
 
@@ -312,10 +341,18 @@ export function initStore() {
         }
     }, CONTRACT_UPDATE_INTERVAL);
 
-    store.set(electionStepAtom);
     setInterval(() => {
-        store.set(electionStepAtom);
+        const config = store.get(electionConfigAtom);
+        if (config === null) {
+            return;
+        }
+
+        void store.set(electionStepAtom);
     }, REFRESH_ELECTION_PHASE_INTERVAL);
+
+    void appWindow.listen('config-reloaded', () => {
+        void refresh();
+    });
 
     return store;
 }

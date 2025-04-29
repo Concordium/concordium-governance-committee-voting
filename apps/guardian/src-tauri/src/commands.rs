@@ -75,7 +75,9 @@ fn guardians_data_dir(app_handle: &AppHandle, user_config: &UserConfig) -> Resul
         .join(format!("{}-{}", contract.index, contract.subindex));
 
     if !guardian_dir.exists() {
-        let _ = std::fs::create_dir_all(&guardian_dir);
+        let _ = std::fs::create_dir_all(&guardian_dir).inspect_err(|e| {
+            log::error!("Failed to create guardian data directory: {e}");
+        });
     }
     Ok(guardian_dir)
 }
@@ -89,20 +91,33 @@ fn guardian_data_dir(
     guardians_data_dir(app_handle, user_config).map(|dir| dir.join(account.to_string()))
 }
 
-/// Reads the user configuration from disk. If the file does not exist,
-/// it will be created with default values.
-pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error> {
+/// Get the path of the user configuration file. This will create the
+/// configuration file if it does not exist.
+pub fn user_config_path(path_resolver: PathResolver) -> Result<PathBuf, Error> {
     let app_config_dir = path_resolver.app_config_dir().unwrap();
     if !app_config_dir.exists() {
-        std::fs::create_dir(&app_config_dir).context("Failed to create app config directory")?;
+        std::fs::create_dir(&app_config_dir)
+            .inspect_err(|e| {
+                log::error!("Failed to create app config directory: {e}");
+            })
+            .context("Failed to create app config directory")?;
     }
 
     let config_path = app_config_dir.join(USER_CONFIG_FILE);
     if !config_path.exists() {
         std::fs::write(&config_path, PartialUserConfig::empty().get_toml())
+            .inspect_err(|e| {
+                log::error!("Failed to create user config: {e}");
+            })
             .context("Failed to create user config")?;
     }
+    Ok(config_path)
+}
 
+/// Reads the user configuration from disk. If the file does not exist,
+/// it will be created with default values.
+pub fn read_user_config(path_resolver: PathResolver) -> Result<UserConfig, Error> {
+    let config_path = user_config_path(path_resolver)?;
     let file = std::fs::read_to_string(config_path)?;
     let user_config = PartialUserConfig::from_str(&file)?.full_config();
     Ok(user_config)
@@ -189,9 +204,14 @@ pub async fn import_wallet_account(
 /// ## Errors
 /// Fails if the appliction data directory could not be read, which should not
 /// happen due to ensuring the existence during application setup.
-#[tauri::command(async)]
-pub fn get_accounts(handle: AppHandle) -> Result<Vec<AccountAddress>, Error> {
-    let app_data_dir = handle.path_resolver().app_data_dir().unwrap();
+#[tauri::command]
+pub async fn get_accounts(
+    handle: AppHandle,
+    app_config: tauri::State<'_, AppConfigState>,
+) -> Result<Vec<AccountAddress>, Error> {
+    let app_config = app_config.0.lock().await;
+    let user_config = app_config.user_config();
+    let app_data_dir = guardians_data_dir(&handle, user_config)?;
     let entries = std::fs::read_dir(app_data_dir)?;
 
     let accounts: Vec<_> = entries
@@ -1124,7 +1144,7 @@ pub async fn refresh_encrypted_tally(
     Ok(true)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectResponse {
     network:             Network,
@@ -1135,19 +1155,25 @@ pub struct ConnectResponse {
 
 /// Initializes a connection to the contract and queries the necessary election
 /// configuration data. Returns the election configuration stored in the
-/// election contract
+/// election contract, or `None` if the configurarion is incomplete.
 ///
 /// ## Errors
 /// - [`Error::NodeConnection`]
 /// - [`Error::NetworkError`]
+/// - [`Error::InvalidConfiguration`]
 /// - [`Error::Http`]
 #[tauri::command]
 pub async fn connect(
     app_config: tauri::State<'_, AppConfigState>,
-) -> Result<ConnectResponse, Error> {
+) -> Result<Option<ConnectResponse>, Error> {
     let mut app_config = app_config.0.lock().await;
 
-    let contract_config = app_config.election().await?;
+    let res = app_config.election().await;
+    if let Err(Error::IncompleteConfiguration(_)) = res {
+        return Ok(None);
+    }
+
+    let contract_config = res?;
     let eg_config = app_config.election_guard().await?;
 
     let response = ConnectResponse {
@@ -1156,28 +1182,83 @@ pub async fn connect(
         contract_config,
         election_parameters: eg_config.parameters,
     };
-    Ok(response)
+    Ok(Some(response))
 }
 
 /// Reloads the user configuration from disk. This is useful when the user
-/// modifies the configuration file while the app is running.
-///
-/// ## Errors
-/// - [`Error::NodeConnection`]
-/// - [`Error::NetworkError`]
-/// - [`Error::Http`]
+/// modifies the configuration file while the app is running. This will emit an
+/// event "config-reloaded".
 #[tauri::command]
 pub async fn reload_config(
     app_config: tauri::State<'_, AppConfigState>,
     app_handle: AppHandle,
-) -> Result<ConnectResponse, Error> {
-    {
-        let user_config = read_user_config(app_handle.path_resolver())?;
-        let mut app_config = app_config.0.lock().await;
-        app_config.refresh(user_config);
-    }
+    window: Window,
+) -> Result<(), Error> {
+    let user_config = read_user_config(app_handle.path_resolver())?;
+    let mut app_config = app_config.0.lock().await;
+    app_config.refresh(user_config);
 
+    window
+        .emit("config-reloaded", ())
+        .context("Failed to emit event")?;
+
+    Ok(())
+}
+
+/// Sets a new election target for the application. This will reload the
+/// configuration and emit an event "config-reloaded". The new target is
+/// specified by the network and contract address
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::NetworkError`]
+/// - [`Error::InvalidConfiguration`]
+/// - [`Error::Http`]
+#[tauri::command]
+pub async fn set_election_target(
+    app_config: tauri::State<'_, AppConfigState>,
+    app_handle: AppHandle,
+    window: Window,
+    network: Network,
+    contract_address: ContractAddress,
+) -> Result<Option<ConnectResponse>, Error> {
+    let config_path = user_config_path(app_handle.path_resolver())?;
+    let user_config_doc = std::fs::read_to_string(&config_path)?;
+    let mut user_config_doc = toml_edit::DocumentMut::from_str(&user_config_doc)?;
+
+    user_config_doc["network"] = toml_edit::value(network.to_string());
+    user_config_doc["contract"]["index"] = toml_edit::value(contract_address.index as i64);
+    user_config_doc["contract"]["subindex"] = toml_edit::value(contract_address.subindex as i64);
+
+    std::fs::write(&config_path, user_config_doc.to_string())?;
+
+    reload_config(app_config.clone(), app_handle, window).await?;
     connect(app_config).await
+}
+
+/// Verify that the network/contract combination is a valid election target.
+///
+/// ## Errors
+/// - [`Error::NodeConnection`]
+/// - [`Error::InvalidConfiguration`]
+/// - [`Error::NetworkError`]
+#[tauri::command]
+pub async fn validate_election_target(
+    app_config: tauri::State<'_, AppConfigState>,
+    network: Network,
+    contract_address: ContractAddress,
+) -> Result<(), Error> {
+    let app_config = app_config.0.lock().await;
+    let user_config = UserConfig {
+        node: app_config.user_config().node.clone(),
+        network,
+        contract: Some(contract_address),
+    };
+
+    let mut app_config = AppConfig::from(user_config);
+    app_config.contract().await?;
+
+    Ok(())
 }
 
 /// Calculates the [`Amount`] for a given amount of [`Energy`].
@@ -1188,7 +1269,8 @@ pub async fn reload_config(
 async fn energy_to_ccd(energy: Energy, node: &mut v2::Client) -> Result<Amount, Error> {
     let chain_parameters = node
         .get_block_chain_parameters(BlockIdentifier::LastFinal)
-        .await?
+        .await
+        .inspect_err(|e| log::error!("Error while querying node ({:?}): {e}", node))?
         .response;
     let amount = chain_parameters.ccd_cost(energy);
     Ok(amount)

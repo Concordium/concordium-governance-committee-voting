@@ -13,7 +13,7 @@ concordium_governance_committee_election = { workspace = true }
 concordium-rust-sdk = { workspace = true }
 csv = { workspace = true }
 eg = { workspace = true }
-election-common = { workspace = true, features = ["http"] }
+election-common = { workspace = true, features = ["async"] }
 futures = { workspace = true }
 indicatif = { workspace = true }
 rand = { workspace = true }

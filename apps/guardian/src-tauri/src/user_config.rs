@@ -56,7 +56,7 @@ impl NodeConfig {
 
 /// The user configuration for the application. This matches
 /// [`PartialUserConfig`] but with mostly non-optional fields.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct UserConfig {
     /// The network id.
     pub network:  Network,
