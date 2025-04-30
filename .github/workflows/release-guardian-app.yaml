@@ -9,6 +9,7 @@ env:
 
 jobs:
   build-and-release:
+    environment: guardian-app-release
     strategy:
       fail-fast: false
       matrix:
