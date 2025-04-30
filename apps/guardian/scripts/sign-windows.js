@@ -1,4 +1,5 @@
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
+import * as process from 'process';
 
 // Check if signing is enabled
 if (process.env.WINDOWS_SIGN !== '1') {
@@ -30,5 +31,6 @@ try {
     execSync(cmd, { stdio: 'inherit' });
 } catch (error) {
     console.error('Signing failed:', error.message);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     process.exit(error.status || 1);
 }
