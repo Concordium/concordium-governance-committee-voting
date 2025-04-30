@@ -38,9 +38,9 @@ jobs:
         id: get_tag
         run: echo "tag=${GITHUB_REF#refs/tags/release/guardian-app/}"  >> $GITHUB_OUTPUT
 
-      - name: Test that tag version matches package.json version
+      - name: Test that tag version matches tauri.conf.json version
         working-directory: apps/guardian
-        run: test "${{ steps.get_tag.outputs.tag }}" = "$(jq -r ".version" package.json)" || exit 1
+        run: test "${{ steps.get_tag.outputs.tag }}" = "$(jq -r ".package.version" src-tauri/tauri.conf.json)" || exit 1
 
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
