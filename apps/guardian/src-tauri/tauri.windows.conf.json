@@ -1,0 +1,9 @@
+{
+    "tauri": {
+        "bundle": {
+            "windows": {
+                "signCommand": "node ../scripts/sign-windows.js %1"
+            }
+        }
+    }
+}
