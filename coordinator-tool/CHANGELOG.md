@@ -1,7 +1,14 @@
 ## Unreleased
 
-- Bumped rust-sdk dependency to 6.0
+## 2.0.0
+
+### Breaking changes
+
 - Change initial weights calculation to only look at account balances for paydays
+
+### Changes
+
+- Bumped rust-sdk dependency to 6.0
 
 ## 1.0.0
 
