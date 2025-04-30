@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.0.1
+
 - Update `@concordium/web-sdk` to 9.1.
 
 ## 1.0.0

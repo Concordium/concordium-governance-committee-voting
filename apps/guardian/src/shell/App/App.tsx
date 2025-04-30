@@ -52,6 +52,7 @@ function Configuration() {
                 error={hasConnectionError}
             >
                 {electionConfig === undefined && !hasConnectionError && 'Connecting'}
+                {electionConfig === null && !hasConnectionError && 'No election target'}
                 {hasConnectionError && 'Failed to connect'}
                 {electionConfig !== undefined && electionConfig !== null && (
                     <>
@@ -59,7 +60,9 @@ function Configuration() {
                     </>
                 )}
             </ConfigurationItem>
-            <ConfigurationItem connected={account !== undefined}>{showAccount ?? 'No account found'}</ConfigurationItem>
+            <ConfigurationItem connected={account !== undefined}>
+                {showAccount ?? 'No account selected'}
+            </ConfigurationItem>
             <div className="mt-2">v{version}</div>
         </div>
     );

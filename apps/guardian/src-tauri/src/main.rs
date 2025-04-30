@@ -93,7 +93,11 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
             tauri::async_runtime::spawn(async move {
                 let app_clone = app.clone();
                 let config_state = app_clone.state::<AppConfigState>();
-                let _ = commands::reload_config(config_state, app, event.window().clone()).await;
+                if let Err(error) =
+                    commands::reload_config(config_state, app, event.window().clone()).await
+                {
+                    log::error!("Failed to reload user configuration: {}", error);
+                };
             });
         }
         SettingsMenuEvent::SetElection => {
@@ -108,22 +112,19 @@ fn handle_menu_event(event: tauri::WindowMenuEvent) {
 fn main() {
     let mut log_plugin = tauri_plugin_log::Builder::default()
         .rotation_strategy(RotationStrategy::KeepAll)
-        .level(LevelFilter::Error); // Disable logging by default for all crates
+        .level(LevelFilter::Error) // Disable logging by default for all crates
+        .targets([LogTarget::LogDir, LogTarget::Stdout]);
     #[cfg(debug_assertions)]
     {
-        log_plugin = log_plugin
-            .level_for(module_path!(), LevelFilter::Debug) // Enable debug logging for this crate
-            .targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview]);
+        log_plugin = log_plugin.level_for(module_path!(), LevelFilter::Debug); // Enable debug logging for this crate
     }
     #[cfg(not(debug_assertions))]
     {
-        log_plugin = log_plugin
-            .level_for(module_path!(), LevelFilter::Info) // Enable debug logging for this crate
-            .targets([LogTarget::LogDir, LogTarget::Stdout]);
+        log_plugin = log_plugin.level_for(module_path!(), LevelFilter::Info); // Enable info logging for this crate
     }
 
     let log_plugin = log_plugin.build();
-    log_print_panics::init();
+    log_panics::init();
 
     tauri::Builder::default()
         .setup(handle_setup)

@@ -98,7 +98,7 @@ pub fn user_config_path(path_resolver: PathResolver) -> Result<PathBuf, Error> {
     if !app_config_dir.exists() {
         std::fs::create_dir(&app_config_dir)
             .inspect_err(|e| {
-                log::error!("Failed to app config directory: {e}");
+                log::error!("Failed to create app config directory: {e}");
             })
             .context("Failed to create app config directory")?;
     }
@@ -694,7 +694,7 @@ pub async fn generate_secret_share_flow(
                 .await;
         let secret_share = match secret_share {
             Ok(secret_share) => {
-                // Write to disk regardless of whether it already exists to aoid data
+                // Write to disk regardless of whether it already exists to avoid data
                 // corruption (at least up until this point)
                 write_encrypted_file(&active_guardian.password, &secret_share, &secret_share_path)?;
                 Ok(())

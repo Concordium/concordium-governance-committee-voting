@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 2.0.0
+
 ### Breaking changes
 
 - Removed `--node` cli flag, as the target node can now be configured through the user configuration file
