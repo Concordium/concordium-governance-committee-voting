@@ -35,10 +35,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@1.76
+        uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.settings.bin == 'macos-arm' && 'aarch64-apple-darwin' || 'matrix.settings.bin == 'macos-intel' && 'x86_64-apple-darwin'' || ''}}
+          targets: ${{ matrix.settings.bin == 'macos-arm' && 'aarch64-apple-darwin' || matrix.settings.bin == 'macos-intel' && 'x86_64-apple-darwin' || '' }}
       - name: Build election-coordinator binary
         run: cargo build --release --manifest-path coordinator-tool/Cargo.toml ${{ matrix.settings.args }}
       - name: Upload artifact
@@ -46,8 +47,10 @@ jobs:
         with:
           name: binary-${{ matrix.settings.bin }}
           path: |
-            coordinator-tool/target/release/election-coordinator
-            coordinator-tool/target/release/election-coordinator.exe
+            target/release/election-coordinator
+            target/aarch64-apple-darwin/release/election-coordinator
+            target/x86_64-apple-darwin/release/election-coordinator
+            target/release/election-coordinator.exe
 
   release:
     permissions:
@@ -57,13 +60,20 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
       - run: |
-          mv binary-macos-arm/election-coordinator election-coordinator-darwin-aarch64
-          mv binary-macos-intel/election-coordinator election-coordinator-darwin-amd64
-          mv binary-windows/election-coordinator.exe election-coordinator-windows-amd64.exe
-          mv binary-ubuntu/election-coordinator election-coordinator-linux-amd64
+          mv binary-macos-arm/aarch64-apple-darwin/release/election-coordinator election-coordinator-darwin-aarch64
+          mv binary-macos-intel/x86_64-apple-darwin/release/election-coordinator election-coordinator-darwin-amd64
+          mv binary-windows/release/election-coordinator.exe election-coordinator-windows-amd64.exe
+          mv binary-ubuntu/release/election-coordinator election-coordinator-linux-amd64
+      - uses: actions/checkout@v4
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' coordinator-tool/Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          name: Coordinator tool v${{ steps.get_version.outputs.VERSION }}
           files: |
             election-coordinator-*
