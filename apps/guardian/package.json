@@ -17,8 +17,8 @@
     },
     "dependencies": {
         "@concordium/web-sdk": "^9.1.0",
-        "@tauri-apps/api": "^1.5.2",
-        "@tauri-apps/cli": "^1.5.11",
+        "@tauri-apps/api": "^1",
+        "@tauri-apps/cli": "^1",
         "buffer": "^6.0.3",
         "ccd-bootstrap": "workspace:^",
         "clsx": "^2.1.0",

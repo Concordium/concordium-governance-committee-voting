@@ -29,7 +29,7 @@ tonic = { workspace = true }
 util = { workspace = true }
 rand = { workspace = true }
 
-tauri = { version = "1.5", features = [
+tauri = { version = "1.6", features = [
   "fs-read-dir",
   "fs-exists",
   "fs-write-file",

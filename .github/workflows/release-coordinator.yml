@@ -1,4 +1,4 @@
-name: 'Publish Coordinator tool'
+name: 'Publish coordinator tool'
 on:
   # The release action always requires a tag to publish a release.
   # This job will run when a release/coordinator-tool/$VERSION
@@ -64,9 +64,16 @@ jobs:
           mv binary-macos-intel/x86_64-apple-darwin/release/election-coordinator election-coordinator-darwin-amd64
           mv binary-windows/release/election-coordinator.exe election-coordinator-windows-amd64.exe
           mv binary-ubuntu/release/election-coordinator election-coordinator-linux-amd64
+      - uses: actions/checkout@v4
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' coordinator-tool/Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          name: Coordinator tool v${{ steps.get_version.outputs.VERSION }}
           files: |
             election-coordinator-*
