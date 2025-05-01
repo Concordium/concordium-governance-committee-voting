@@ -1,5 +1,9 @@
 ## Unreleased
 
+## 1.0.2
+
+- Fix walletconnect deeplink for testnet
+
 ## 1.0.1
 
 - Update `@concordium/web-sdk` to 9.1.
