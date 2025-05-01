@@ -11,7 +11,7 @@ COPY . .
 
 RUN cargo build --release -p election-server --bin indexer --locked
 
-FROM --platform=linux/amd64 debian:buster
+FROM --platform=linux/amd64 debian:bookworm
 
 # In order to use TLS when connecting to the node we need certificates.
 RUN apt-get update && apt-get install -y ca-certificates
