@@ -1,4 +1,4 @@
-name: 'Publish Coordinator tool'
+name: 'Publish coordinator tool'
 on:
   # The release action always requires a tag to publish a release.
   # This job will run when a release/coordinator-tool/$VERSION

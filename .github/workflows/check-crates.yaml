@@ -8,7 +8,7 @@ on:
     # Don't run on draft PR's, see: https://github.com/orgs/community/discussions/25722#discussioncomment-3248917
     types: [opened, synchronize, reopened, ready_for_review]
 
-name: check crates
+name: Check crates
 
 env:
   RUST_FMT: nightly-2023-04-01

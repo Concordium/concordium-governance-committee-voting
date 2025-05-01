@@ -1,5 +1,5 @@
 # Checks the frontend apps for build, lint, and formatting errors
-name: check apps
+name: Check apps
 
 on:
   # Triggers the workflow on push or pull request events but only for the main branch

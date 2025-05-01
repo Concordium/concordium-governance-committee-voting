@@ -1,4 +1,4 @@
-name: 'Release Concordium Election Guardian'
+name: 'Publish guardian app'
 on:
   push:
     tags:
