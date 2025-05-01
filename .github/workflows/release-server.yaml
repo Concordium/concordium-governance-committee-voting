@@ -2,9 +2,7 @@ name: 'Publish election server (frontend and backend)'
 on:
   push:
     tags:
-      - release/gc-election-server/*.*.*-*.*.*
-
-  workflow_dispatch: # allows manual trigger from main
+      - release/gc-election-server/*.*.*-*.*.*-*
 
 env:
   REGISTRY: docker.io
@@ -26,22 +24,58 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Extract frontend and backend tags from package.json and Cargo.toml.
-        id: meta
+      - name: Parse versions from tag
+        id: parse-tag
+        run: |
+          # Extract the tag format: release/gc-election-server/frontend-backend-build
+          export TAG_NAME="${{ github.ref_name }}"
+          export TAG_NAME="${TAG_NAME#release/gc-election-server/}"
+          
+          # Parse the versions using regex
+          if [[ ! "$TAG_NAME" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+            echo "::error Tag format invalid. Expected format: frontend_version-backend_version-build_number"
+            exit 1
+          fi
+          
+          export TAG_FRONTEND_VERSION="${BASH_REMATCH[1]}"
+          export TAG_BACKEND_VERSION="${BASH_REMATCH[2]}"
+          export TAG_BUILD_NUMBER="${BASH_REMATCH[3]}"
+          
+          # Export the version for future steps
+          echo "frontend_version=${TAG_FRONTEND_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "backend_version=${TAG_BACKEND_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${TAG_BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          
+      - name: Verify versions match project files
+        id: verify-versions
         run: |
           export FRONTEND_VERSION=$(jq -r .version apps/voting/package.json)
           export BACKEND_VERSION=$(yq .package.version election-server/Cargo.toml)
-          export VERSION=${FRONTEND_VERSION}-${BACKEND_VERSION}
-          export FULL_IMAGE_TAG="${{ env.REGISTRY }}/concordium/$IMAGE_NAME:$VERSION"
-          echo "::notice FULL_IMAGE_TAG=${FULL_IMAGE_TAG}"
+          
+          if [[ "$FRONTEND_VERSION" != "${{ steps.parse-tag.outputs.frontend_version }}" ]]; then
+            echo "::error Frontend version in package.json (${FRONTEND_VERSION}) does not match tag (${{ steps.parse-tag.outputs.frontend_version }})"
+            exit 1
+          fi
+          
+          if [[ "$BACKEND_VERSION" != "${{ steps.parse-tag.outputs.backend_version }}" ]]; then
+            echo "::error Backend version in Cargo.toml (${BACKEND_VERSION}) does not match tag (${{ steps.parse-tag.outputs.backend_version }})"
+            exit 1
+          fi
+          
+          echo "::notice Versions verified - package.json and Cargo.toml match tag versions"
+          
+          # Construct the full image tag
+          export FULL_IMAGE_TAG="${{ env.REGISTRY }}/concordium/$IMAGE_NAME:${{ steps.parse-tag.outputs.frontend_version }}-${{ steps.parse-tag.outputs.backend_version }}-${{ steps.parse-tag.outputs.build_number }}"
+          
           # Make sure the image does not exist. Abort if we can retrieve any metadata.
           if docker manifest inspect ${FULL_IMAGE_TAG} > /dev/null; then
              echo "::error ${FULL_IMAGE_TAG} already exists"
              exit 1
           else
              # Store the full image tag into a tag variable for the following step.
-             echo "tag=${FULL_IMAGE_TAG}" > "$GITHUB_OUTPUT"
+             echo "tag=${FULL_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Build and push Docker image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
@@ -49,4 +83,4 @@ jobs:
           file: ./scripts/dapp-gc-voting.Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.verify-versions.outputs.tag }}

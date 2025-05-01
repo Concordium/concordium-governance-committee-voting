@@ -2,9 +2,7 @@ name: 'Publish election indexer'
 on:
   push:
     tags:
-      - release/gc-election-indexer/*.*.*
-
-  workflow_dispatch: # allows manual trigger from main
+      - release/gc-election-indexer/*.*.*-*
 
 env:
   REGISTRY: docker.io
@@ -19,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      
       # Uses the `docker/login-action` action to log in to the Container registry.
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
@@ -26,20 +25,51 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Extract tag Cargo.toml.
-        id: meta
+      
+      - name: Parse versions from tag
+        id: parse-tag
+        run: |
+          # Extract the tag format: release/gc-election-indexer/version-build
+          export TAG_NAME="${{ github.ref_name }}"
+          export TAG_NAME="${TAG_NAME#release/gc-election-indexer/}"
+          
+          # Parse the versions using regex
+          if [[ ! "$TAG_NAME" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+            echo "::error Tag format invalid. Expected format: version-build_number"
+            exit 1
+          fi
+          
+          export TAG_VERSION="${BASH_REMATCH[1]}"
+          export TAG_BUILD_NUMBER="${BASH_REMATCH[2]}"
+          
+          # Export the version for future steps
+          echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${TAG_BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+      
+      - name: Verify versions match project files
+        id: verify-versions
         run: |
           export VERSION=$(yq .package.version election-server/Cargo.toml)
-          export FULL_IMAGE_TAG="${{ env.REGISTRY }}/concordium/$IMAGE_NAME:$VERSION"
-          echo "::notice FULL_IMAGE_TAG=${FULL_IMAGE_TAG}"
+          
+          if [[ "$VERSION" != "${{ steps.parse-tag.outputs.version }}" ]]; then
+            echo "::error version in Cargo.toml (${VERSION}) does not match tag (${{ steps.parse-tag.outputs.version }})"
+            exit 1
+          fi
+          
+          echo "::notice Versions verified - Cargo.toml matches tag version"
+          
+          # Construct the full image tag
+          export FULL_IMAGE_TAG="${{ env.REGISTRY }}/concordium/$IMAGE_NAME:${{ steps.parse-tag.outputs.version }}-${{ steps.parse-tag.outputs.build_number }}"
+          
           # Make sure the image does not exist. Abort if we can retrieve any metadata.
           if docker manifest inspect ${FULL_IMAGE_TAG} > /dev/null; then
              echo "::error ${FULL_IMAGE_TAG} already exists"
              exit 1
           else
              # Store the full image tag into a tag variable for the following step.
-             echo "tag=${FULL_IMAGE_TAG}" > "$GITHUB_OUTPUT"
+             echo "tag=${FULL_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Build and push Docker image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
@@ -47,4 +77,4 @@ jobs:
           file: ./scripts/indexer.Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.verify-versions.outputs.tag }}
