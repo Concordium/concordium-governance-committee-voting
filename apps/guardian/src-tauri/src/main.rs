@@ -53,12 +53,10 @@ static MENU: LazyLock<Menu> = LazyLock::new(|| {
     let settings = Submenu::new("Settings", settings);
 
     let app_name = CONFIG
-        .tauri
-        .windows
-        .first()
-        .expect("Product name should be available")
-        .title
-        .as_str();
+        .package
+        .product_name
+        .as_ref()
+        .expect("Product name should be available");
 
     // Get the default OS menu and add the custom item to the application submenu
     Menu::os_default(app_name).add_submenu(settings)
