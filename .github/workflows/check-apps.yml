@@ -90,14 +90,6 @@ jobs:
           cache: yarn
           cache-dependency-path: "**/yarn.lock"
 
-      - name: Download and install Cargo Concordium
-        if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
-        run: |
-          CARGO_CCD=cargo-concordium_${{ env.CARGO_CONCORDIUM_VERSION }}
-          wget https://distribution.concordium.software/tools/linux/$CARGO_CCD
-          chmod +x $CARGO_CCD
-          sudo mv $CARGO_CCD /usr/bin/cargo-concordium
-
       - name: Restore dependencies
         if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/restore@v3
@@ -116,6 +108,7 @@ jobs:
         run: |
           rustup default ${{ env.RUST_VERSION }}
           rustup target install wasm32-unknown-unknown
+          cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }}
           cargo concordium build --schema-embed --out concordium-out/module.wasm.v1
 
       - name: Generate contract client
