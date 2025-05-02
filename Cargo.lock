@@ -2425,7 +2425,7 @@ dependencies = [
 
 [[package]]
 name = "guardian"
-version = "0.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "concordium-rust-sdk",
