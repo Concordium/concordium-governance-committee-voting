@@ -1,37 +1,43 @@
 use std::str::FromStr;
 
 use concordium_rust_sdk::{types::ContractAddress, v2, web3id::did::Network};
-use serde::Deserialize;
 
 use crate::shared::Error;
 
 /// Represents the node configuration for the application.
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, Default, Clone)]
 pub enum NodeConfig {
     /// Node is determined automatically from the network.
     #[default]
-    #[serde(rename = "auto")]
     Auto,
     /// The node endpoint to use. This is a full URL.
-    #[serde(
-        deserialize_with = "deserialize_endpoint",
-        serialize_with = "serialize_endpoint"
-    )]
     Manual(v2::Endpoint),
 }
 
-fn deserialize_endpoint<'de, D>(deserializer: D) -> Result<v2::Endpoint, D::Error>
-where
-    D: serde::Deserializer<'de>, {
-    let s = String::deserialize(deserializer)?;
-    v2::Endpoint::from_str(&s).map_err(serde::de::Error::custom)
+impl serde::Serialize for NodeConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer, {
+        match self {
+            NodeConfig::Auto => serializer.serialize_str("auto"),
+            NodeConfig::Manual(endpoint) => serializer.serialize_str(&endpoint.uri().to_string()),
+        }
+    }
 }
 
-fn serialize_endpoint<S>(endpoint: &v2::Endpoint, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer, {
-    let s = endpoint.uri().to_string();
-    serializer.serialize_str(&s)
+impl<'de> serde::Deserialize<'de> for NodeConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>, {
+        let s = String::deserialize(deserializer)?;
+        if s == "auto" {
+            Ok(NodeConfig::Auto)
+        } else {
+            v2::Endpoint::from_str(&s)
+                .map(NodeConfig::Manual)
+                .map_err(serde::de::Error::custom)
+        }
+    }
 }
 
 const DEFAULT_NODE_TESTNET: &str = "https://grpc.testnet.concordium.com:20000";
