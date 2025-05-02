@@ -58,16 +58,12 @@ yarn tauri-build
 
 This produces an application package/binary corresponding to the host operating system.
 
-### Signing the application
+## Publishing a new version of the application
 
-Please follow the instructions provided by the official tauri docs with regards to signing applications for the
-respective platforms:
-
-- [MacOS](https://tauri.app/v1/guides/distribution/sign-macos)
-- [Windows](https://tauri.app/v1/guides/distribution/sign-windows#c-prepare-variables)
-
-## Bump application version
-
-- Bump version in `./src-tauri/tauri.conf.json` and correspondingly `./package.json` (the latter is mostly for good
+1. Bump application version
+  - Bump version in `./src-tauri/tauri.conf.json` and correspondingly `./package.json` + `./src-tauri/Cargo.toml` (the last two are mostly for good
 measure and is not strictly necessary)
-- Update the latest version in `CHANGELOG.md`
+  - Update the latest version in `CHANGELOG.md`
+2. Create a merge request to the `main` branch
+3. Tag the merge commit **on the `main` branch** with a release tag following the structure `release/guardian-app/x.y.z`
+   and push this (which will trigger [the github publish job](../../.github/workflows/release-guardian-app.yaml))
