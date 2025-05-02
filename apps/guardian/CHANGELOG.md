@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 2.0.1
+
+### Fixed
+
+- An issue where manually configuring the grpc endpoint would crash the application
+
 ## 2.0.0
 
 ### Breaking changes

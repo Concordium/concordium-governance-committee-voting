@@ -1,8 +1,8 @@
 [package]
 name = "guardian"
-version = "0.0.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "2.0.1"
+description = "Guardian app for the Concordium blockchain elections"
+authors = ["concordium"]
 license = ""
 repository = ""
 edition = "2021"

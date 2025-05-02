@@ -341,6 +341,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@concordium/wallet-connectors@patch:@concordium/wallet-connectors@npm%3A0.6.0-alpha.6#~/.yarn/patches/@concordium-wallet-connectors-npm-0.6.0-alpha.6-ecfa0628c7.patch":
+  version: 0.6.0-alpha.6
+  resolution: "@concordium/wallet-connectors@patch:@concordium/wallet-connectors@npm%3A0.6.0-alpha.6#~/.yarn/patches/@concordium-wallet-connectors-npm-0.6.0-alpha.6-ecfa0628c7.patch::version=0.6.0-alpha.6&hash=34815b"
+  dependencies:
+    "@concordium/browser-wallet-api-helpers": "npm:^3.0.0"
+    "@walletconnect/modal": "npm:^2.6.2"
+    "@walletconnect/modal-core": "npm:^2.6.2"
+    "@walletconnect/sign-client": "npm:^2.1.4"
+  peerDependencies:
+    "@concordium/web-sdk": 7.x
+  checksum: ecab1356832ddb0fb68c9ecfe1dcf5b9b439bb3cf34aa9aa3125efb61c3b881dc27013b4cbcbba3a7a9e66311db5e71230cd0a67538ee887a948a5ff32421b75
+  languageName: node
+  linkType: hard
+
 "@concordium/web-sdk@npm:^7.0.0":
   version: 7.0.2
   resolution: "@concordium/web-sdk@npm:7.0.2"
@@ -8356,7 +8370,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "voting@workspace:voting"
   dependencies:
-    "@concordium/wallet-connectors": "npm:0.6.0-alpha.6"
+    "@concordium/wallet-connectors": "patch:@concordium/wallet-connectors@npm%3A0.6.0-alpha.6#~/.yarn/patches/@concordium-wallet-connectors-npm-0.6.0-alpha.6-ecfa0628c7.patch"
     "@concordium/web-sdk": "npm:^9.1.0"
     "@protobuf-ts/grpcweb-transport": "npm:^2.9.1"
     "@swc-jotai/react-refresh": "npm:^0.1.0"
