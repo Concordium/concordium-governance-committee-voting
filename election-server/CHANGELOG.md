@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Change the default request timeout to 10s.
+
 ## 1.0.1
 
 - Bumped rust-sdk dependency to 6.0

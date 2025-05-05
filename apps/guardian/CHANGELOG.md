@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Change the default request timeout to 10s.
+
 ## 2.0.1
 
 ### Fixed

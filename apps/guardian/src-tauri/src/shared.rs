@@ -156,4 +156,4 @@ impl GenesisHash for Network {
 
 /// The default request timeout to use if not specified by environment variable
 /// "CCD_ELECTION_REQUEST_TIMEOUT_MS".
-pub const DEFAULT_REQUEST_TIMEOUT_MS: u16 = 5000;
+pub const DEFAULT_REQUEST_TIMEOUT_MS: u16 = 10000;
