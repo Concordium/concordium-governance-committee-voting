@@ -35,7 +35,7 @@ yarn install
 The following environment variables can be provided optionally:
 
 ```env
-CCD_ELECTION_REQUEST_TIMEOUT_MS=5000 # Defaults to 5000
+CCD_ELECTION_REQUEST_TIMEOUT_MS=5000 # Defaults to 10000
 ```
 
 ## Development workflow

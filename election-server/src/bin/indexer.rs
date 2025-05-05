@@ -81,7 +81,7 @@ struct AppConfig {
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
-        default_value_t = 5000,
+        default_value_t = 10000,
         env = "CCD_ELECTION_REQUEST_TIMEOUT_MS"
     )]
     request_timeout_ms: u64,

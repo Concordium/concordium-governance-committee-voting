@@ -43,7 +43,7 @@ Options:
       --log-level <LOG_LEVEL>
           Maximum log level [env: CCD_ELECTION_LOG_LEVEL=] [default: info]
       --request-timeout-ms <REQUEST_TIMEOUT_MS>
-          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 5000]
+          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 10000]
       --listen-address <LISTEN_ADDRESS>
           Address the http server will listen on [env: CCD_ELECTION_LISTEN_ADDRESS=] [default: 0.0.0.0:8080]
       --prometheus-address <PROMETHEUS_ADDRESS>
@@ -89,7 +89,7 @@ Options:
       --max-behind-seconds <MAX_BEHIND_S>
           Max amount of seconds a response from a node can fall behind before trying another [env: CCD_ELECTION_MAX_BEHIND_SECONDS=] [default: 240]
       --request-timeout-ms <REQUEST_TIMEOUT_MS>
-          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 5000]
+          The request timeout of the http server (in milliseconds) [env: CCD_ELECTION_REQUEST_TIMEOUT_MS=] [default: 10000]
   -h, --help
           Print help
   -V, --version
