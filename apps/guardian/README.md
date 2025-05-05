@@ -67,3 +67,5 @@ measure and is not strictly necessary)
 2. Create a merge request to the `main` branch
 3. Tag the merge commit **on the `main` branch** with a release tag following the structure `release/guardian-app/x.y.z`
    and push this (which will trigger [the github publish job](../../.github/workflows/release-guardian-app.yaml))
+4. As the release flow creates a release draft on github, the draft needs to be manually published subsequently. At this
+   points details about the release can be manually added if needed.
