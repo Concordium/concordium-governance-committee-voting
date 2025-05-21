@@ -108,7 +108,7 @@ jobs:
         run: |
           rustup default ${{ env.RUST_VERSION }}
           rustup target install wasm32-unknown-unknown
-          cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }}
+          cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }} --locked
           cargo concordium build --schema-embed --out concordium-out/module.wasm.v1
 
       - name: Generate contract client
