@@ -40,7 +40,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator as _};
 use sha2::Digest as _;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     ffi::OsStr,
     fmt::Debug,
     io::Write,
@@ -251,6 +251,19 @@ enum Command {
         )]
         decryption_deadline: chrono::DateTime<chrono::Utc>,
     },
+    ElectionStats {
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>"
+        )]
+        contract:        ContractAddress,
+        #[arg(long = "initial-weights", help = "The CSV file with initial weights.")]
+        initial_weights: std::path::PathBuf,
+        #[arg(long = "final-weights", help = "The CSV file with final weights.")]
+        final_weights:   std::path::PathBuf,
+        #[arg(long = "out", help = "Location where to write the statistics result.")]
+        out:             std::path::PathBuf,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -337,6 +350,12 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Command::ElectionStats {
+            contract,
+            initial_weights,
+            final_weights,
+            out,
+        } => handle_election_stats(endpoint, contract, initial_weights, final_weights, out).await,
     }
 }
 
@@ -458,12 +477,45 @@ struct DelegationRow {
     to:   AccountAddress,
 }
 
+// Serde custom serialization/deserialization
+mod serde_account_address_vec {
+    use super::AccountAddress;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    // Serialize the Vec<AccountAddress> as a ";"-separated string
+    pub fn serialize<S>(items: &[AccountAddress], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer, {
+        let joined = items
+            .iter()
+            .map(|item| item.to_string())
+            .collect::<Vec<_>>()
+            .join(";");
+        serializer.serialize_str(&joined)
+    }
+
+    // Deserialize a ";"-separated string into Vec<AccountAddress>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<AccountAddress>, D::Error>
+    where
+        D: Deserializer<'de>, {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        s.split(';')
+            .map(|item| item.parse::<AccountAddress>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct FinalWeightRow {
     account:    AccountAddress,
     amount:     Amount,
-    /// ';' separated list of accounts that delegated.
-    delegators: String,
+    #[serde(with = "serde_account_address_vec")]
+    delegators: Vec<AccountAddress>,
 }
 
 /// Compute the final weights given the initial weights.
@@ -574,11 +626,7 @@ async fn handle_final_weights(
             out_handle.serialize(FinalWeightRow {
                 account: AccountAddress::from(addr),
                 amount,
-                delegators: delegators
-                    .into_iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(";"),
+                delegators,
             })?;
         }
         out_handle.flush()?;
@@ -1087,9 +1135,14 @@ async fn handle_tally(
         } = row?;
         if let Some((ballot, hash)) = ballots.remove(&AccountAddressEq::from(account)) {
             let factor = get_scaling_factor(&amount);
+            let delegators = delegators
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(";");
             eprintln!(
                 "Scaling the ballot cast by transaction {hash} by a factor {factor}. Delegators \
-                 {delegators}."
+                 {delegators}.",
             );
             tally.update(ballot.scale(
                 &verification_context.parameters.fixed_parameters,
@@ -1698,5 +1751,167 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
         "Deployed new contract instance with address {} using transaction hash {}.",
         result.address, tx_hash
     );
+    Ok(())
+}
+
+fn serialize_delegated_weight<S>(
+    delegated_weight: &HashMap<AccountAddress, Amount>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer, {
+    let formatted = delegated_weight
+        .iter()
+        .map(|(delegator, weight)| format!("{}:{}", delegator, weight))
+        .collect::<Vec<String>>()
+        .join(";");
+
+    serializer.serialize_str(&formatted)
+}
+
+#[derive(serde::Serialize)]
+struct ElectionStatsRow {
+    account:          AccountAddress,
+    initial_weight:   Amount,
+    final_weight:     Amount,
+    #[serde(serialize_with = "serialize_delegated_weight")]
+    delegated_weight: HashMap<AccountAddress, Amount>,
+    voted:            bool,
+}
+
+async fn handle_election_stats(
+    endpoint: sdk::Endpoint,
+    contract: ContractAddress,
+    initial_weights: std::path::PathBuf,
+    final_weights: std::path::PathBuf,
+    out: std::path::PathBuf,
+) -> anyhow::Result<()> {
+    let client = sdk::Client::new(endpoint.clone()).await?;
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
+
+    let election_data = get_election_data(&mut contract_client).await?;
+
+    let verification_context: PreVotingData = election_data.verification_context()?;
+
+    let start = election_data.start;
+    let end = election_data.end;
+
+    let (first_block, last_block) =
+        range_setup(&mut contract_client.client, start, end, false).await?;
+
+    let traverse_config = indexer::TraverseConfig::new_single(endpoint, first_block.block_height);
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(20);
+    let cancel_handle = tokio::spawn(traverse_config.traverse(
+        indexer::ContractUpdateIndexer {
+            target_address: contract,
+            entrypoint:     OwnedEntrypointName::new_unchecked("registerVotes".into()),
+        },
+        sender,
+    ));
+
+    let bar = ProgressBar::new(last_block.block_height.height - first_block.block_height.height)
+        .with_style(ProgressStyle::with_template(
+            "{spinner} {msg} {wide_bar} {pos}/{len}",
+        )?);
+
+    let mut ballots = BTreeMap::new();
+
+    while let Some((block, txs)) = receiver.recv().await {
+        bar.set_message(block.block_slot_time.to_string());
+        bar.inc(1);
+        if block.block_slot_time > end {
+            drop(receiver);
+            cancel_handle.abort();
+            drop(cancel_handle);
+            eprintln!("Done indexing.");
+            break;
+        }
+
+        let results = txs
+            .into_par_iter()
+            .flat_map(
+                |indexer::ContractUpdateInfo {
+                     execution_tree,
+                     transaction_hash,
+                     sender,
+                     ..
+                 }| {
+                    let param = execution_tree.parameter();
+                    let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(
+                        param.as_ref(),
+                    ) else {
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
+
+                    let Ok(ballot) = decode::<BallotEncrypted>(&param.inner) else {
+                        eprintln!("Unable to parse ballot from transaction {transaction_hash}");
+                        return None;
+                    };
+                    Some((
+                        ballot.verify(&verification_context),
+                        sender,
+                        ballot,
+                        transaction_hash,
+                    ))
+                },
+            )
+            .collect_vec_list();
+
+        for (verified, sender, ballot, transaction_hash) in results.into_iter().flatten() {
+            if verified {
+                // Replace any previous ballot from the sender.
+                ballots.insert(AccountAddressEq::from(sender), (ballot, transaction_hash));
+            } else {
+                eprintln!("Vote in transaction {transaction_hash} is invalid.");
+            }
+        }
+    }
+
+    let mut initial_weights =
+        csv::Reader::from_path(initial_weights).context("Unable to open initial weights file.")?;
+    let mut final_weights =
+        csv::Reader::from_path(final_weights).context("Unable to open final weights file.")?;
+
+    let mut weights_map = HashMap::new();
+    for row in initial_weights.deserialize() {
+        let WeightRow { account, amount } = row?;
+        weights_map.insert(account, amount);
+    }
+
+    let mut out_file = std::fs::File::create(out)?;
+    let mut writer = csv::Writer::from_writer(&mut out_file);
+    for row in final_weights.deserialize() {
+        let FinalWeightRow {
+            account,
+            amount: final_weight,
+            delegators,
+        } = row?;
+        let voted = ballots.remove(&AccountAddressEq::from(account)).is_some();
+
+        let initial_weight = weights_map.get(&account).copied().unwrap_or(Amount::zero());
+        let delegated_weight = delegators
+            .iter()
+            .map(|delegator| {
+                let delegator_weight = weights_map
+                    .get(delegator)
+                    .copied()
+                    .unwrap_or(Amount::zero());
+                (*delegator, delegator_weight)
+            })
+            .collect();
+
+        let row = ElectionStatsRow {
+            account,
+            initial_weight,
+            final_weight,
+            delegated_weight,
+            voted,
+        };
+        writer.serialize(row)?;
+    }
+
+    writer.flush()?;
     Ok(())
 }
