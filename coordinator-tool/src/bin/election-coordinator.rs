@@ -1777,6 +1777,7 @@ struct ElectionStatsRow {
     #[serde(serialize_with = "serialize_delegated_weight")]
     delegated_weight: HashMap<AccountAddress, Amount>,
     voted:            bool,
+    timestamp:        Option<chrono::DateTime<chrono::Utc>>,
 }
 
 async fn handle_election_stats(
@@ -1854,15 +1855,20 @@ async fn handle_election_stats(
                         sender,
                         ballot,
                         transaction_hash,
+                        block.block_slot_time,
                     ))
                 },
             )
             .collect_vec_list();
 
-        for (verified, sender, ballot, transaction_hash) in results.into_iter().flatten() {
+        for (verified, sender, ballot, transaction_hash, timestamp) in results.into_iter().flatten()
+        {
             if verified {
                 // Replace any previous ballot from the sender.
-                ballots.insert(AccountAddressEq::from(sender), (ballot, transaction_hash));
+                ballots.insert(
+                    AccountAddressEq::from(sender),
+                    (ballot, transaction_hash, timestamp),
+                );
             } else {
                 eprintln!("Vote in transaction {transaction_hash} is invalid.");
             }
@@ -1888,7 +1894,12 @@ async fn handle_election_stats(
             amount: final_weight,
             delegators,
         } = row?;
-        let voted = ballots.remove(&AccountAddressEq::from(account)).is_some();
+        let (voted, timestamp) =
+            if let Some((_, _, timestamp)) = ballots.remove(&AccountAddressEq::from(account)) {
+                (true, Some(timestamp))
+            } else {
+                (false, None)
+            };
 
         let initial_weight = weights_map.get(&account).copied().unwrap_or(Amount::zero());
         let delegated_weight = delegators
@@ -1908,6 +1919,7 @@ async fn handle_election_stats(
             final_weight,
             delegated_weight,
             voted,
+            timestamp,
         };
         writer.serialize(row)?;
     }
