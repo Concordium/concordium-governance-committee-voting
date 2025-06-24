@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Added command `election-stats` which compiles a list that can be used for analyzing the election.
+
 ## 2.0.0
 
 ### Breaking changes
