@@ -72,11 +72,15 @@ pub enum Error {
 }
 
 impl From<toml_edit::de::Error> for Error {
-    fn from(error: toml_edit::de::Error) -> Self { Error::CorruptedConfig(error.to_string()) }
+    fn from(error: toml_edit::de::Error) -> Self {
+        Error::CorruptedConfig(error.to_string())
+    }
 }
 
 impl From<toml_edit::TomlError> for Error {
-    fn from(error: toml_edit::TomlError) -> Self { Error::CorruptedConfig(error.to_string()) }
+    fn from(error: toml_edit::TomlError) -> Self {
+        Error::CorruptedConfig(error.to_string())
+    }
 }
 
 impl From<contracts_common::NewReceiveNameError> for Error {
@@ -110,7 +114,9 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
 }
 
 impl From<RejectReason> for Error {
-    fn from(reason: RejectReason) -> Self { Error::QueryFailed(reason) }
+    fn from(reason: RejectReason) -> Self {
+        Error::QueryFailed(reason)
+    }
 }
 
 impl From<ContractUpdateError> for Error {
@@ -126,7 +132,8 @@ impl From<ContractUpdateError> for Error {
 impl serde::Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut error = serializer.serialize_struct("Error", 2)?;
         error.serialize_field("type", <&str>::from(self))?;
         error.serialize_field("message", &self.to_string())?;

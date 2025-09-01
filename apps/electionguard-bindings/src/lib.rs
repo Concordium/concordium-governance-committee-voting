@@ -71,10 +71,10 @@ export type ElectionParameters = {
 pub struct EncryptedBallotContext {
     /// The election manifest. This should be declared externally for each
     /// election.
-    pub election_manifest:    ElectionManifest,
+    pub election_manifest: ElectionManifest,
     /// The election parameters. These should be generated externally for each
     /// election.
-    pub election_parameters:  ElectionParameters,
+    pub election_parameters: ElectionParameters,
     /// The guardian public keys, which are registered in the election contract.
     pub guardian_public_keys: Vec<Vec<u8>>,
 }

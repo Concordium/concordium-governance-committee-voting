@@ -49,7 +49,7 @@ struct AppConfig {
         env = "CCD_ELECTION_NODES",
         value_delimiter = ','
     )]
-    node_endpoints:     Vec<v2::Endpoint>,
+    node_endpoints: Vec<v2::Endpoint>,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -59,17 +59,17 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:      tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// The contract address used to filter contract updates
     #[arg(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
-    contract_address:   ContractAddress,
+    contract_address: ContractAddress,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:          tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// Max amount of seconds a response from a node can fall behind before
     /// trying another.
     #[arg(
@@ -77,7 +77,7 @@ struct AppConfig {
         default_value_t = 240,
         env = "CCD_ELECTION_MAX_BEHIND_SECONDS"
     )]
-    max_behind_s:       u32,
+    max_behind_s: u32,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
@@ -116,22 +116,26 @@ enum TransactionData {
 }
 
 impl From<BallotSubmission> for TransactionData {
-    fn from(value: BallotSubmission) -> Self { Self::BallotSubmission(value) }
+    fn from(value: BallotSubmission) -> Self {
+        Self::BallotSubmission(value)
+    }
 }
 
 impl From<VotingWeightDelegation> for TransactionData {
-    fn from(value: VotingWeightDelegation) -> Self { Self::Delegation(value) }
+    fn from(value: VotingWeightDelegation) -> Self {
+        Self::Delegation(value)
+    }
 }
 
 /// The data collected for each block.
 #[derive(Debug)]
 struct BlockData {
     /// The hash of the block
-    block_hash:   BlockHash,
+    block_hash: BlockHash,
     /// The height of the block
-    height:       AbsoluteBlockHeight,
+    height: AbsoluteBlockHeight,
     /// The block time of the block
-    block_time:   DateTime<Utc>,
+    block_time: DateTime<Utc>,
     /// The transactions to index
     transactions: Vec<TransactionData>,
 }

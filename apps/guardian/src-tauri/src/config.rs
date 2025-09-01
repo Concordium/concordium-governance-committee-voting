@@ -186,18 +186,18 @@ impl ElectionContract {
 #[derive(Clone)]
 pub struct ElectionGuardConfig {
     /// The election manifest
-    pub manifest:   ElectionManifest,
+    pub manifest: ElectionManifest,
     /// The election parameters
     pub parameters: ElectionParameters,
 }
 
 pub struct AppConfig {
     /// The user config loaded from disc
-    user_config:    UserConfig,
+    user_config: UserConfig,
     /// The contract client for querying the contract.
-    contract:       Option<ElectionContract>,
+    contract: Option<ElectionContract>,
     /// The election config registered in the contract.
-    election:       Option<contract::ElectionConfig>,
+    election: Option<contract::ElectionConfig>,
     /// The election guard config.
     election_guard: Option<ElectionGuardConfig>,
 }
@@ -215,7 +215,9 @@ impl From<UserConfig> for AppConfig {
 
 impl AppConfig {
     /// Returns a reference to the user configuration.
-    pub fn user_config(&self) -> &UserConfig { &self.user_config }
+    pub fn user_config(&self) -> &UserConfig {
+        &self.user_config
+    }
 
     pub fn refresh(&mut self, config: UserConfig) {
         self.user_config = config;

@@ -10,7 +10,7 @@ use concordium_std::*;
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct ChecksumUrl {
     /// The url of the data.
-    pub url:  String,
+    pub url: String,
     /// The hash of the data found at `url`.
     pub hash: HashSha2256,
 }
@@ -26,7 +26,7 @@ pub struct EligibleVotersParameters {
     /// The block time at which data collection starts
     pub start_time: Timestamp,
     /// The block time at which data collection ends
-    pub end_time:   Timestamp,
+    pub end_time: Timestamp,
 }
 
 /// Contains the voters data and the parameters used to generate the data.
@@ -41,14 +41,15 @@ pub struct EligibleVoters {
     /// verify the data matches the expected output.
     pub parameters: EligibleVotersParameters,
     /// The voters data.
-    pub data:       ChecksumUrl,
+    pub data: ChecksumUrl,
 }
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for ChecksumUrl {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         use serde::ser::SerializeStruct;
 
         let mut state = serializer.serialize_struct("ChecksumUrl", 2)?;
@@ -102,21 +103,21 @@ pub enum GuardianStatus {
 #[derive(Serialize, SchemaType, Clone, Debug, PartialEq)]
 pub struct GuardianState {
     /// Index of the guardian used for key-sharing. Not modifiable.
-    pub index:                  u32,
+    pub index: u32,
     /// The public key of the guardian.
-    pub public_key:             Option<Vec<u8>>,
+    pub public_key: Option<Vec<u8>>,
     /// The encrypted share of the guardian.
-    pub encrypted_share:        Option<Vec<u8>>,
+    pub encrypted_share: Option<Vec<u8>>,
     /// The share of the decryption together with the
     /// commitment share of a single guardian for a `DecryptionProof`.
-    pub decryption_share:       Option<Vec<u8>>,
+    pub decryption_share: Option<Vec<u8>>,
     /// The response share of a single guardian for a `DecryptionProof`.
     pub decryption_share_proof: Option<Vec<u8>>,
     /// The verification status of the guardian, with regards to verifying the
     /// state of other guardians is as expected.
-    pub status:                 Option<GuardianStatus>,
+    pub status: Option<GuardianStatus>,
     /// Whether the guardian has been excluded due to incorrect behaviour.
-    pub excluded:               bool,
+    pub excluded: bool,
 }
 
 impl GuardianState {
@@ -136,11 +137,11 @@ impl GuardianState {
 #[derive(Serialize)]
 pub struct RegisteredData {
     /// The list of eligible voters
-    pub eligible_voters:      EligibleVoters,
+    pub eligible_voters: EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
-    pub election_manifest:    ChecksumUrl,
+    pub election_manifest: ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
-    pub election_parameters:  ChecksumUrl,
+    pub election_parameters: ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
 }
@@ -151,31 +152,31 @@ pub struct RegisteredData {
 pub struct State<S: HasStateApi = StateApi> {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:       StateBox<AccountAddress, S>,
+    pub admin_account: StateBox<AccountAddress, S>,
     /// A list of candidates - identified by their position in the list - that
     /// voters can vote for in the election.
-    pub candidates:          StateSet<ChecksumUrl, S>,
+    pub candidates: StateSet<ChecksumUrl, S>,
     /// A unique list of guardian accounts used for the election.
-    pub guardians:           StateMap<AccountAddress, GuardianState, S>,
+    pub guardians: StateMap<AccountAddress, GuardianState, S>,
     /// Data registered upon contract instantiation which is used by off-chain
     /// applications
-    pub registered_data:     StateBox<RegisteredData, S>,
+    pub registered_data: StateBox<RegisteredData, S>,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:      Timestamp,
+    pub election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:        Timestamp,
+    pub election_end: Timestamp,
     /// Guardians must add their [`GuardianState::decryption_share`] before this
     /// timestamp for their shares to be included in the decrypted result.
     pub decryption_deadline: Timestamp,
     /// The string that should be used when delegating a vote.
-    pub delegation_string:   StateBox<String, S>,
+    pub delegation_string: StateBox<String, S>,
     /// The encrypted tally posted by the operator for convenience of guardians.
-    pub encrypted_tally:     StateBox<Option<Vec<u8>>, S>,
+    pub encrypted_tally: StateBox<Option<Vec<u8>>, S>,
     /// The election result, which will be registered after `election_end` has
     /// passed.
-    pub election_result:     StateBox<Option<ElectionResult>, S>,
+    pub election_result: StateBox<Option<ElectionResult>, S>,
 }
 
 impl State {
@@ -254,31 +255,31 @@ impl State {
 pub struct InitParameter {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        AccountAddress,
+    pub admin_account: AccountAddress,
     /// A list of candidates that voters can vote for in the election.
-    pub candidates:           Vec<ChecksumUrl>,
+    pub candidates: Vec<ChecksumUrl>,
     /// The list of guardians for the election.
-    pub guardians:            Vec<AccountAddress>,
+    pub guardians: Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      EligibleVoters,
+    pub eligible_voters: EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
-    pub election_manifest:    ChecksumUrl,
+    pub election_manifest: ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
-    pub election_parameters:  ChecksumUrl,
+    pub election_parameters: ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:       Timestamp,
+    pub election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:         Timestamp,
+    pub election_end: Timestamp,
     /// Guardians must add their [`GuardianState::decryption_share`] before this
     /// timestamp for their shares to be included in the decrypted result.
-    pub decryption_deadline:  Timestamp,
+    pub decryption_deadline: Timestamp,
     /// A string that should be used when delegating a vote to another account.
-    pub delegation_string:    String,
+    pub delegation_string: String,
 }
 
 #[derive(Serialize, SchemaType, Debug, Clone)]
@@ -290,31 +291,31 @@ pub struct InitParameter {
 pub struct ElectionConfig {
     /// The account used to perform administrative functions, such as publishing
     /// the final result of the election.
-    pub admin_account:        AccountAddress,
+    pub admin_account: AccountAddress,
     /// A list of candidates that voters can vote for in the election.
-    pub candidates:           Vec<ChecksumUrl>,
+    pub candidates: Vec<ChecksumUrl>,
     /// The list of guardians for the election.
-    pub guardian_accounts:    Vec<AccountAddress>,
+    pub guardian_accounts: Vec<AccountAddress>,
     /// The merkle root of the list of eligible voters and their respective
     /// voting weights.
-    pub eligible_voters:      EligibleVoters,
+    pub eligible_voters: EligibleVoters,
     /// A url to the location of the election manifest used by election guard.
-    pub election_manifest:    ChecksumUrl,
+    pub election_manifest: ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
-    pub election_parameters:  ChecksumUrl,
+    pub election_parameters: ChecksumUrl,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     pub election_description: String,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    pub election_start:       Timestamp,
+    pub election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    pub election_end:         Timestamp,
+    pub election_end: Timestamp,
     /// Guardians must add their [`GuardianState::decryption_share`] before this
     /// timestamp for their shares to be included in the decrypted result.
-    pub decryption_deadline:  Timestamp,
+    pub decryption_deadline: Timestamp,
     /// A string that should be used when delegating a vote to another account.
-    pub delegation_string:    String,
+    pub delegation_string: String,
 }
 
 impl From<&State> for ElectionConfig {
@@ -540,11 +541,15 @@ pub struct RegisterVotesParameter {
 }
 
 impl From<Vec<u8>> for RegisterVotesParameter {
-    fn from(value: Vec<u8>) -> Self { Self { inner: value } }
+    fn from(value: Vec<u8>) -> Self {
+        Self { inner: value }
+    }
 }
 
 impl schema::SchemaType for RegisterVotesParameter {
-    fn get_type() -> schema::Type { schema::Type::ByteList(schema::SizeLength::U32) }
+    fn get_type() -> schema::Type {
+        schema::Type::ByteList(schema::SizeLength::U32)
+    }
 }
 
 /// Receive votes registration from voter. If a contract submits the vote, an
@@ -673,7 +678,7 @@ fn view_config(_ctx: &ReceiveContext, host: &Host<State>) -> ReceiveResult<Elect
 #[derive(Serialize, SchemaType, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CandidateResult {
-    pub candidate:         ChecksumUrl,
+    pub candidate: ChecksumUrl,
     pub cummulative_votes: CandidateWeightedVotes,
 }
 
