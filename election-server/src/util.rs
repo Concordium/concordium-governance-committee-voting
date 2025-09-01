@@ -22,22 +22,22 @@ pub const RESULT_VIEW: &str = "viewElectionResult";
 #[derive(Serialize, Debug)]
 pub struct BallotSubmission {
     /// The account which submitted the ballot
-    pub account:          contracts_common::AccountAddress,
+    pub account: contracts_common::AccountAddress,
     /// The ballot submitted
-    pub ballot:           BallotEncrypted,
+    pub ballot: BallotEncrypted,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// Whether the ballot proof could be verified.
-    pub verified:         bool,
+    pub verified: bool,
 }
 
 /// Describes an election voting weight delegation
 #[derive(Serialize, Debug)]
 pub struct VotingWeightDelegation {
     /// The delegator account
-    pub from_account:     contracts_common::AccountAddress,
+    pub from_account: contracts_common::AccountAddress,
     /// The delegatee account
-    pub to_account:       contracts_common::AccountAddress,
+    pub to_account: contracts_common::AccountAddress,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
 }

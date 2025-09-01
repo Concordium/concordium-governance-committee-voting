@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 
 /// A writer adapter that computes the hash of the written value on the fly.
 struct HashedWriter<W> {
-    inner:  W,
+    inner: W,
     hasher: sha2::Sha256,
 }
 
@@ -62,7 +62,9 @@ impl<W: std::io::Write> std::io::Write for HashedWriter<W> {
         self.inner.write(buf)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> { self.inner.flush() }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 /// Command line configuration of the application.
@@ -75,7 +77,7 @@ struct Args {
         default_value = "http://localhost:20001",
         global = true
     )]
-    node_endpoint:     concordium_rust_sdk::v2::Endpoint,
+    node_endpoint: concordium_rust_sdk::v2::Endpoint,
     /// List of eligible voters. If this is not set then the eligible voters are
     /// all accounts with equal weight, and an `eligible-voters.csv` file
     /// is emitted to the output directory.
@@ -84,20 +86,20 @@ struct Args {
         help = "A path to the list of eligible voters. This file is hashed and the hash put into \
                 the contract."
     )]
-    eligible_voters:   Option<std::path::PathBuf>,
+    eligible_voters: Option<std::path::PathBuf>,
     #[arg(
         long = "module",
         help = "Source module from which to initialize the contract instances."
     )]
-    module:            std::path::PathBuf,
+    module: std::path::PathBuf,
     #[arg(long = "keys", help = "Directory with account keys.")]
-    keys:              std::path::PathBuf,
+    keys: std::path::PathBuf,
     #[arg(
         long = "num-options",
         help = "Number of options to vote for.",
         default_value = "5"
     )]
-    num_options:       usize,
+    num_options: usize,
     #[arg(
         long = "election-duration",
         help = "Duration of the election in minutes. Should be at least 1.",
@@ -109,9 +111,9 @@ struct Args {
         help = "Base url where the election data is accessible. This is recorded in the contract.",
         default_value = "http://localhost:7000/"
     )]
-    base_url:          url::Url,
+    base_url: url::Url,
     #[arg(long = "out", help = "Output directory for all the artifacts.")]
-    out:               std::path::PathBuf,
+    out: std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -178,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
                 std::fs::write(path, &candidate_details_bytes)?;
                 let web_path = format!("candidates/{c}.json",);
                 Ok::<_, anyhow::Error>(ChecksumUrl {
-                    url:  make_url(&web_path),
+                    url: make_url(&web_path),
                     hash: contract::HashSha2256(
                         sha2::Sha256::digest(candidate_details_bytes).into(),
                     ),
@@ -201,10 +203,10 @@ async fn main() -> anyhow::Result<()> {
             options,
         };
         let manifest = eg::election_manifest::ElectionManifest {
-            label:         "Test election manifest".into(),
-            contests:      [contest].try_into()?,
+            label: "Test election manifest".into(),
+            contests: [contest].try_into()?,
             ballot_styles: [BallotStyle {
-                label:    "Governance committee vote".into(),
+                label: "Governance committee vote".into(),
                 contests: [ContestIndex::from_one_based_index_const(1).unwrap()].into(),
             }]
             .try_into()?,
@@ -225,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
             .expect("Cannot fail, k is at least 1 at this point.");
 
         let parameters = eg::election_parameters::ElectionParameters {
-            fixed_parameters:   eg::standard_parameters::STANDARD_PARAMETERS.clone(),
+            fixed_parameters: eg::standard_parameters::STANDARD_PARAMETERS.clone(),
             varying_parameters: VaryingParameters {
                 n,
                 k,
@@ -318,10 +320,10 @@ async fn main() -> anyhow::Result<()> {
         let eligible_voters = contract::EligibleVoters {
             parameters: contract::EligibleVotersParameters {
                 start_time: Timestamp::from_timestamp_millis(0),
-                end_time:   Timestamp::from_timestamp_millis(0),
+                end_time: Timestamp::from_timestamp_millis(0),
             },
-            data:       contract::ChecksumUrl {
-                url:  make_url("initial-weights.csv"),
+            data: contract::ChecksumUrl {
+                url: make_url("initial-weights.csv"),
                 hash: eligible_voters_hash,
             },
         };
@@ -331,11 +333,11 @@ async fn main() -> anyhow::Result<()> {
             guardians: guardians.iter().map(|g| g.address).collect(),
             eligible_voters,
             election_manifest: contract::ChecksumUrl {
-                url:  make_url("election-manifest.json"),
+                url: make_url("election-manifest.json"),
                 hash: contract::HashSha2256(manifest_digest),
             },
             election_parameters: contract::ChecksumUrl {
-                url:  make_url("election-parameters.json"),
+                url: make_url("election-parameters.json"),
                 hash: contract::HashSha2256(parameters_digest),
             },
             election_description: "Test election".into(),
@@ -649,10 +651,10 @@ async fn main() -> anyhow::Result<()> {
 
             let metadata = ContractTransactionMetadata {
                 sender_address: voter.address,
-                nonce:          nonce.nonce,
-                expiry:         TransactionTime::hours_after(1),
-                energy:         transactions::send::GivenEnergy::Add(10000.into()),
-                amount:         Amount::zero(),
+                nonce: nonce.nonce,
+                expiry: TransactionTime::hours_after(1),
+                energy: transactions::send::GivenEnergy::Add(10000.into()),
+                amount: Amount::zero(),
             };
 
             let tx_hash = contract_client

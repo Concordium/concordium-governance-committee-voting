@@ -27,11 +27,11 @@ fn test_init_errors() {
 
     let candidates = vec![
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/john".to_string(),
+            url: "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/peter".to_string(),
+            url: "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -45,21 +45,21 @@ fn test_init_errors() {
     let election_end = future_1d.try_into().expect("Valid datetime");
     let decryption_deadline = future_2d.try_into().expect("Valid datetime");
     let eligible_voters = EligibleVoters {
-        data:       ChecksumUrl {
-            url:  "http://some.election/voters".to_string(),
+        data: ChecksumUrl {
+            url: "http://some.election/voters".to_string(),
             hash: HashSha2256([0u8; 32]),
         },
         parameters: EligibleVotersParameters {
             start_time: Timestamp::from_timestamp_millis(0),
-            end_time:   Timestamp::from_timestamp_millis(0),
+            end_time: Timestamp::from_timestamp_millis(0),
         },
     };
     let election_manifest = ChecksumUrl {
-        url:  "http://some.election/manifest".to_string(),
+        url: "http://some.election/manifest".to_string(),
         hash: HashSha2256([1u8; 32]),
     };
     let election_parameters = ChecksumUrl {
-        url:  "http://some.election/parameters".to_string(),
+        url: "http://some.election/parameters".to_string(),
         hash: HashSha2256([2u8; 32]),
     };
     let election_description = "Test election".to_string();
@@ -115,11 +115,11 @@ fn test_init_errors() {
     // Duolicates found in `candidates` list
     let candidates = vec![
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/peter".to_string(),
+            url: "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/peter".to_string(),
+            url: "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([0; 32]),
         },
     ];
@@ -147,11 +147,11 @@ fn test_init_config() {
 
     let candidates = vec![
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/john".to_string(),
+            url: "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/peter".to_string(),
+            url: "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -164,21 +164,21 @@ fn test_init_config() {
         .unwrap();
     let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
     let eligible_voters = EligibleVoters {
-        data:       ChecksumUrl {
-            url:  "http://some.election/voters".to_string(),
+        data: ChecksumUrl {
+            url: "http://some.election/voters".to_string(),
             hash: HashSha2256([0u8; 32]),
         },
         parameters: EligibleVotersParameters {
             start_time: Timestamp::from_timestamp_millis(0),
-            end_time:   Timestamp::from_timestamp_millis(0),
+            end_time: Timestamp::from_timestamp_millis(0),
         },
     };
     let election_manifest = ChecksumUrl {
-        url:  "http://some.election/manifest".to_string(),
+        url: "http://some.election/manifest".to_string(),
         hash: HashSha2256([1u8; 32]),
     };
     let election_parameters = ChecksumUrl {
-        url:  "http://some.election/parameters".to_string(),
+        url: "http://some.election/parameters".to_string(),
         hash: HashSha2256([2u8; 32]),
     };
 
@@ -222,7 +222,7 @@ fn test_receive_guardian_public_key() {
         .expect_err("Key registration should fail due to not being in the list of guardians");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     register_guardian_public_key_update(&mut chain, &contract_address, &contract_sender, &param)
@@ -243,15 +243,21 @@ fn test_receive_guardian_public_key() {
         .expect("Can parse value");
     guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
-        (BOB, GuardianState {
-            public_key: Some(param),
-            ..GuardianState::new(1)
-        }),
+        (
+            BOB,
+            GuardianState {
+                public_key: Some(param),
+                ..GuardianState::new(1)
+            },
+        ),
         (CAROLINE, GuardianState::new(2)),
-        (DAVE, GuardianState {
-            public_key: Some(param_other),
-            ..GuardianState::new(3)
-        }),
+        (
+            DAVE,
+            GuardianState {
+                public_key: Some(param_other),
+                ..GuardianState::new(3)
+            },
+        ),
     ];
     assert_eq!(guardians_state, expected_result);
 }
@@ -289,7 +295,7 @@ fn test_receive_guardian_encrypted_share() {
     assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     let error: Error = register_guardian_encrypted_share_update(
@@ -334,15 +340,21 @@ fn test_receive_guardian_encrypted_share() {
         .expect("Can parse value");
     guardians_state.sort_by_key(|x| x.1.index);
     let expected_result: GuardiansState = vec![
-        (BOB, GuardianState {
-            encrypted_share: Some(param),
-            ..GuardianState::new(1)
-        }),
+        (
+            BOB,
+            GuardianState {
+                encrypted_share: Some(param),
+                ..GuardianState::new(1)
+            },
+        ),
         (CAROLINE, GuardianState::new(2)),
-        (DAVE, GuardianState {
-            encrypted_share: Some(param_other),
-            ..GuardianState::new(3)
-        }),
+        (
+            DAVE,
+            GuardianState {
+                encrypted_share: Some(param_other),
+                ..GuardianState::new(3)
+            },
+        ),
     ];
     assert_eq!(guardians_state, expected_result);
 }
@@ -383,7 +395,7 @@ fn test_receive_guardian_status() {
     assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     let error: Error = register_guardian_status_update(
@@ -432,15 +444,21 @@ fn test_receive_guardian_status() {
         .expect("Can parse value");
     guardians_state.sort_by_key(|g| g.1.index);
     let expected_result: GuardiansState = vec![
-        (BOB, GuardianState {
-            status: Some(GuardianStatus::KeyVerificationFailed(vec![DAVE])),
-            ..GuardianState::new(1)
-        }),
+        (
+            BOB,
+            GuardianState {
+                status: Some(GuardianStatus::KeyVerificationFailed(vec![DAVE])),
+                ..GuardianState::new(1)
+            },
+        ),
         (CAROLINE, GuardianState::new(2)),
-        (DAVE, GuardianState {
-            status: Some(GuardianStatus::VerificationSuccessful),
-            ..GuardianState::new(3)
-        }),
+        (
+            DAVE,
+            GuardianState {
+                status: Some(GuardianStatus::VerificationSuccessful),
+                ..GuardianState::new(3)
+            },
+        ),
     ];
     assert_eq!(guardians_state, expected_result);
 }
@@ -474,7 +492,7 @@ fn test_receive_ballot() {
         &mut chain,
         &contract_address,
         &Address::Contract(ContractAddress {
-            index:    0,
+            index: 0,
             subindex: 0,
         }),
         &param,
@@ -548,7 +566,7 @@ fn test_receive_guardian_decryption_share() {
     assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     let error: Error =
@@ -584,15 +602,21 @@ fn test_receive_guardian_decryption_share() {
         .expect("Can parse value");
     guardians_state.sort_by_key(|x| x.1.index);
     let expected_result: GuardiansState = vec![
-        (BOB, GuardianState {
-            decryption_share: Some(param),
-            ..GuardianState::new(1)
-        }),
+        (
+            BOB,
+            GuardianState {
+                decryption_share: Some(param),
+                ..GuardianState::new(1)
+            },
+        ),
         (CAROLINE, GuardianState::new(2)),
-        (DAVE, GuardianState {
-            decryption_share: Some(param_other),
-            ..GuardianState::new(3)
-        }),
+        (
+            DAVE,
+            GuardianState {
+                decryption_share: Some(param_other),
+                ..GuardianState::new(3)
+            },
+        ),
     ];
     assert_eq!(guardians_state, expected_result);
 }
@@ -667,7 +691,7 @@ fn test_receive_guardian_decryption_proof_response_share() {
     assert_eq!(error, Error::Unauthorized, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     let error: Error = post_decryption_proof_response_share_update(
@@ -698,15 +722,21 @@ fn test_receive_guardian_decryption_proof_response_share() {
         .expect("Can parse value");
     guardians_state.sort_by_key(|x| x.1.index);
     let expected_result: GuardiansState = vec![
-        (BOB, GuardianState {
-            decryption_share_proof: Some(param),
-            ..GuardianState::new(1)
-        }),
+        (
+            BOB,
+            GuardianState {
+                decryption_share_proof: Some(param),
+                ..GuardianState::new(1)
+            },
+        ),
         (CAROLINE, GuardianState::new(2)),
-        (DAVE, GuardianState {
-            decryption_share_proof: Some(param_other),
-            ..GuardianState::new(3)
-        }),
+        (
+            DAVE,
+            GuardianState {
+                decryption_share_proof: Some(param_other),
+                ..GuardianState::new(3)
+            },
+        ),
     ];
     assert_eq!(guardians_state, expected_result);
 }
@@ -751,7 +781,7 @@ fn test_receive_election_result() {
     assert_eq!(error, Error::Malformed, "Unexpected error type");
 
     let contract_sender = Address::Contract(ContractAddress {
-        index:    0,
+        index: 0,
         subindex: 0,
     });
     let error: Error = post_election_result_update(
@@ -836,10 +866,10 @@ fn post_election_result_update(
     param: &PostResultParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.postElectionResult".to_string()),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -853,12 +883,12 @@ fn register_guardian_public_key_update(
     param: &RegisterGuardianPublicKeyParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "election.registerGuardianPublicKey".to_string(),
         ),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -872,12 +902,12 @@ fn register_guardian_encrypted_share_update(
     param: &RegisterGuardianEncryptedShareParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "election.registerGuardianEncryptedShare".to_string(),
         ),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -891,12 +921,12 @@ fn register_guardian_status_update(
     status: GuardianStatus,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "election.registerGuardianStatus".to_string(),
         ),
-        message:      OwnedParameter::from_serial(&status).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&status).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -907,10 +937,10 @@ fn view_guardians_state(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.viewGuardiansState".to_string()),
-        message:      OwnedParameter::empty(),
+        message: OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -922,10 +952,10 @@ fn view_election_result(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.viewElectionResult".to_string()),
-        message:      OwnedParameter::empty(),
+        message: OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -939,10 +969,10 @@ fn register_votes_update(
     param: &RegisterVotesParameter,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.registerVotes".to_string()),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -956,10 +986,10 @@ fn post_decryption_share_update(
     param: &Vec<u8>,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.postDecryptionShare".to_string()),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -974,12 +1004,12 @@ fn post_decryption_proof_response_share_update(
     param: &Vec<u8>,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked(
             "election.postDecryptionProofResponseShare".to_string(),
         ),
-        message:      OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
+        message: OwnedParameter::from_serial(&param).expect("Parameter within size bounds"),
     };
 
     chain.contract_update(SIGNER, ALICE, *sender, Energy::from(10_000), payload)
@@ -991,10 +1021,10 @@ fn view_config(
     address: &ContractAddress,
 ) -> Result<ContractInvokeSuccess, ContractInvokeError> {
     let payload = UpdateContractPayload {
-        amount:       Amount::zero(),
-        address:      *address,
+        amount: Amount::zero(),
+        address: *address,
         receive_name: OwnedReceiveName::new_unchecked("election.viewConfig".to_string()),
-        message:      OwnedParameter::empty(),
+        message: OwnedParameter::empty(),
     };
 
     chain.contract_invoke(ALICE, ALICE_ADDR, Energy::from(10_000), payload)
@@ -1005,11 +1035,11 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
 
     let candidates = vec![
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/john".to_string(),
+            url: "https://candidates.concordium.com/john".to_string(),
             hash: HashSha2256([0; 32]),
         },
         ChecksumUrl {
-            url:  "https://candidates.concordium.com/peter".to_string(),
+            url: "https://candidates.concordium.com/peter".to_string(),
             hash: HashSha2256([1; 32]),
         },
     ];
@@ -1022,21 +1052,21 @@ fn new_chain_and_contract() -> (Chain, ContractAddress) {
         .unwrap();
     let decryption_deadline = election_end.checked_add_days(chrono::Days::new(1)).unwrap();
     let eligible_voters = EligibleVoters {
-        data:       ChecksumUrl {
-            url:  "http://some.election/voters".to_string(),
+        data: ChecksumUrl {
+            url: "http://some.election/voters".to_string(),
             hash: HashSha2256([0u8; 32]),
         },
         parameters: EligibleVotersParameters {
             start_time: Timestamp::from_timestamp_millis(0),
-            end_time:   Timestamp::from_timestamp_millis(0),
+            end_time: Timestamp::from_timestamp_millis(0),
         },
     };
     let election_manifest = ChecksumUrl {
-        url:  "http://some.election/manifest".to_string(),
+        url: "http://some.election/manifest".to_string(),
         hash: HashSha2256([1u8; 32]),
     };
     let election_parameters = ChecksumUrl {
-        url:  "http://some.election/parameters".to_string(),
+        url: "http://some.election/parameters".to_string(),
         hash: HashSha2256([2u8; 32]),
     };
 
@@ -1088,10 +1118,10 @@ fn initialize(
     chain: &mut Chain,
 ) -> Result<ContractInitSuccess, ContractInitError> {
     let payload = InitContractPayload {
-        amount:    Amount::zero(),
-        mod_ref:   *module_ref,
+        amount: Amount::zero(),
+        mod_ref: *module_ref,
         init_name: OwnedContractName::new_unchecked("init_election".to_string()),
-        param:     OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
+        param: OwnedParameter::from_serial(init_param).expect("Parameter within size bounds"),
     };
     // Initialize the contract.
     chain.contract_init(SIGNER, ALICE, Energy::from(10_000), payload)

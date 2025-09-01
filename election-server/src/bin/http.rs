@@ -50,7 +50,7 @@ struct AppConfig {
         default_value = "https://grpc.testnet.concordium.com:20000",
         env = "CCD_ELECTION_NODE"
     )]
-    node_endpoint:      concordium_rust_sdk::v2::Endpoint,
+    node_endpoint: concordium_rust_sdk::v2::Endpoint,
     /// Database connection string.
     #[arg(
         long = "db-connection",
@@ -60,21 +60,21 @@ struct AppConfig {
                 application.",
         env = "CCD_ELECTION_DB_CONNECTION"
     )]
-    db_connection:      tokio_postgres::config::Config,
+    db_connection: tokio_postgres::config::Config,
     /// Maximum size of the database connection pool
     #[clap(
         long = "db-pool-size",
         default_value_t = 16,
         env = "CCD_ELECTION_DB_POOL_SIZE"
     )]
-    pool_size:          usize,
+    pool_size: usize,
     /// Maximum log level
     #[clap(
         long = "log-level",
         default_value = "info",
         env = "CCD_ELECTION_LOG_LEVEL"
     )]
-    log_level:          tracing_subscriber::filter::LevelFilter,
+    log_level: tracing_subscriber::filter::LevelFilter,
     /// The request timeout of the http server (in milliseconds)
     #[clap(
         long = "request-timeout-ms",
@@ -88,7 +88,7 @@ struct AppConfig {
         default_value = "0.0.0.0:8080",
         env = "CCD_ELECTION_LISTEN_ADDRESS"
     )]
-    listen_address:     std::net::SocketAddr,
+    listen_address: std::net::SocketAddr,
     /// Address of the prometheus server
     #[clap(long = "prometheus-address", env = "CCD_ELECTION_PROMETHEUS_ADDRESS")]
     prometheus_address: Option<std::net::SocketAddr>,
@@ -98,7 +98,7 @@ struct AppConfig {
         default_value = "../apps/voting/dist",
         env = "CCD_ELECTION_FRONTEND_DIR"
     )]
-    frontend_dir:       std::path::PathBuf,
+    frontend_dir: std::path::PathBuf,
     /// Allow requests from other origins. Useful for development where frontend
     /// is not served from the server.
     #[clap(
@@ -106,7 +106,7 @@ struct AppConfig {
         default_value_t = false,
         env = "CCD_ELECTION_ALLOW_CORS"
     )]
-    allow_cors:         bool,
+    allow_cors: bool,
     /// The network to connect users to (passed to frontend).
     #[clap(
         long = "network",
@@ -114,10 +114,10 @@ struct AppConfig {
         default_value_t = concordium_rust_sdk::web3id::did::Network::Testnet,
         help = "The network to connect users to (passed to frontend). Possible values: testnet, mainnet"
     )]
-    network:            concordium_rust_sdk::web3id::did::Network,
+    network: concordium_rust_sdk::web3id::did::Network,
     /// The contract address of the election contract (passed to frontend)
     #[clap(long = "contract-address", env = "CCD_ELECTION_CONTRACT_ADDRESS")]
-    contract_address:   ContractAddress,
+    contract_address: ContractAddress,
 }
 
 /// The necessary configuration from the election contract from the perspective
@@ -125,26 +125,26 @@ struct AppConfig {
 #[derive(serde::Serialize, Debug)]
 struct FrontendElectionConfig {
     /// A url to the location of the election manifest used by election guard.
-    election_manifest:    ChecksumUrl,
+    election_manifest: ChecksumUrl,
     /// A url to the location of the election parameters used by election guard.
-    election_parameters:  ChecksumUrl,
+    election_parameters: ChecksumUrl,
     /// A list of candidates that voters can vote for in the election.
-    candidates:           Vec<ChecksumUrl>,
+    candidates: Vec<ChecksumUrl>,
     /// A description of the election, e.g. "Concordium GC election, June 2024".
     election_description: String,
     /// The start time of the election, marking the time from which votes can be
     /// registered.
-    election_start:       Timestamp,
+    election_start: Timestamp,
     /// The end time of the election, marking the time at which votes can no
     /// longer be registered.
-    election_end:         Timestamp,
+    election_end: Timestamp,
     /// Whether the setup process has been successfully completed by all
     /// guardians.
     guardians_setup_done: bool,
     /// The public keys of all guardians
-    guardian_keys:        Option<Vec<Vec<u8>>>,
+    guardian_keys: Option<Vec<Vec<u8>>>,
     /// The election result
-    election_result:      ViewElectionResultQueryResponse,
+    election_result: ViewElectionResultQueryResponse,
 }
 
 impl FrontendElectionConfig {
@@ -152,15 +152,15 @@ impl FrontendElectionConfig {
     /// remaining fields to their default values.
     fn create(election_config: ElectionConfig) -> Self {
         Self {
-            election_manifest:    election_config.election_manifest,
-            election_parameters:  election_config.election_parameters,
-            candidates:           election_config.candidates,
+            election_manifest: election_config.election_manifest,
+            election_parameters: election_config.election_parameters,
+            candidates: election_config.candidates,
             election_description: election_config.election_description,
-            election_start:       election_config.election_start,
-            election_end:         election_config.election_end,
+            election_start: election_config.election_start,
+            election_end: election_config.election_end,
             guardians_setup_done: Default::default(),
-            guardian_keys:        Default::default(),
-            election_result:      Default::default(),
+            guardian_keys: Default::default(),
+            election_result: Default::default(),
         }
     }
 }
@@ -170,23 +170,23 @@ impl FrontendElectionConfig {
 #[serde(rename_all = "camelCase")]
 struct FrontendConfig {
     /// The node used to communicate with the chain
-    node:             String,
+    node: String,
     /// The network used in the application
-    network:          concordium_rust_sdk::web3id::did::Network,
+    network: concordium_rust_sdk::web3id::did::Network,
     /// The contract address of the election contract
     contract_address: ContractAddress,
     /// The necessary configuration from the election contract
-    contract_config:  FrontendElectionConfig,
+    contract_config: FrontendElectionConfig,
 }
 
 impl FrontendConfig {
     /// Creates a new configuration struct for the frontend application
     fn create(app_config: &AppConfig, contract_config: &ElectionConfig) -> Self {
         Self {
-            node:             app_config.node_endpoint.uri().to_string(),
-            network:          app_config.network,
+            node: app_config.node_endpoint.uri().to_string(),
+            network: app_config.network,
             contract_address: app_config.contract_address,
-            contract_config:  FrontendElectionConfig::create(contract_config.clone()),
+            contract_config: FrontendElectionConfig::create(contract_config.clone()),
         }
     }
 }
@@ -197,11 +197,11 @@ struct FrontendCache {
     /// The template used to generate a response
     html_template: String,
     /// Cache for [`ElectionPhase::Setup`]
-    setup_html:    Option<Html<String>>,
+    setup_html: Option<Html<String>>,
     /// Cache for [`ElectionPhase::Voting`]
-    voting_html:   Option<Html<String>>,
+    voting_html: Option<Html<String>>,
     /// Cache for [`ElectionPhase::Tally`]
-    tally_html:    Option<Html<String>>,
+    tally_html: Option<Html<String>>,
 }
 
 impl FrontendCache {
@@ -282,9 +282,9 @@ enum ElectionPhase {
 struct FrontendState {
     /// The application config, required to generated the [`FrontendConfig`]
     /// used.
-    app_config:      AppConfig,
+    app_config: AppConfig,
     /// A cache holding a possible response per [`ElectionPhase`].
-    frontend_cache:  Arc<Mutex<FrontendCache>>,
+    frontend_cache: Arc<Mutex<FrontendCache>>,
     /// The election config from the election contract
     contract_config: ElectionConfig,
     /// A contract client for the election contract
@@ -308,7 +308,7 @@ impl FrontendState {
 #[derive(Clone, Debug)]
 struct ApiState {
     /// The DB connection pool from.
-    db_pool:         DatabasePool,
+    db_pool: DatabasePool,
     /// The computed initial weights of each eligible voter.
     initial_weights: HashMap<AccountAddress, Amount>,
 }
@@ -327,7 +327,9 @@ impl ApiState {
 
 const MAX_SUBMISSIONS_PAGE_SIZE: usize = 20;
 
-fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
+fn default_page_size() -> usize {
+    MAX_SUBMISSIONS_PAGE_SIZE
+}
 
 /// query params passed to [`get_ballot_submissions_by_account`].
 #[derive(Deserialize, Debug)]
@@ -335,7 +337,7 @@ fn default_page_size() -> usize { MAX_SUBMISSIONS_PAGE_SIZE }
 struct PaginatedQueryParams {
     /// The page of ballot submissions to get.
     #[serde(default)]
-    from:      Option<usize>,
+    from: Option<usize>,
     /// The pagination size used.
     #[serde(default = "default_page_size")]
     page_size: usize,
@@ -344,7 +346,9 @@ struct PaginatedQueryParams {
 impl PaginatedQueryParams {
     /// Get the page size, where the max page size is capped by
     /// [`MAX_SUBMISSIONS_PAGE_SIZE`]
-    fn page_size(&self) -> usize { cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE) }
+    fn page_size(&self) -> usize {
+        cmp::min(self.page_size, MAX_SUBMISSIONS_PAGE_SIZE)
+    }
 }
 
 /// The response type for paginated queries
@@ -352,7 +356,7 @@ impl PaginatedQueryParams {
 #[serde(rename_all = "camelCase")]
 struct PaginationResponse<T> {
     /// entries returned in the response
-    results:  Vec<T>,
+    results: Vec<T>,
     /// Whether there are more results in the database
     has_more: bool,
 }
@@ -395,17 +399,17 @@ async fn get_ballot_submissions_by_account(
 #[serde(rename_all = "camelCase")]
 pub struct DelegationResponseRow {
     /// The index of the ballot submission in the database
-    pub id:               u64,
+    pub id: u64,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
-    pub block_time:       DateTime<Utc>,
+    pub block_time: DateTime<Utc>,
     /// The delegator account
-    pub from_account:     AccountAddress,
+    pub from_account: AccountAddress,
     /// The delegatee account
-    pub to_account:       AccountAddress,
+    pub to_account: AccountAddress,
     /// The delegated weight
-    pub weight:           u64,
+    pub weight: u64,
 }
 
 impl DelegationResponseRow {
@@ -553,9 +557,9 @@ async fn get_index_html(
 #[serde(rename_all = "camelCase")]
 struct AccountWeightResponse {
     /// The initial voting weight calculated for the account queried
-    voting_weight:    u64,
+    voting_weight: u64,
     /// Delegation made to another account from the queried account
-    delegated_to:     Option<AccountAddress>,
+    delegated_to: Option<AccountAddress>,
     /// Delegations from other accounts made to the account queried
     delegations_from: PaginationResponse<(AccountAddress, u64)>,
 }
@@ -712,8 +716,8 @@ async fn setup_http(
         .with_state(api_state)
         // Serve everything frontend-related
         .route_service("/assets/*path", ServeDir::new(&config.frontend_dir))
-         // Fall back to handle route in the frontend of the application served
-        .route("/index.html", get(|| async { Redirect::permanent("/")}))
+        // Fall back to handle route in the frontend of the application served
+        .route("/index.html", get(|| async { Redirect::permanent("/") }))
         .fallback(get(get_index_html))
         .with_state(fe_state);
 

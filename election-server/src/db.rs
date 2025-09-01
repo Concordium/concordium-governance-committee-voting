@@ -37,7 +37,7 @@ type DatabaseResult<T> = Result<T, DatabaseError>;
 #[derive(Debug, Serialize)]
 pub struct StoredConfiguration {
     /// The latest recorded block height.
-    pub latest_height:    Option<AbsoluteBlockHeight>,
+    pub latest_height: Option<AbsoluteBlockHeight>,
     /// The contract address of the election contract monitored.
     pub contract_address: ContractAddress,
 }
@@ -64,17 +64,17 @@ impl TryFrom<tokio_postgres::Row> for StoredConfiguration {
 #[serde(rename_all = "camelCase")]
 pub struct StoredBallotSubmission {
     /// The index of the ballot submission in the database
-    pub id:               u64,
+    pub id: u64,
     /// The account which submitted the ballot
-    pub account:          AccountAddress,
+    pub account: AccountAddress,
     /// The ballot submitted
-    pub ballot:           BallotEncrypted,
+    pub ballot: BallotEncrypted,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
-    pub block_time:       DateTime<Utc>,
+    pub block_time: DateTime<Utc>,
     /// Whether the ballot proof could be verified.
-    pub verified:         bool,
+    pub verified: bool,
 }
 
 impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
@@ -114,15 +114,15 @@ impl TryFrom<tokio_postgres::Row> for StoredBallotSubmission {
 #[serde(rename_all = "camelCase")]
 pub struct StoredDelegation {
     /// The index of the ballot submission in the database
-    pub id:               u64,
+    pub id: u64,
     /// The transaction hash of the ballot submission
     pub transaction_hash: TransactionHash,
     /// The timestamp of the block the ballot submission was included in
-    pub block_time:       DateTime<Utc>,
+    pub block_time: DateTime<Utc>,
     /// The delegator account
-    pub from_account:     AccountAddress,
+    pub from_account: AccountAddress,
     /// The delegatee account
-    pub to_account:       AccountAddress,
+    pub to_account: AccountAddress,
 }
 
 impl TryFrom<tokio_postgres::Row> for StoredDelegation {
@@ -163,11 +163,15 @@ pub struct Database {
 }
 
 impl From<Object> for Database {
-    fn from(client: Object) -> Self { Self { client } }
+    fn from(client: Object) -> Self {
+        Self { client }
+    }
 }
 
 impl AsRef<Object> for Database {
-    fn as_ref(&self) -> &Object { &self.client }
+    fn as_ref(&self) -> &Object {
+        &self.client
+    }
 }
 
 impl Database {
@@ -328,7 +332,9 @@ pub struct Transaction<'a> {
 }
 
 impl<'a> From<deadpool_postgres::Transaction<'a>> for Transaction<'a> {
-    fn from(inner: deadpool_postgres::Transaction<'a>) -> Self { Self { inner } }
+    fn from(inner: deadpool_postgres::Transaction<'a>) -> Self {
+        Self { inner }
+    }
 }
 
 impl<'a> Transaction<'a> {
