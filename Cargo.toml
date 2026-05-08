@@ -10,6 +10,9 @@ members = [
     "test-scripts",
 ]
 
+# Exclude crates in submodules
+exclude = ["deps"]
+
 # Define common dependencies with versions to be used by workspace members
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
