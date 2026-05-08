@@ -98,5 +98,5 @@ jobs:
         run: |
           rustup default ${{ env.RUST_VERSION }}
           rustup target install wasm32-unknown-unknown
-          cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }}
+          cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }} --locked
           cargo concordium test --out "${{ matrix.contracts }}/concordium-out/module.wasm.v1" -- --manifest-path "${{ matrix.contracts }}/Cargo.toml"
