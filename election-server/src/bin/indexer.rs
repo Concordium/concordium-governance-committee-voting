@@ -320,11 +320,15 @@ fn get_transaction_data(
 ) -> Option<TransactionData> {
     let from_account = transaction.sender_account()?;
     let transaction_hash = transaction.hash;
-    let BlockItemSummaryDetails::AccountTransaction(transaction) = transaction.details else {
+    let v2::Upward::Known(BlockItemSummaryDetails::AccountTransaction(transaction)) =
+        transaction.details
+    else {
         return None;
     };
     let transaction_data = match transaction.effects {
-        AccountTransactionEffects::AccountTransferWithMemo { to, memo, .. } => {
+        v2::Upward::Known(AccountTransactionEffects::AccountTransferWithMemo {
+            to, memo, ..
+        }) => {
             let Ok(memo) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
                 return None;
             };
@@ -337,13 +341,13 @@ fn get_transaction_data(
                 transaction_hash,
             })
         }
-        AccountTransactionEffects::ContractUpdateIssued { effects } => {
-            let ExecutionTree::V1(ExecutionTreeV1 {
+        v2::Upward::Known(AccountTransactionEffects::ContractUpdateIssued { effects }) => {
+            let v2::Upward::Known(ExecutionTree::V1(ExecutionTreeV1 {
                 address,
                 receive_name,
                 message,
                 ..
-            }) = execution_tree(effects)?
+            })) = execution_tree(effects)?
             else {
                 return None;
             };

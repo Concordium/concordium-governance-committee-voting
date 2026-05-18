@@ -2,6 +2,12 @@
 
 - Added command `election-stats` which compiles a list that can be used for analyzing the election.
 
+## 2.0.1
+
+### Changed
+
+- Update `concordium-rust-sdk` to 9.0.
+
 ## 2.0.0
 
 ### Breaking changes

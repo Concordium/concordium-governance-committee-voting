@@ -4,6 +4,12 @@
 
 - Change the default request timeout to 10s.
 
+## 1.0.2
+
+### Changed
+
+- Update `concordium-rust-sdk` to 9.0.
+
 ## 1.0.1
 
 - Bumped rust-sdk dependency to 6.0

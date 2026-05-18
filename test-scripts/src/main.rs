@@ -120,20 +120,14 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let endpoint = if args
-        .node_endpoint
-        .uri()
-        .scheme()
-        .map_or(false, |x| x == &sdk::Scheme::HTTPS)
-    {
+    let endpoint = if args.node_endpoint.uri().scheme() == Some(&sdk::Scheme::HTTPS) {
         args.node_endpoint
-            .tls_config(tonic::transport::channel::ClientTlsConfig::new())
+            .tls_config(tonic::transport::ClientTlsConfig::new())
             .context("Unable to construct TLS configuration for the Concordium API.")?
     } else {
         args.node_endpoint
     }
-    .connect_timeout(std::time::Duration::from_secs(5))
-    .timeout(std::time::Duration::from_secs(10));
+    .connect_timeout(std::time::Duration::from_secs(5));
 
     let (admin, guardians) = {
         let dir = std::fs::read_dir(&args.keys)?;

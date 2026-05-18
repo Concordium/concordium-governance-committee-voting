@@ -1274,6 +1274,9 @@ async fn energy_to_ccd(energy: Energy, node: &mut v2::Client) -> Result<Amount, 
         .await
         .inspect_err(|e| log::error!("Error while querying node ({:?}): {e}", node))?
         .response;
-    let amount = chain_parameters.ccd_cost(energy);
+    let amount = chain_parameters
+        .energy_rate()
+        .context("Missing energy rate in chain parameters")?
+        .ccd_cost(energy);
     Ok(amount)
 }

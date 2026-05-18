@@ -1,6 +1,6 @@
 [package]
 name = "guardian"
-version = "2.0.1"
+version = "2.0.2"
 description = "Guardian app for the Concordium blockchain elections"
 authors = ["concordium"]
 license = ""
