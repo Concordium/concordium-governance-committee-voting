@@ -486,8 +486,7 @@ async fn get_ballot_submission_by_transaction(
             tracing::error!("Failed to get ballot submission: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    let result = ballot_submission.map(StoredBallotSubmission::from);
-    Ok(Json(result))
+    Ok(Json(ballot_submission))
 }
 
 /// Renders the frontend application from the [`FrontendCache`]. If the response

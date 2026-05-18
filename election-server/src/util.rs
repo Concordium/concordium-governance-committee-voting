@@ -48,11 +48,7 @@ pub async fn create_client(
     endpoint: v2::Endpoint,
     request_timeout: std::time::Duration,
 ) -> anyhow::Result<v2::Client> {
-    let endpoint = if endpoint
-        .uri()
-        .scheme()
-        .map_or(false, |x| x == &v2::Scheme::HTTPS)
-    {
+    let endpoint = if endpoint.uri().scheme() == Some(&v2::Scheme::HTTPS) {
         endpoint
             .tls_config(ClientTlsConfig::new())
             .context("Unable to construct TLS configuration for Concordium API.")?

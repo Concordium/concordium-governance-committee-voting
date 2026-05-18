@@ -120,12 +120,7 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let endpoint = if args
-        .node_endpoint
-        .uri()
-        .scheme()
-        .map_or(false, |x| x == &sdk::Scheme::HTTPS)
-    {
+    let endpoint = if args.node_endpoint.uri().scheme() == Some(&sdk::Scheme::HTTPS) {
         args.node_endpoint
             .tls_config(tonic::transport::ClientTlsConfig::new())
             .context("Unable to construct TLS configuration for the Concordium API.")?
