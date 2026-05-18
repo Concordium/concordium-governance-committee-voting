@@ -238,11 +238,7 @@ impl AppConfig {
         let node_endpoint = self.user_config.node_endpoint();
         let network = self.user_config.network;
 
-        let endpoint = if node_endpoint
-            .uri()
-            .scheme()
-            .map_or(false, |x| x == &v2::Scheme::HTTPS)
-        {
+        let endpoint = if node_endpoint.uri().scheme() == Some(&v2::Scheme::HTTPS) {
             node_endpoint
                 .tls_config(ClientTlsConfig::new())
                 .context("Unable to construct TLS configuration for Concordium API.")?

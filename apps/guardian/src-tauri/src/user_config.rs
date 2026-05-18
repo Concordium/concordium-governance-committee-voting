@@ -11,7 +11,7 @@ pub enum NodeConfig {
     #[default]
     Auto,
     /// The node endpoint to use. This is a full URL.
-    Manual(v2::Endpoint),
+    Manual(Box<v2::Endpoint>),
 }
 
 impl serde::Serialize for NodeConfig {
@@ -36,6 +36,7 @@ impl<'de> serde::Deserialize<'de> for NodeConfig {
             Ok(NodeConfig::Auto)
         } else {
             v2::Endpoint::from_str(&s)
+                .map(Box::new)
                 .map(NodeConfig::Manual)
                 .map_err(serde::de::Error::custom)
         }
@@ -58,7 +59,7 @@ impl NodeConfig {
             return Self::default_endpoint(network);
         };
 
-        endpoint.clone()
+        endpoint.as_ref().clone()
     }
 }
 

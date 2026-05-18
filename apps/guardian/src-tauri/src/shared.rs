@@ -41,13 +41,13 @@ pub enum Error {
     Internal(#[from] anyhow::Error),
     /// Could not connect to node
     #[error("Failed to connect to concordium node")]
-    NodeConnection(#[from] v2::Error),
+    NodeConnection(Box<v2::Error>),
     /// Query was rejected by the node
     #[error("Node rejected with reason: {0:#?}")]
     QueryFailed(RejectReason),
     /// An error happened while querying the node
-    #[error("Query error: {}", get_error_message(.0))]
-    Network(#[from] v2::QueryError),
+    #[error("Query error: {}", get_error_message(.0.as_ref()))]
+    Network(Box<v2::QueryError>),
     /// Duplicate account found when importing
     #[error("Account has already been imported")]
     ExistingAccount,
@@ -110,6 +110,18 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
         anyhow::Error::new(error)
             .context("Parameter supplied to entrypoint was too big")
             .into()
+    }
+}
+
+impl From<v2::Error> for Error {
+    fn from(error: v2::Error) -> Self {
+        Error::NodeConnection(Box::new(error))
+    }
+}
+
+impl From<v2::QueryError> for Error {
+    fn from(error: v2::QueryError) -> Self {
+        Error::Network(Box::new(error))
     }
 }
 

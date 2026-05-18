@@ -48,12 +48,13 @@ jobs:
 
       - name: Run cargo clippy
         run: |
-          rustup default ${{ env.RUST_VERSION }}
+          rustup default stable
           rustup component add clippy
           cargo clippy --manifest-path=${{ matrix.crates }} --locked -- -D warnings
 
       - name: Run cargo test
         run: |
+          rustup default stable
           cargo test --workspace --exclude concordium_governance_committee_election --exclude eg --exclude util # We exclude test execution for the contract + external deps
   rustfmt:
     name: format
@@ -76,7 +77,7 @@ jobs:
 
       - name: Run cargo fmt
         run: |
-          rustup default ${{ env.RUST_VERSION }}
+          rustup default stable
           rustup component add rustfmt
           cargo fmt --manifest-path=${{ matrix.crates }} -- --check
 

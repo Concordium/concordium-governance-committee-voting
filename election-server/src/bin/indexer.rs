@@ -326,7 +326,9 @@ fn get_transaction_data(
         return None;
     };
     let transaction_data = match transaction.effects {
-        v2::Upward::Known(AccountTransactionEffects::AccountTransferWithMemo { to, memo, .. }) => {
+        v2::Upward::Known(AccountTransactionEffects::AccountTransferWithMemo {
+            to, memo, ..
+        }) => {
             let Ok(memo) = serde_cbor::from_slice::<String>(memo.as_ref()) else {
                 return None;
             };
