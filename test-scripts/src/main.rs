@@ -127,13 +127,12 @@ async fn main() -> anyhow::Result<()> {
         .map_or(false, |x| x == &sdk::Scheme::HTTPS)
     {
         args.node_endpoint
-            .tls_config(tonic::transport::channel::ClientTlsConfig::new())
+            .tls_config(tonic::transport::ClientTlsConfig::new())
             .context("Unable to construct TLS configuration for the Concordium API.")?
     } else {
         args.node_endpoint
     }
-    .connect_timeout(std::time::Duration::from_secs(5))
-    .timeout(std::time::Duration::from_secs(10));
+    .connect_timeout(std::time::Duration::from_secs(5));
 
     let (admin, guardians) = {
         let dir = std::fs::read_dir(&args.keys)?;

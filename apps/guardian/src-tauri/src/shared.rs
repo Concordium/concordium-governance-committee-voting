@@ -41,7 +41,7 @@ pub enum Error {
     Internal(#[from] anyhow::Error),
     /// Could not connect to node
     #[error("Failed to connect to concordium node")]
-    NodeConnection(#[from] tonic::transport::Error),
+    NodeConnection(#[from] v2::Error),
     /// Query was rejected by the node
     #[error("Node rejected with reason: {0:#?}")]
     QueryFailed(RejectReason),
@@ -116,6 +116,17 @@ impl From<contracts_common::ExceedsParameterSize> for Error {
 impl From<RejectReason> for Error {
     fn from(reason: RejectReason) -> Self {
         Error::QueryFailed(reason)
+    }
+}
+
+impl From<v2::Upward<RejectReason>> for Error {
+    fn from(reason: v2::Upward<RejectReason>) -> Self {
+        match reason {
+            v2::Upward::Known(reason) => Error::QueryFailed(reason),
+            v2::Upward::Unknown(_) => {
+                anyhow::anyhow!("Node rejected with an unknown future reject reason").into()
+            }
+        }
     }
 }
 

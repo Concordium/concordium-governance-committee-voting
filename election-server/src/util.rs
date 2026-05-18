@@ -43,7 +43,7 @@ pub struct VotingWeightDelegation {
 }
 
 /// Creates a [`v2::Client`] from the [`v2::Endpoint`], enabling TLS and setting
-/// connection and request timeouts
+/// a connection timeout.
 pub async fn create_client(
     endpoint: v2::Endpoint,
     request_timeout: std::time::Duration,
@@ -59,9 +59,7 @@ pub async fn create_client(
     } else {
         endpoint
     };
-    let endpoint = endpoint
-        .connect_timeout(request_timeout)
-        .timeout(request_timeout);
+    let endpoint = endpoint.connect_timeout(request_timeout);
     let node = v2::Client::new(endpoint)
         .await
         .context("Could not connect to node.")?;

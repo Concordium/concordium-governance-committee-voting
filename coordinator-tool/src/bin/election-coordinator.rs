@@ -311,13 +311,12 @@ async fn main() -> anyhow::Result<()> {
         .map_or(false, |x| x == &sdk::Scheme::HTTPS)
     {
         app.node_endpoint
-            .tls_config(tonic::transport::channel::ClientTlsConfig::new())
+            .tls_config(tonic::transport::ClientTlsConfig::new())
             .context("Unable to construct TLS configuration for the Concordium API.")?
     } else {
         app.node_endpoint
     }
-    .connect_timeout(std::time::Duration::from_secs(5))
-    .timeout(std::time::Duration::from_secs(10));
+    .connect_timeout(std::time::Duration::from_secs(5));
 
     match app.command {
         Command::InitialWeights { out, command } => {
@@ -563,14 +562,15 @@ async fn handle_final_weights(
             break;
         }
         for tx in txs {
-            let BlockItemSummaryDetails::AccountTransaction(atx) = tx.details else {
-                continue; // Ignore non-account transactions
+            let sdk::Upward::Known(BlockItemSummaryDetails::AccountTransaction(atx)) = tx.details
+            else {
+                continue; // Ignore non-account transactions and unknown future variants.
             };
-            let AccountTransactionEffects::AccountTransferWithMemo {
+            let sdk::Upward::Known(AccountTransactionEffects::AccountTransferWithMemo {
                 amount: _,
                 to,
                 memo,
-            } = atx.effects
+            }) = atx.effects
             else {
                 continue; // Only consider transfers with memo.
             };
@@ -1092,6 +1092,12 @@ async fn handle_tally(
                      sender,
                      ..
                  }| {
+                    let Some(execution_tree) = execution_tree.known() else {
+                        eprintln!(
+                            "Unable to inspect ballot transaction {transaction_hash}: unknown execution tree"
+                        );
+                        return None;
+                    };
                     let param = execution_tree.parameter();
                     let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(
                         param.as_ref(),
@@ -1345,11 +1351,17 @@ async fn handle_initial_weights(
 
         // First collect the affected addresses within the payday
         for tx in normal {
-            for addr in tx.affected_addresses() {
+            let Some(addresses) = tx.affected_addresses().known() else {
+                continue;
+            };
+            for addr in addresses {
                 affected.insert(AccountAddressEq::from(addr));
             }
         }
         for special in &specials {
+            let Some(special) = special.as_known() else {
+                continue;
+            };
             for addr in special.affected_addresses() {
                 affected.insert(AccountAddressEq::from(addr));
             }
@@ -1359,10 +1371,12 @@ async fn handle_initial_weights(
         // events. If not, then skip the block.
         let has_payday_event = specials.iter().any(|special| {
             matches!(
-                special,
-                SpecialTransactionOutcome::PaydayPoolReward { .. }
-                    | SpecialTransactionOutcome::PaydayAccountReward { .. }
-                    | SpecialTransactionOutcome::PaydayFoundationReward { .. }
+                special.as_known(),
+                Some(
+                    SpecialTransactionOutcome::PaydayPoolReward { .. }
+                        | SpecialTransactionOutcome::PaydayAccountReward { .. }
+                        | SpecialTransactionOutcome::PaydayFoundationReward { .. }
+                )
             )
         });
         if !has_payday_event {
@@ -1542,7 +1556,10 @@ async fn handle_new_election(endpoint: sdk::Endpoint, app: NewElectionArgs) -> a
                 .wait_until_finalized(&hash)
                 .await
                 .context("Module deployment failed.")?;
-            anyhow::ensure!(result.is_success(), "Transaction failed {result:#?}");
+            anyhow::ensure!(
+                result.is_success().known().unwrap_or(false),
+                "Transaction failed {result:#?}"
+            );
             eprintln!("Module {module_ref} deployed in block {block_hash}");
         }
         Err(err) => anyhow::bail!("Could not inspect module status: {err}"),
@@ -1841,6 +1858,12 @@ async fn handle_election_stats(
                      sender,
                      ..
                  }| {
+                    let Some(execution_tree) = execution_tree.known() else {
+                        eprintln!(
+                            "Unable to inspect ballot transaction {transaction_hash}: unknown execution tree"
+                        );
+                        return None;
+                    };
                     let param = execution_tree.parameter();
                     let Ok(param) = concordium_std::from_bytes::<contract::RegisterVotesParameter>(
                         param.as_ref(),

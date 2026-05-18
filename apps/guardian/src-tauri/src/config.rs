@@ -251,7 +251,7 @@ impl AppConfig {
         };
 
         let timeout = core::time::Duration::from_millis(*TIMEOUT);
-        let endpoint = endpoint.connect_timeout(timeout).timeout(timeout);
+        let endpoint = endpoint.connect_timeout(timeout);
         let mut node = v2::Client::new(endpoint).await?;
 
         let genesis_hash = node.get_consensus_info().await?.genesis_block;
