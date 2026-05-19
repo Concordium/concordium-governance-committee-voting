@@ -2,6 +2,7 @@
 
 ARG build_image=node:18.14-slim
 ARG rust_version=latest
+ARG rust_contract_version=1.81
 ARG rust_base_image=rust:${rust_version}
 
 FROM --platform=linux/amd64 ${rust_base_image} AS backend
@@ -13,15 +14,15 @@ RUN cargo build --release --locked -p election-server --bin http
 
 FROM --platform=linux/amd64 ${build_image} AS frontend
 
-# Make the argument available in this stage, with default propagating down.
-ARG rust_version
+# Make the required rust version available in this stage, with default propagating down.
+ARG rust_contract_version
 
 # Install rust dependencies for building electionguard bindings
 RUN apt-get update && apt-get install curl build-essential -y
 
 # It's usually a bit iffy to download and run stuff.
 # But we are requiring TLS, and downloading from a trusted domain.
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -t wasm32-unknown-unknown -y --no-modify-path --default-toolchain ${rust_version}
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -t wasm32-unknown-unknown -y --no-modify-path --default-toolchain ${rust_contract_version}
 ENV PATH="${PATH}:/root/.cargo/bin"
 RUN cargo install cargo-concordium
 
