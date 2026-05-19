@@ -2,7 +2,7 @@ name: 'Publish guardian app'
 on:
   push:
     tags:
-      - "release/guardian-app/*"  # Trigger on version tags for guardian app
+      - "release/guardian-app/*.*.*-*"  # Trigger on version/build tags for guardian app
 
 env:
   NODE_VERSION: "22.12.0"
@@ -38,12 +38,21 @@ jobs:
       - name: Extract tag name
         id: get_tag
         shell: bash
-        run: echo "tag=${GITHUB_REF#refs/tags/release/guardian-app/}"  >> $GITHUB_OUTPUT
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/release/guardian-app/}"
+          if [[ ! "$TAG_NAME" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+            echo "::error Tag format invalid. Expected format: x.y.z-build_number"
+            exit 1
+          fi
+
+          echo "version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+          echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Test that tag version matches tauri.conf.json version
         working-directory: apps/guardian
         shell: bash
-        run: test "${{ steps.get_tag.outputs.tag }}" = "$(jq -r ".package.version" src-tauri/tauri.conf.json)" || exit 1
+        run: test "${{ steps.get_tag.outputs.version }}" = "$(jq -r ".package.version" src-tauri/tauri.conf.json)" || exit 1
 
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -78,10 +87,26 @@ jobs:
         working-directory: apps/guardian
         run: yarn install --frozen-lockfile
 
+      - name: Add signtool to PATH (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          $signtoolDir = $signtool.Directory.FullName
+          Add-Content -Path $env:GITHUB_PATH -Value $signtoolDir
+          Write-Host "Added $signtoolDir to PATH"
+
       - name: Install DigiCert Client tools (Windows only)
         if: matrix.platform == 'windows-latest'
         id: digicert_client
-        uses: digicert/ssm-code-signing@v1.0.0
+        uses: digicert/code-signing-software-trust-action@v1.0.0
         
       - name: Import Windows certificate (Windows only)
         id: windows_certificate
