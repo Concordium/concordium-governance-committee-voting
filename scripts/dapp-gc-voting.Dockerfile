@@ -1,7 +1,7 @@
 # This dockerfile is meant to be run from the **root of the repository**.
 
 ARG build_image=node:18.14-slim
-ARG rust_version=1.81
+ARG rust_version=latest
 ARG rust_base_image=rust:${rust_version}
 
 FROM --platform=linux/amd64 ${rust_base_image} AS backend
