@@ -1,6 +1,8 @@
 ## Unreleased
 
 - Added command `election-stats` which compiles a list that can be used for analyzing the election.
+- Added command `guardians-state` which shows the state of all guardians for an election target. Helpful
+  during key generation/decryption phases to know which guardian(s) to contact to make progress.
 
 ## 2.0.1
 

@@ -251,6 +251,15 @@ enum Command {
         )]
         decryption_deadline: chrono::DateTime<chrono::Utc>,
     },
+    /// View guardian progress and finalization state.
+    #[command(name = "guardians-state")]
+    GuardiansState {
+        #[arg(
+            long = "contract",
+            help = "Address of the election contract in the format <index, subindex>"
+        )]
+        contract: ContractAddress,
+    },
     ElectionStats {
         #[arg(
             long = "contract",
@@ -344,6 +353,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Command::GuardiansState { contract } => handle_guardians_state(endpoint, contract).await,
         Command::ElectionStats {
             contract,
             initial_weights,
@@ -633,6 +643,78 @@ async fn handle_final_weights(
 }
 
 enum ElectionContract {}
+
+fn shorten_account_address(address: &AccountAddress) -> String {
+    let address = address.to_string();
+    let prefix: String = address.chars().take(4).collect();
+    let suffix: String = address
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}…{suffix}")
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+fn guardian_status_label(status: &Option<contract::GuardianStatus>) -> &'static str {
+    match status {
+        None => "-",
+        Some(contract::GuardianStatus::VerificationSuccessful) => "ok",
+        Some(contract::GuardianStatus::KeyVerificationFailed(_)) => "key-fail",
+        Some(contract::GuardianStatus::SharesVerificationFailed(_)) => "share-fail",
+    }
+}
+
+async fn handle_guardians_state(
+    endpoint: sdk::Endpoint,
+    contract: ContractAddress,
+) -> anyhow::Result<()> {
+    let client = sdk::Client::new(endpoint.clone()).await?;
+    let mut contract_client =
+        contract_client::ContractClient::<ElectionContract>::create(client, contract).await?;
+
+    let mut guardians_state = contract_client
+        .view::<_, contract::GuardiansState, ViewError>(
+            "viewGuardiansState",
+            &(),
+            BlockIdentifier::LastFinal,
+        )
+        .await?;
+    guardians_state.sort_by_key(|(_, guardian_state)| guardian_state.index);
+
+    println!("Guardian state for contract {contract}\n");
+    println!(
+        "{:<3}  {:<13}  {:<3}  {:<5}  {:<10}  {:<3}  {:<5}  {:<4}",
+        "Idx", "Guardian", "PK", "Share", "Status", "Dec", "Proof", "Excl"
+    );
+    println!("{}", "-".repeat(62));
+
+    for (address, guardian_state) in guardians_state {
+        println!(
+            "{:<3}  {:<13}  {:<3}  {:<5}  {:<10}  {:<3}  {:<5}  {:<4}",
+            guardian_state.index,
+            shorten_account_address(&address),
+            yes_no(guardian_state.public_key.is_some()),
+            yes_no(guardian_state.encrypted_share.is_some()),
+            guardian_status_label(&guardian_state.status),
+            yes_no(guardian_state.decryption_share.is_some()),
+            yes_no(guardian_state.decryption_share_proof.is_some()),
+            yes_no(guardian_state.excluded),
+        );
+    }
+
+    Ok(())
+}
 
 /// Handle decryption of the final result, and checking or publishing the result
 /// in the contract.
