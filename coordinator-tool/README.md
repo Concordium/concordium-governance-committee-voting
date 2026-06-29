@@ -46,6 +46,9 @@ The tool has the following subcommands
   result in the contract, or if the result is already posted to check that it
   matches what we compute.
 
+- `guardians-state` shows a compact, read-only summary of guardian progress and
+  finalization state registered in the contract.
+
 All commands have a `--help` option which explains the input and output
 parameters.
 
@@ -168,6 +171,28 @@ election-coordinator  --node http://localhost:20001 final-result --contract '<77
 This will look up all the decryption shares provided by the guardians, check that they are valid, and if there are enough of the valid ones it will decrypt the final result and publish it in the contract.
 
 If the `admin-keys` are not provided the command will do everything else as with the keys, except it will check if the result in the contract matches or not, and report the result.
+
+### View guardian state
+
+```console
+election-coordinator --node http://localhost:20001 guardians-state --contract '<7795,0>'
+```
+
+This prints a compact, read-only table with one row per guardian. Account addresses are shortened to the first four and last four characters for quick visual inspection.
+
+Example output:
+
+```text
+Guardian state for contract <7795,0>
+
+Idx  Guardian       PK   Share  Status      Dec  Proof  Excl
+--------------------------------------------------------------
+1    31bT…6a3G      yes  yes    ok          no   no     no
+2    4PF6…eX3D      yes  no     -           no   no     no
+3    3h2a…q7Lz      yes  yes    key-fail    no   no     yes
+```
+
+The `Status` column uses `-` for no status, `ok` for successful verification, `key-fail` for key verification failure, and `share-fail` for encrypted share verification failure.
 
 ### Reset the finalization
 
