@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: "${CCD_ELECTION_POSTGRES_DB:-gc-election}"
+      POSTGRES_USER: "${CCD_ELECTION_POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${CCD_ELECTION_POSTGRES_PASSWORD:-password}"
+    ports:
+      - "${CCD_ELECTION_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - election-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CCD_ELECTION_POSTGRES_USER:-postgres} -d ${CCD_ELECTION_POSTGRES_DB:-gc-election}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  indexer:
+    build:
+      context: .
+      dockerfile: ./scripts/indexer.Dockerfile
+      args:
+        DOCKER_PLATFORM: "${DOCKER_PLATFORM:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CCD_ELECTION_CONTRACT_ADDRESS: "${CCD_ELECTION_CONTRACT_ADDRESS}"
+      CCD_ELECTION_NODES: "${CCD_ELECTION_NODE_ENDPOINT}"
+      CCD_ELECTION_DB_CONNECTION: "host=postgres dbname=${CCD_ELECTION_POSTGRES_DB:-gc-election} user=${CCD_ELECTION_POSTGRES_USER:-postgres} password=${CCD_ELECTION_POSTGRES_PASSWORD:-password} port=5432"
+      CCD_ELECTION_LOG_LEVEL: "${CCD_ELECTION_LOG_LEVEL:-info}"
+      CCD_ELECTION_MAX_BEHIND_SECONDS: "${CCD_ELECTION_MAX_BEHIND_SECONDS:-240}"
+      CCD_ELECTION_REQUEST_TIMEOUT_MS: "${CCD_ELECTION_REQUEST_TIMEOUT_MS:-10000}"
+    restart: unless-stopped
+
+  http:
+    build:
+      context: .
+      dockerfile: ./scripts/dapp-gc-voting.Dockerfile
+      args:
+        DOCKER_PLATFORM: "${DOCKER_PLATFORM:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CCD_ELECTION_CONTRACT_ADDRESS: "${CCD_ELECTION_CONTRACT_ADDRESS}"
+      CCD_ELECTION_NODE: "${CCD_ELECTION_NODE_ENDPOINT}"
+      CCD_ELECTION_NETWORK: "${CCD_ELECTION_NETWORK}"
+      CCD_ELECTION_DB_CONNECTION: "host=postgres dbname=${CCD_ELECTION_POSTGRES_DB:-gc-election} user=${CCD_ELECTION_POSTGRES_USER:-postgres} password=${CCD_ELECTION_POSTGRES_PASSWORD:-password} port=5432"
+      CCD_ELECTION_DB_POOL_SIZE: "${CCD_ELECTION_DB_POOL_SIZE:-16}"
+      CCD_ELECTION_LOG_LEVEL: "${CCD_ELECTION_LOG_LEVEL:-info}"
+      CCD_ELECTION_REQUEST_TIMEOUT_MS: "${CCD_ELECTION_REQUEST_TIMEOUT_MS:-10000}"
+      CCD_ELECTION_LISTEN_ADDRESS: "0.0.0.0:8080"
+      CCD_ELECTION_ALLOW_CORS: "${CCD_ELECTION_ALLOW_CORS:-false}"
+    ports:
+      - "${CCD_ELECTION_HTTP_PORT:-8080}:8080"
+    restart: unless-stopped
+
+volumes:
+  election-postgres-data:

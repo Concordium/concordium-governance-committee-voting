@@ -83,4 +83,6 @@ jobs:
           file: ./scripts/dapp-gc-voting.Dockerfile
           push: true
           platforms: linux/amd64
+          build-args: |
+            DOCKER_PLATFORM=linux/amd64
           tags: ${{ steps.verify-versions.outputs.tag }}

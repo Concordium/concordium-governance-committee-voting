@@ -4,15 +4,16 @@ ARG build_image=node:18.14-slim
 ARG rust_version=latest
 ARG rust_contract_version=1.81
 ARG rust_base_image=rust:${rust_version}
+ARG DOCKER_PLATFORM
 
-FROM --platform=linux/amd64 ${rust_base_image} AS backend
+FROM --platform=${DOCKER_PLATFORM:-$TARGETPLATFORM} ${rust_base_image} AS backend
 
 WORKDIR /build
 COPY . .
 
 RUN cargo build --release --locked -p election-server --bin http
 
-FROM --platform=linux/amd64 ${build_image} AS frontend
+FROM --platform=${DOCKER_PLATFORM:-$TARGETPLATFORM} ${build_image} AS frontend
 
 # Make the arguments available in this stage, with default propagating down.
 ARG rust_version
@@ -40,7 +41,7 @@ WORKDIR /build/apps/
 # to make it simpler to maintain.
 RUN yarn install && yarn build:all
 
-FROM --platform=linux/amd64 debian:bookworm
+FROM --platform=${DOCKER_PLATFORM:-$TARGETPLATFORM} debian:bookworm
 
 # In order to use TLS when connecting to the node we need certificates.
 RUN apt-get update && apt-get install -y ca-certificates
