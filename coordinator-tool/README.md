@@ -61,7 +61,7 @@ parameters.
 
 ### Prerequisites
 
-Building the tool requires Rust 1.74 or newer.
+Building the tool requires Rust 1.85 or newer.
 
 ### Build
 

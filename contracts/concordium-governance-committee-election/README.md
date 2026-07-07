@@ -4,6 +4,8 @@
 
 `cargo/rustup` and `cargo-concordium` needs to be [set up](https://developer.concordium.software/en/mainnet/smart-contracts/guides/quick-start.html).
 
+Rust version 1.85 should be used.
+
 ## Build
 
 Run the following command to compile the smart contract into the wasm module `module.wasm.v1` with embedded schema:
