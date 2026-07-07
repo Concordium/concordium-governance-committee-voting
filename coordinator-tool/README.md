@@ -59,12 +59,6 @@ parameters.
 
 ## Build and run
 
-### Prerequisites
-
-Building the tool requires Rust 1.85 or newer.
-
-### Build
-
 To build the tool make sure you have the repository submodules initialized
 
 ```console

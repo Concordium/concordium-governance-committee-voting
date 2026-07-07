@@ -17,7 +17,6 @@ on:
 env:
   DUMMY: 1 # For cache busting.
   NODE_VERSION: "18.16.0"
-  RUST_VERSION: "1.81"
   CARGO_CONCORDIUM_VERSION: "3.2.0"
   CCD_ELECTION_CONTRACT_ADDRESS: "<0,0>" # Otherwise build will fail
 
@@ -105,8 +104,6 @@ jobs:
         if: ${{ steps.election-contract-cache.outputs.cache-hit != 'true' }}
         working-directory: ./contracts/concordium-governance-committee-election
         run: |
-          rustup default ${{ env.RUST_VERSION }}
-          rustup target install wasm32-unknown-unknown
           cargo install cargo-concordium@${{ env.CARGO_CONCORDIUM_VERSION }} --locked
           cargo concordium build --schema-embed --out concordium-out/module.wasm.v1
 
