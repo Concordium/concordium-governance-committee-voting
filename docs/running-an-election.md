@@ -39,7 +39,7 @@ election-coordinator new-election \
   --election-start '2024-02-01T00:00:00Z' \
   --election-end '2024-02-07T00:00:00Z' \
   --decryption-deadline '2024-02-08T00:00:00Z' \
-  --delegation-string 'delegatevote2024' \
+  --delegation-string 'delegatevote' \
   --out election-config \
   --voters-file initial-weights.csv \
   --voters-params-file initial-weights-params.json \
@@ -93,6 +93,17 @@ The election server consists of two independent components:
 
 Please follow the instructions in the [election server documentation](../election-server/README.md) to get started.
 
+## Inspect guardian submission state
+
+The coordinator can inspect the current state of all guardian submissions at any point in the election with the `guardians-state` command:
+
+```sh
+election-coordinator guardians-state \
+  --contract "<8488,0>"
+```
+
+This is a read-only command which prints a compact table showing, for each guardian, whether public keys, encrypted shares, verification status, decryption shares, decryption proofs, and exclusion status have been registered.
+
 ## Election pre-voting phase
 
 As a guardian (i.e. account holder of guardian account as registered in the contract) the [guardian desktop application](../apps/guardian)
@@ -139,13 +150,16 @@ of the contract initialized in `election-coordinator new-election`.
 election-coordinator final-weights \
   --contract "<8488,0>" \
   --initial-weights initial-weights.csv \
-  --final-weights final-weights.csv
+  --final-weights final-weights.csv \ # this is the out path of the command
 ```
 
 ### Tally the encrypted ballots
 
 ```sh
-election-coordinator tally --contract "<8488,0>" --final-weights final-weights.csv
+election-coordinator tally \
+  --contract "<8488,0>" \
+  --final-weights final-weights.csv \
+  --admin-keys admin.export # omitting this results in a dry-run
 ```
 
 Note that this step also scales the ballots by the weights given in `final-weights`.
@@ -154,13 +168,28 @@ Note that this step also scales the ballots by the weights given in `final-weigh
 
 In the guardian application, each guardian has to:
 
-- Decrypt their share of the tally, register the result, and wait for peers to do the same.
+- Decrypt their share of the tally, register the result, and wait for peers to do the same. This has to happen before the `decryption-dealine`
+  declared in the election contract. If not, the protocol continues without the guardian which failed to do this.
 - Generate a proof of correct decryption and register the proof in the contract.
+
+### Reset post-voting phase
+
+If a guardian is unresponsive for the last step of generating an posting the proof of correct decryption, it is possible to reset this phase of the election.
+
+```sh
+election-coordinator reset \
+  --contract "<8488,0>" \
+  --guardian "4UC8o4m8AgTxt5VBFMdLwMCwwJQVJwjesNzW7RPXkACynrULmd" \ # supports repeating to specify multiple guardians to exclude
+  --decryption-deadline "2024-01-23T12:13:14Z"
+  --admin-keys admin.export
+```
 
 ### Compute and publish election result
 
 Finally, the election coordinator must compute the election result from the decryption shares registered by each guardian:
 
 ```sh
-election-coordinator final-result --contract '<8488,0>' --admin-keys admin.export
+election-coordinator final-result \
+  --contract '<8488,0>' \
+  --admin-keys admin.export # omitting this results in a dry-run and will post the result to stdout
 ```
