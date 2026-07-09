@@ -93,6 +93,17 @@ The election server consists of two independent components:
 
 Please follow the instructions in the [election server documentation](../election-server/README.md) to get started.
 
+## Inspect guardian submission state
+
+The coordinator can inspect the current state of all guardian submissions at any point in the election with the `guardians-state` command:
+
+```sh
+election-coordinator guardians-state \
+  --contract "<8488,0>"
+```
+
+This is a read-only command which prints a compact table showing, for each guardian, whether public keys, encrypted shares, verification status, decryption shares, decryption proofs, and exclusion status have been registered.
+
 ## Election pre-voting phase
 
 As a guardian (i.e. account holder of guardian account as registered in the contract) the [guardian desktop application](../apps/guardian)
