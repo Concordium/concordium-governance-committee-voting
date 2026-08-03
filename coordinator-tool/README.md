@@ -41,6 +41,10 @@ The tool has the following subcommands
   votes during the election period and scales them according to the specified
   weights.
 
+- `reset` is used to reset the final phase of the election. This should be used if
+  the decryption cannot complete due to unresponsive guardians, at which point this
+  command can be used to exclude them and set a new decryption deadline.
+
 - `final-result` after the guardians have each decrypted their share of the
   encrypted tally this command can be used to combine the shares and post the
   result in the contract, or if the result is already posted to check that it
@@ -54,12 +58,6 @@ parameters.
 
 
 ## Build and run
-
-### Prerequisites
-
-Building the tool requires Rust 1.74 or newer.
-
-### Build
 
 To build the tool make sure you have the repository submodules initialized
 
