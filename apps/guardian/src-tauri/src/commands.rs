@@ -623,7 +623,17 @@ async fn generate_secret_share(
 
         let share = shares.swap_remove(i);
         drop(shares);
-        let dealer_public_key = &guardian_public_keys[share.dealer.get_zero_based_usize()];
+        // Bounds-check the dealer index before indexing: it comes from an
+        // untrusted, peer-supplied encrypted share. An out-of-range index would
+        // otherwise panic this guardian app (denial of service).
+        let dealer_index = share.dealer.get_zero_based_usize();
+        let Some(dealer_public_key) = guardian_public_keys.get(dealer_index) else {
+            log::warn!(
+                "Peer {account} submitted a share with an out-of-range dealer index {dealer_index}."
+            );
+            errors.push(*account);
+            continue;
+        };
         if share
             .decrypt_and_validate(&parameters, dealer_public_key, &secret_key)
             .is_err()
